@@ -2684,5 +2684,194 @@ test('plot care: tilling and watering after a sale keep the idle countdown; the 
     eq(b.state, PLOT_EMPTY)
 end)
 
+-- farm game feel: effects and sound (section 2) -----------------------------------
+test('fx: bursts clean up after their lifetime and the particle cap holds', function()
+    loadGame()
+    local fx = Fx.new()
+    for kind in pairs(FX_BURSTS) do assert(fx:burst(kind, 100, 100) > 0, kind .. ' emits') end
+    fx:pop('a'); fx:squash('b'); fx:popup('hi', 10, 10)
+    local landed = false
+    fx:fly(gTextures['produce-pumpkin'], 0, 0, 50, 10, function() landed = true end)
+    assert(fx:count() > 10, 'effects live')
+    for _ = 1, 60 * 3 do fx:update(1 / 60) end
+    eq(fx:count(), 0, 'nothing left after 3 s'); eq(landed, true, 'flyer landed and called back')
+    -- spam: the cap is never exceeded
+    for _ = 1, 200 do fx:burst('harvest', 50, 50) end
+    eq(#fx.particles, FX_MAX_PARTICLES, 'capped at FX_MAX_PARTICLES')
+    eq(fx:burst('harvest', 50, 50), 0, 'no new particles at the cap')
+    -- bursts do not consume the global random sequence
+    math.randomseed(42); local a = math.random()
+    math.randomseed(42); fx:burst('till', 1, 1); local b = math.random()
+    eq(a, b, 'global RNG untouched')
+end)
+
+test('fx: the coin ticker converges for gains and spending within about a second', function()
+    loadGame()
+    for _, case in ipairs({{0, 5}, {5, 1}, {0, 120}, {120, 116}}) do
+        local v, t = case[1], 0
+        local monotonic = true
+        while v ~= case[2] and t < 3 do
+            local nv = Fx.tickToward(v, case[2], 1 / 60)
+            if (case[2] > case[1] and nv < v) or (case[2] < case[1] and nv > v) then monotonic = false end
+            v = nv; t = t + 1 / 60
+        end
+        eq(v, case[2], 'reached ' .. case[2]); eq(monotonic, true, 'moves one way')
+        assert(t <= 1.05, case[1] .. ' -> ' .. case[2] .. ' took ' .. t .. ' s')
+        assert(t > 0.1, 'ticks rather than jumping (' .. t .. ' s)')
+    end
+end)
+
+test('fx: squash and pop tweens start, then rest at scale 1', function()
+    loadGame()
+    local fx = Fx.new()
+    fx:squash('k')
+    local sx, sy = fx:squashScale('k')
+    assert(math.abs(sx - 1.25) < 1e-9 and math.abs(sy - 0.75) < 1e-9, 'starts 1.25 x 0.75')
+    fx:pop('p'); fx:update(FX_POP_TIME / 2)
+    assert(fx:popScale('p') > 1.1, 'pop grows')
+    for _ = 1, 60 do fx:update(1 / 60) end
+    sx, sy = fx:squashScale('k')
+    eq(sx, 1); eq(sy, 1); eq(fx:popScale('p'), 1)
+end)
+
+test('fx: every farm action emits an effect; the break emits none', function()
+    local farm = toFarm()
+    farm.gameData.coins = 20
+    local function particles() return #farm.juice.particles end
+    local plot = farm:facingTarget().plot
+    local key = plot.col .. ',' .. plot.row
+    for _, want in ipairs({'till', 'plant', 'water'}) do
+        local n = particles()
+        eq(farm:interact(farm:facingTarget()), want)
+        assert(particles() > n, want .. ' emitted a burst')
+        assert(farm.juice.pops[key], want .. ' pops the plot')
+    end
+    Farm.advance(plot, 100)
+    local n = particles()
+    eq(farm:interact(farm:facingTarget()), 'harvest'); assert(particles() > n, 'harvest burst')
+    eq(#farm.juice.flyers, 1, 'harvested crop flies')
+    farm.player.col, farm.player.row, farm.player.facing = FARM_VILLAGER.col - 1, FARM_VILLAGER.row, 'right'
+    n = particles()
+    eq(farm:interact(farm:facingTarget()), 'sell'); assert(particles() > n, 'sell burst')
+    farm.player.col, farm.player.row, farm.player.facing = FARM_SHOP.col - 1, FARM_SHOP.row, 'right'
+    n = particles()
+    eq(farm:interact(farm:facingTarget()), 'buy'); assert(particles() > n, 'buy burst')
+    -- the break: action effects are dropped and nothing new is emitted
+    farm:startBreak('oversell')
+    eq(#farm.juice.particles, 0); eq(#farm.juice.flyers, 0)
+    eq(farm:emit('harvest', 3, 5), false, 'emit refused while breaking')
+    local p2 = farm:plotAt(FARM_PLOTS.col + 1, FARM_PLOTS.row)
+    eq(farm:interact({kind = 'plot', plot = p2, col = p2.col, row = p2.row}), nil)
+    run(0.5)
+    eq(#farm.juice.particles, 0, 'no particles during the break')
+end)
+
+test('fx: no effects remain a few seconds after input stops', function()
+    local farm = toFarm()
+    press('e')                               -- till (nothing growing afterwards)
+    for _ = 1, 30 do farm:emit('harvest', 3, 5) end
+    run(3)
+    eq(farm.juice:count(), 0)
+    eq(farm.displayCoins, farm.gameData.coins)
+end)
+
+test('fx: a harvest counts on the same frame, flies to its slot and pulses it on landing', function()
+    local farm = toFarm()
+    tillPlantWater()
+    run(Farm.growthTime(true) + 0.1)
+    press('e')
+    eq(farm.gameData.crops.beanstalk, 1, 'counted immediately')
+    local f = farm.juice.flyers[1]
+    assert(f and f.image == gTextures['produce-beanstalk'], 'produce icon flying')
+    local tx, ty = farm:produceSlotCenter('beanstalk')
+    eq(f.x1, tx); eq(f.y1, ty)
+    assert(ty < FARM_TILE, 'target is in the top bar')
+    eq(farm.juice.pops['slot-beanstalk'], nil, 'no pulse before landing')
+    run(FX_FLY_TIME + 0.02)
+    eq(#farm.juice.flyers, 0); assert(farm.juice.pops['slot-beanstalk'], 'slot pulses on landing')
+end)
+
+test('fx: selling ticks the shown coins up with sparkles; buying ticks them down', function()
+    local farm = farmAtVillager({crops = {pumpkin = 1}})
+    press('e')
+    eq(farm.gameData.coins, CROP_VALUES.pumpkin, 'real coins updated at once')
+    assert(farm.displayCoins < CROP_VALUES.pumpkin, 'shown coins still ticking')
+    local cx, cy = farm:coinIconCenter()
+    local near = 0
+    for _, p in ipairs(farm.juice.particles) do
+        if math.abs(p.x - cx) < 8 and math.abs(p.y - cy) < 8 then near = near + 1 end
+    end
+    assert(near >= 3, 'coin sparkles at the coin icon')
+    local t = 0
+    while farm.displayCoins ~= farm.gameData.coins and t < 2 do step(); t = t + 1 / 60 end
+    eq(farm.displayCoins, CROP_VALUES.pumpkin); assert(t <= 1.1, 'took ' .. t)
+    farm.player.col, farm.player.row, farm.player.facing = FARM_SHOP.col - 1, FARM_SHOP.row, 'right'
+    farm:selectSeed('pumpkin')
+    press('e')
+    eq(farm.gameData.coins, CROP_VALUES.pumpkin - SEED_PRICES.pumpkin)
+    local seenBetween = false
+    t = 0
+    while farm.displayCoins ~= farm.gameData.coins and t < 2 do
+        step(); t = t + 1 / 60
+        if farm.displayCoins < CROP_VALUES.pumpkin and farm.displayCoins > farm.gameData.coins then seenBetween = true end
+    end
+    eq(farm.displayCoins, farm.gameData.coins); eq(seenBetween, true, 'counted down')
+end)
+
+test('fx: a stage change starts a squash on that crop which returns to scale 1', function()
+    local farm = toFarm()
+    tillPlantWater()
+    local plot = farm:facingTarget().plot
+    local key = 'crop-' .. plot.col .. ',' .. plot.row
+    eq(farm.juice.squashes[key], nil)
+    run(FARM_STAGE_TIME + 0.02)
+    eq(plot.stage, 2)
+    local sx, sy = farm.juice:squashScale(key)
+    assert(sx > 1.1 and sy < 0.9, 'squashing just after the stage change')
+    run(FX_SQUASH_TIME + 0.05)
+    sx, sy = farm.juice:squashScale(key)
+    eq(sx, 1); eq(sy, 1)
+    -- maturity: a sparkle burst
+    run(FARM_STAGE_TIME * 3 - FX_SQUASH_TIME - 0.1)
+    local n = #farm.juice.particles
+    run(0.1)
+    eq(plot.state, PLOT_MATURE); assert(#farm.juice.particles > n, 'maturity sparkle')
+end)
+
+test('sound: generated effects ship in sounds/, load for real and play on their actions', function()
+    for _, f in ipairs({'till', 'plant', 'water', 'harvest', 'sell', 'buy', 'coin', 'deny', 'glitch'}) do
+        local fh = io.open('sounds/' .. f .. '.wav', 'rb'); assert(fh, f .. '.wav exists'); fh:close()
+    end
+    local farm = toFarm()
+    for _, key in ipairs({'till', 'water', 'coin', 'buy', 'plant', 'harvest', 'sell', 'deny', 'glitch'}) do
+        assert(not Assets.isPlaceholder(gSounds[key]), key .. ' loaded from file')
+        eq(gSounds[key].volume, FARM_SFX_VOLUME, key .. ' volume')
+    end
+    for _, m in ipairs(Assets.missing) do
+        assert(not (m.kind == 'sound' and m.path:match('%.wav$')), 'no placeholder for ' .. m.path)
+    end
+    local function lastPlay() return mock.soundPlays[#mock.soundPlays] end
+    press('e'); eq(lastPlay(), 'sounds/till.wav')
+    press('e'); eq(lastPlay(), 'sounds/plant.wav')
+    press('e'); eq(lastPlay(), 'sounds/water.wav')
+    farm.player.col, farm.player.row, farm.player.facing = FARM_SHOP.col - 1, FARM_SHOP.row, 'right'
+    press('e'); eq(lastPlay(), 'sounds/deny.wav', 'quiet denial at the stall without coins')
+    farm.gameData.coins = 10
+    mock.soundPlays = {}
+    press('e'); eq(mock.soundPlays[1], 'sounds/buy.wav')
+    mock.soundPlays = {}
+    run(1)
+    local ticks = 0
+    for _, p in ipairs(mock.soundPlays) do if p == 'sounds/coin.wav' then ticks = ticks + 1 end end
+    assert(ticks >= 1, 'coin ticks while the counter moves (' .. ticks .. ')')
+end)
+
+test('sound: a missing sound file still runs the actions silently', function()
+    local farm = toFarm({'.', '--placeholder-assets'})
+    for _, key in ipairs({'till', 'water', 'coin', 'buy'}) do assert(gSounds[key].isPlaceholder, key .. ' stub') end
+    tillPlantWater()
+    eq(farm:facingTarget().plot.watered, true, 'actions work without sound')
+end)
+
 realPrint(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)

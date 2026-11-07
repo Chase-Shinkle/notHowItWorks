@@ -9,11 +9,11 @@
 
 ## 2. Effects module and game feel
 
-- [ ] 2.1 Add `src/Fx.lua` (capped particle bursts per action, pop tweens, squash tween, flying pickup, coin ticker, all `dt`-driven and not on knife groups); verify unit tests for lifetime cleanup, the particle cap, ticker convergence for gains and spending, and that no effects remain a few seconds after input stops.
-- [ ] 2.2 Wire bursts and pops into till, plant, water, harvest, sell and buy in `FarmState`, with no emission while breaking; verify with headless calls that each action emits an effect and the break emits none.
-- [ ] 2.3 Add the flying harvested-crop icon to its produce slot with a slot pulse, and the coin ticker with coin sparkles (data updated immediately); verify the count is correct on the same frame and the displayed coins reach the real total.
-- [ ] 2.4 Add growth-stage squash and a maturity sparkle using the stage change returned by `Farm.advance`; verify a test that a stage change starts a squash which then returns to scale 1.
-- [ ] 2.5 Add `tools/gen_sounds.py` (stdlib only) generating soft till, plant, water, harvest, coin, buy, deny and glitch WAVs into `sounds/`, add the `till`, `water` and `coin` keys to `Dependencies.lua` and play each in the matching action; verify running the tool creates the files, a launch logs no placeholder-sound lines for them, and a missing file still runs silently.
+- [x] 2.1 Add `src/Fx.lua` (capped particle bursts per action, pop tweens, squash tween, flying pickup, coin ticker, all `dt`-driven and not on knife groups); verify unit tests for lifetime cleanup, the particle cap, ticker convergence for gains and spending, and that no effects remain a few seconds after input stops.
+- [x] 2.2 Wire bursts and pops into till, plant, water, harvest, sell and buy in `FarmState`, with no emission while breaking; verify with headless calls that each action emits an effect and the break emits none.
+- [x] 2.3 Add the flying harvested-crop icon to its produce slot with a slot pulse, and the coin ticker with coin sparkles (data updated immediately); verify the count is correct on the same frame and the displayed coins reach the real total.
+- [x] 2.4 Add growth-stage squash and a maturity sparkle using the stage change returned by `Farm.advance`; verify a test that a stage change starts a squash which then returns to scale 1.
+- [x] 2.5 Add `tools/gen_sounds.py` (stdlib only) generating soft till, plant, water, harvest, coin, buy, deny and glitch WAVs into `sounds/`, add the `till`, `water` and `coin` keys to `Dependencies.lua` and play each in the matching action; verify running the tool creates the files, a launch logs no placeholder-sound lines for them, and a missing file still runs silently.
 
 ## 3. Characters and HUD
 

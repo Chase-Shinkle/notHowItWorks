@@ -36,6 +36,7 @@ end
 
 function M.install()
     M.calls, M.printed, M.pressed, M.held = {}, {}, {}, {}
+    M.soundPlays = {}
     M.mouseX, M.mouseY = 0, 0
     M.relativeMode = false
     M.defaultFilter = {'linear', 'linear'}
@@ -88,7 +89,17 @@ function M.install()
         audio = {
             newSource = function(path, kind)
                 if not fileExists(path) then error('Could not open file ' .. path) end
-                return {path = path, kind = kind}
+                -- a Source-like object that records plays
+                local src = {path = path, kind = kind, plays = 0, volume = 1, looping = false}
+                function src:play() self.plays = self.plays + 1; M.soundPlays[#M.soundPlays + 1] = self.path; return true end
+                function src:stop() end
+                function src:setVolume(v) self.volume = v end
+                function src:getVolume() return self.volume end
+                function src:setLooping(on) self.looping = on end
+                function src:isLooping() return self.looping end
+                function src:isPlaying() return false end
+                function src:clone() return love.audio.newSource(self.path, self.kind) end
+                return src
             end,
         },
         keyboard = {

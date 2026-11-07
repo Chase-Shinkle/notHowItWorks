@@ -78,7 +78,11 @@ function FarmState:enter(gameData)
 
     self.selectedSeed = Farm.pickSeed(self.gameData, SEED_TYPES[1]) or SEED_TYPES[1]
     self.hover = nil                      -- {col, row} under the mouse
-    self.popups = {}                      -- floating feedback text
+    -- game-feel effects (src/Fx.lua); popups is its floating-text list
+    self.juice = Fx.new()
+    self.popups = self.juice.popups
+    self.displayCoins = self.gameData.coins or 0   -- the HUD's ticking coin count
+    self.coinTickTimer = 0
     self.villagerLine = nil               -- {text, time left}
 
     -- the break
@@ -178,8 +182,34 @@ end
 
 function FarmState:popup(text, col, row, color)
     local x, y = FarmTileToPixel(col, row)
-    self.popups[#self.popups + 1] = {text = text, x = x + FARM_TILE / 2, y = y, life = 1.2,
-        color = color or {1, 1, 1, 1}}
+    self.juice:popup(text, x + FARM_TILE / 2, y, color)
+end
+
+-- Emits the `kind` burst on a tile and pops what is drawn there. Nothing is
+-- emitted while the break plays. Returns true if something was emitted.
+function FarmState:emit(kind, col, row)
+    if self.breaking then return false end
+    local x, y = FarmTileToPixel(col, row)
+    self.juice:burst(kind, x + FARM_TILE / 2, y + FARM_TILE * 0.6)
+    self.juice:pop(col .. ',' .. row)
+    return true
+end
+
+-- Centre of a seed type's produce slot in the top bar (virtual px).
+function FarmState:produceSlotCenter(seedType)
+    for i, t in ipairs(SEED_TYPES) do
+        if t == seedType then
+            local r = self:hudLayout().produce[i]
+            return r.x + r.iconSize / 2, r.y + r.iconSize / 2
+        end
+    end
+    return VIRTUAL_WIDTH / 2, FARM_TILE / 2
+end
+
+-- Centre of the coin icon in the top bar (virtual px).
+function FarmState:coinIconCenter()
+    local r = self:hudLayout().coinIcon
+    return r.x + r.w / 2, r.y + r.h / 2
 end
 
 function FarmState:say(text, duration)
@@ -214,12 +244,14 @@ function FarmState:interact(target)
         if action == 'till' then
             Farm.till(plot)
             gSounds['till']:play()
+            self:emit('till', plot.col, plot.row)
             self:popup('tilled', plot.col, plot.row, {0.9, 0.75, 0.5, 1})
             return 'till'
         elseif action == 'plant' then
             local _, seedType = Farm.plant(plot, data, self.selectedSeed)
             self.selectedSeed = seedType
             gSounds['plant']:play()
+            self:emit('plant', plot.col, plot.row)
             self:popup('-1 ' .. SeedName(seedType), plot.col, plot.row)
             return 'plant'
         elseif action == 'no-seeds' then
@@ -229,12 +261,19 @@ function FarmState:interact(target)
         elseif action == 'water' then
             Farm.water(plot)
             gSounds['water']:play()
+            self:emit('water', plot.col, plot.row)
             self:popup('watered', plot.col, plot.row, {0.55, 0.8, 1, 1})
             return 'water'
         elseif action == 'harvest' then
             local _, seedType = Farm.harvest(plot, data)
             gSounds['harvest']:play()
+            self:emit('harvest', plot.col, plot.row)
             self:popup('+1 ' .. SeedName(seedType), plot.col, plot.row, {0.7, 1, 0.6, 1})
+            -- the crop (already counted) pops off the plot and flies to its slot
+            local px, py = FarmTileToPixel(plot.col, plot.row)
+            local tx, ty = self:produceSlotCenter(seedType)
+            self.juice:fly(gTextures['produce-' .. seedType], px + FARM_TILE / 2, py + FARM_TILE / 2, tx, ty,
+                function() self.juice:pop('slot-' .. seedType, 0.5) end)
             return 'harvest'
         end
         self:popup('growing...', plot.col, plot.row, {0.85, 0.85, 0.85, 1})
@@ -251,6 +290,8 @@ function FarmState:interact(target)
         local ok, seedType, value = Farm.sell(data)
         if ok then
             gSounds['sell']:play()
+            self:emit('sell', FARM_VILLAGER.col, FARM_VILLAGER.row)
+            self.juice:burst('coins', self:coinIconCenter())
             self:popup('+' .. value .. 'c', FARM_VILLAGER.col, FARM_VILLAGER.row, {1, 0.9, 0.3, 1})
             if Farm.totalCrops(data) > 0 then
                 self:say('Thanks! A ' .. SeedName(seedType) .. '!')
@@ -269,7 +310,8 @@ function FarmState:interact(target)
         local seedType = self.selectedSeed
         local ok, _, price = Farm.buySeed(data, seedType)
         if ok then
-            gSounds['sell']:play()
+            gSounds['buy']:play()
+            self:emit('buy', FARM_SHOP.col, FARM_SHOP.row)
             self:popup('+1 ' .. SeedName(seedType) .. ' -' .. price .. 'c', FARM_SHOP.col, FARM_SHOP.row, {0.7, 1, 0.6, 1})
             return 'buy'
         end
@@ -291,6 +333,7 @@ function FarmState:startBreak(reason)
     self.gameData.hasBroken = true
     self.heldDir = nil
     self.hover = nil
+    self.juice:clearActions()             -- only the break's own effects from here
     if reason == 'idle' then
         self:say('Hm? Is something... wrong?', FARM_BREAK_GLITCH_TIME + FARM_BREAK_FALL_TIME)
     end
@@ -352,11 +395,15 @@ end
 -- Update -----------------------------------------------------------------------
 
 function FarmState:updateEffects(dt)
-    for i = #self.popups, 1, -1 do
-        local p = self.popups[i]
-        p.life = p.life - dt
-        p.y = p.y - dt * 16
-        if p.life <= 0 then table.remove(self.popups, i) end
+    self.juice:update(dt)
+    -- coin ticker: the shown amount eases toward the real one (which is never
+    -- delayed), with a soft tick each time the shown number changes
+    local before = math.floor(self.displayCoins + 0.5)
+    self.displayCoins = Fx.tickToward(self.displayCoins, self.gameData.coins or 0, dt)
+    self.coinTickTimer = self.coinTickTimer - dt
+    if math.floor(self.displayCoins + 0.5) ~= before and self.coinTickTimer <= 0 and not self.breaking then
+        gSounds['coin']:play()
+        self.coinTickTimer = FX_COIN_TICK_INTERVAL
     end
     if self.villagerLine then
         self.villagerLine.time = self.villagerLine.time - dt
@@ -365,9 +412,17 @@ function FarmState:updateEffects(dt)
 end
 
 -- Advances every growing plot (never called during the break).
+-- A stage change squashes the plot's sprite; maturity adds a sparkle.
 function FarmState:updateGrowth(dt)
     for _, plot in ipairs(self.plots) do
-        Farm.advance(plot, dt)
+        local stage = Farm.advance(plot, dt)
+        if stage then
+            self.juice:squash('crop-' .. plot.col .. ',' .. plot.row)
+            if stage >= FARM_GROWTH_STAGES then
+                local x, y = FarmTileToPixel(plot.col, plot.row)
+                self.juice:burst('mature', x + FARM_TILE / 2, y + FARM_TILE / 2)
+            end
+        end
     end
 end
 
@@ -498,12 +553,13 @@ end
 
 -- Render -----------------------------------------------------------------------
 
-local function drawSprite(image, x, y, tint)
-    -- draws an image scaled x2, bottom-centred in the tile at (x, y)
+local function drawSprite(image, x, y, tint, sx, sy)
+    -- draws an image scaled x2, bottom-centred in the tile at (x, y); sx/sy
+    -- (optional) multiply the scale around the bottom centre (pops, squash)
     local w, h = image:getDimensions()
     local scale = math.min(2, (FARM_TILE - 4) / math.max(w, h))
     love.graphics.setColor(tint or {1, 1, 1, 1})
-    love.graphics.draw(image, x + FARM_TILE / 2, y + FARM_TILE - 2, 0, scale, scale, w / 2, h)
+    love.graphics.draw(image, x + FARM_TILE / 2, y + FARM_TILE - 2, 0, scale * (sx or 1), scale * (sy or 1), w / 2, h)
 end
 
 local function drawTiled(image, x, y)
@@ -526,7 +582,9 @@ function FarmState:renderField()
         drawTiled(gTextures['soil'], x, y)
         drawTiled(gTextures['plot'], x, y)
         if plot.state ~= PLOT_EMPTY then
-            drawSprite(gTextures['crop-' .. plot.seedType .. '-' .. plot.stage], x, y)
+            local pop = self.juice:popScale(plot.col .. ',' .. plot.row)
+            local sx, sy = self.juice:squashScale('crop-' .. plot.col .. ',' .. plot.row)
+            drawSprite(gTextures['crop-' .. plot.seedType .. '-' .. plot.stage], x, y, nil, sx * pop, sy * pop)
         end
         if plot.state == PLOT_MATURE then
             -- small "ready" marker
@@ -615,6 +673,22 @@ function FarmState:renderVillagerLine()
     love.graphics.print(text, bx + 4, by + 2)
 end
 
+-- Rectangles of the top-bar elements (virtual px).
+function FarmState:hudLayout()
+    local layout = {seeds = {}, produce = {}}
+    for i = 1, #SEED_TYPES do
+        layout.seeds[i] = {x = SEED_SLOT_X + (i - 1) * SEED_SLOT_W, y = 2, w = SEED_SLOT_W - 3, h = FARM_TILE - 9,
+            iconSize = 16}
+    end
+    local x = 4 + #SEED_TYPES * SEED_SLOT_W + 6
+    for i = 1, #SEED_TYPES do
+        layout.produce[i] = {x = x, y = 8, w = 28, h = 12, iconSize = 12}
+        x = x + 30
+    end
+    layout.coinIcon = {x = x + 4, y = 8, w = 10, h = 10}
+    return layout
+end
+
 function FarmState:renderHUD()
     local data = self.gameData
     love.graphics.setColor(0, 0, 0, 0.65)
@@ -639,13 +713,15 @@ function FarmState:renderHUD()
     for _, seedType in ipairs(SEED_TYPES) do
         local icon = gTextures['produce-' .. seedType]
         local iw, ih = icon:getDimensions()
+        local pulse = self.juice:popScale('slot-' .. seedType)
         love.graphics.setColor(1, 1, 1, 1)
-        love.graphics.draw(icon, x, 8, 0, 12 / iw, 12 / ih)
+        love.graphics.draw(icon, x + 6, 14, 0, 12 / iw * pulse, 12 / ih * pulse, iw / 2, ih / 2)
         love.graphics.print('' .. (data.crops[seedType] or 0), x + 13, 10)
         x = x + 30
     end
     love.graphics.setColor(1, 0.9, 0.3, 1)
-    love.graphics.print(data.coins .. 'c', x + 4, 10)
+    local shown = math.floor(self.displayCoins + 0.5)
+    love.graphics.print(shown .. 'c', x + 4, 10)
 
     -- bottom hint bar
     love.graphics.setColor(0, 0, 0, 0.65)
@@ -714,13 +790,10 @@ function FarmState:render()
     self:renderPlayer()
     self:renderVillagerLine()
 
-    love.graphics.setFont(gFonts['small'])
-    for _, p in ipairs(self.popups) do
-        local c = p.color
-        love.graphics.setColor(c[1], c[2], c[3], math.min(1, p.life * 2))
-        love.graphics.printf(p.text, p.x - 40, p.y, 80, 'center')
-    end
+    self.juice:drawParticles()
+    self.juice:drawPopups(gFonts['small'])
 
     self:renderHUD()
+    self.juice:drawFlyers()               -- harvested crops fly into the HUD
     love.graphics.setColor(1, 1, 1, 1)
 end

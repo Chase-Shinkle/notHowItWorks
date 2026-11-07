@@ -94,6 +94,47 @@ FARM_KEYS = {
     nextSeed = {'tab', 'q'},
 }
 
+-- Farm game feel (src/Fx.lua) ------------------------------------------------------
+-- Particle bursts per action: count, speed (px/s) and life (s) ranges,
+-- gravity (px/s^2), size (px), start jitter (px), optional launch angle and
+-- spread (radians; omitted = all directions), colours, and shape ('spark'
+-- draws a small plus while young).
+FX_MAX_PARTICLES = 160
+FX_BURSTS = {
+    till = {count = 10, speed = {20, 45}, life = {0.35, 0.6}, gravity = 160, size = 2, jitter = 4,
+        angle = -math.pi / 2, spread = 1.1,
+        colors = {{0.45, 0.3, 0.17, 1}, {0.6, 0.42, 0.24, 1}, {0.35, 0.24, 0.14, 1}}},
+    plant = {count = 8, speed = {12, 30}, life = {0.3, 0.55}, gravity = 90, size = 1, jitter = 3,
+        angle = -math.pi / 2, spread = 1.2,
+        colors = {{0.55, 0.85, 0.35, 1}, {0.85, 0.75, 0.45, 1}}},
+    water = {count = 12, speed = {15, 40}, life = {0.3, 0.55}, gravity = 140, size = 1, jitter = 6,
+        angle = -math.pi / 2, spread = 1.3,
+        colors = {{0.55, 0.8, 1, 1}, {0.8, 0.95, 1, 1}, {0.35, 0.6, 0.95, 1}}},
+    harvest = {count = 14, speed = {20, 55}, life = {0.4, 0.7}, gravity = 120, size = 2, jitter = 4,
+        colors = {{0.55, 0.9, 0.35, 1}, {1, 0.9, 0.35, 1}, {0.9, 1, 0.7, 1}}},
+    sell = {count = 12, speed = {20, 50}, life = {0.4, 0.7}, gravity = 110, size = 1, jitter = 4,
+        angle = -math.pi / 2, spread = 1.2, shape = 'spark',
+        colors = {{1, 0.88, 0.3, 1}, {1, 0.97, 0.7, 1}}},
+    buy = {count = 8, speed = {15, 35}, life = {0.3, 0.55}, gravity = 80, size = 1, jitter = 4,
+        angle = -math.pi / 2, spread = 1.3, shape = 'spark',
+        colors = {{0.7, 1, 0.6, 1}, {1, 1, 1, 1}}},
+    coins = {count = 6, speed = {10, 25}, life = {0.3, 0.5}, gravity = 40, size = 1, jitter = 3,
+        shape = 'spark', colors = {{1, 0.9, 0.35, 1}, {1, 1, 0.8, 1}}},
+    mature = {count = 8, speed = {8, 20}, life = {0.4, 0.7}, gravity = -10, size = 1, jitter = 6,
+        shape = 'spark', colors = {{1, 1, 0.75, 1}, {1, 0.95, 0.45, 1}}},
+}
+FX_POP_TIME = 0.25          -- pop bounce length (s)
+FX_POP_SCALE = 0.25         -- extra scale at the top of a pop
+FX_SQUASH_TIME = 0.4        -- growth-stage squash length (s)
+FX_SQUASH_AMOUNT = 0.25     -- 1.25x wide / 0.75x tall at the start
+FX_POPUP_LIFE = 1.2         -- floating text (s)
+FX_FLY_TIME = 0.6           -- harvested crop flight to the HUD (s)
+FX_FLY_ARC = 24             -- flight arc height (px)
+FX_TICKER_RATE = 6          -- coin ticker: fraction of the gap closed per second
+FX_TICKER_MIN_SPEED = 8     -- coin ticker: minimum coins per second
+FX_COIN_TICK_INTERVAL = 0.06 -- minimum seconds between coin tick sounds
+FARM_SFX_VOLUME = 0.6       -- volume of the generated farm sound effects
+
 -- The break (over-sell -> glitch -> fall) ----------------------------------------
 -- After the first sale the villager keeps asking for crops. Trying to sell
 -- with zero crops (once hasSold is true) starts the break; so does going

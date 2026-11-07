@@ -141,7 +141,9 @@ and playthrough checks on it.
   `models/Backrooms.glb` by `python3 -I tools/extract_glb_textures.py`
   (bytes copied unchanged). g3d cannot load `.glb`, so the model itself is
   not used at runtime and is not packaged.
-- No sound files exist yet. Add them under `sounds/` with the names in
-  `src/Dependencies.lua` (`farm_music.ogg`, `backrooms_hum.ogg`, `plant.wav`,
-  `harvest.wav`, `sell.wav`, `deny.wav`, `glitch.wav`). Missing files play
-  silently.
+- Sound effects (`till`, `plant`, `water`, `harvest`, `sell`, `buy`, `coin`,
+  `deny`, `glitch` `.wav`) are generated, soft by design, by
+  `python3 -I tools/gen_sounds.py` (standard library only, deterministic) and
+  committed in `sounds/`. Replace any of them with real audio at the same
+  path. The music slots (`farm_music.ogg`, `backrooms_hum.ogg`) are still
+  placeholders. Missing files play silently.
