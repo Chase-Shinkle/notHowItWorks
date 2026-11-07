@@ -24,7 +24,7 @@ tail -1 /tmp/check_maze.txt
 
 # Dedicated maze test files from the parallel branches (branch plots, refund, checkpoints,
 # scaling). All four are merged; a missing file fails the run.
-for t in maze_branches maze_refund maze_checkpoints maze_scaling zones_lighting zones_shapes zones_audio zones_dressing ui_found; do
+for t in maze_branches maze_refund maze_checkpoints maze_scaling zones_lighting zones_shapes zones_audio zones_dressing ui_found ui_hotbar ui_hotbar; do
     step "tests/$t.lua"
     if [ ! -f "tests/$t.lua" ]; then echo "FAIL (tests/$t.lua is missing)"; fail=1; continue; fi
     love tests/love_runner "tests/$t.lua" > "/tmp/check_$t.txt" 2>&1 || fail=1

@@ -16,11 +16,11 @@
 
 ## 3. Backrooms hotbar
 
-- [ ] 3.1 Add `src/Hotbar.lua` with `layout(w, h)` (centred, scaled with height, clamped, on-screen at 640 and 1080) and `draw`; unit test layout bounds and slot count at several window sizes.
-- [ ] 3.2 Draw `seedbag-<type>` icons, key numbers, corner counts, selected frame and dimmed empty/unused slots; verify by screenshot including a zero-count slot and a type the room does not use.
-- [ ] 3.3 Add `love.wheelmoved` in `main.lua` (reset each update) and cycle the selection with wrap in `BackroomsState` only while the mouse is captured, skipping types the room does not use; unit test forward/backward wrap and no change when uncaptured.
-- [ ] 3.4 Rewrite `BackroomsState:renderHUD`: remove the full-width bands, add a compact room-name plate, keep the plant prompt and messages near the crosshair, fade the controls hint after a few seconds (shown while the mouse is free); verify by screenshots on bright and dark rooms and that planting prompts are unchanged.
-- [ ] 3.5 Test that hotbar counts follow planting, uproot refund and pickup collection (extend the existing seed tests), and run the maze/zones checks to confirm no gameplay regression.
+- [x] 3.1 Add `src/Hotbar.lua` with `layout(w, h)` (centred, scaled with height, clamped, on-screen at 640 and 1080) and `draw`; unit test layout bounds and slot count at several window sizes.
+- [x] 3.2 Draw `seedbag-<type>` icons, key numbers, corner counts, selected frame and dimmed empty/unused slots; verify by screenshot including a zero-count slot and a type the room does not use.
+- [x] 3.3 Add `love.wheelmoved` in `main.lua` (reset each update) and cycle the selection with wrap in `BackroomsState` only while the mouse is captured, skipping types the room does not use; unit test forward/backward wrap and no change when uncaptured.
+- [x] 3.4 Rewrite `BackroomsState:renderHUD`: remove the full-width bands, add a compact room-name plate, keep the plant prompt and messages near the crosshair, fade the controls hint after a few seconds (shown while the mouse is free); verify by screenshots on bright and dark rooms and that planting prompts are unchanged.
+- [x] 3.5 Test that hotbar counts follow planting, uproot refund and pickup collection (extend the existing seed tests), and run the maze/zones checks to confirm no gameplay regression.
 
 ## 4. Ending scene
 

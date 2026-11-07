@@ -52,6 +52,7 @@ function BackroomsState:enter(gameData, rooms)
     g3d.camera.resize(love.graphics.getDimensions())
     self:setMouseCaptured(true)
     self.finished = false
+    self.hintTime = BACKROOMS_HINT_SECONDS
     self:loadRoom(1)
 end
 
@@ -65,6 +66,7 @@ end
 -- love.mousemoved, which main.lua forwards to BackroomsState:mousemoved.
 function BackroomsState:setMouseCaptured(captured)
     self.mouseCaptured = captured
+    self.hintTime = BACKROOMS_HINT_SECONDS
     if love.mouse.setRelativeMode then love.mouse.setRelativeMode(captured) end
 end
 
@@ -223,6 +225,19 @@ function BackroomsState:cycleSeed()
     end
 end
 
+-- Mouse wheel: steps the selection one visible slot per notch (dir > 0 = next),
+-- wrapping; only while the mouse is captured. Types the room does not use are skipped.
+function BackroomsState:wheelSelect(dir)
+    if not self.mouseCaptured or dir == 0 then return end
+    local visible = self:visibleSeedTypes()
+    local n = #visible
+    if n == 0 then return end
+    local cur = 0
+    for i, t in ipairs(visible) do if t == self.selectedSeed then cur = i end end
+    local step = dir > 0 and 1 or -1
+    self.selectedSeed = visible[(cur - 1 + step) % n + 1]
+end
+
 -- Collects the pickup the player stands near, if any: +1 seed, message.
 -- Returns the pickup or nil.
 function BackroomsState:collectPickups()
@@ -360,6 +375,9 @@ function BackroomsState:update(dt)
         if love.keyboard.wasPressed(key) and t and self:isSeedVisible(t) then self.selectedSeed = t end
     end
     if anyPressed(BACKROOMS_KEYS.nextSeed) then self:cycleSeed() end
+    local wheel = love.mouse.wheelDelta or 0
+    if wheel ~= 0 then self:wheelSelect(wheel) end
+    if self.mouseCaptured and self.hintTime > 0 then self.hintTime = self.hintTime - dt end
     if clickPlants or anyPressed(BACKROOMS_KEYS.plant) then self:plant() end
     if clickUproots or anyPressed(BACKROOMS_KEYS.uproot) then self:uproot() end
 
@@ -399,36 +417,28 @@ function BackroomsState:render()
     BackroomsLook.renderScene(function() self.room:draw(self.player.x, self.player.y) end)
 end
 
+-- Text with a dark outline so it reads on bright and dark walls without a band.
+local function shadowPrintf(text, y, w, alpha)
+    love.graphics.setColor(0, 0, 0, 0.85 * alpha)
+    love.graphics.printf(text, 1, y + 1, w, 'center')
+    love.graphics.setColor(1, 1, 1, alpha)
+    love.graphics.printf(text, 0, y, w, 'center')
+end
+
 function BackroomsState:renderHUD()
     local w, h = love.graphics.getDimensions()
-    -- translucent bands keep the white HUD text readable on the pale walls
-    -- (top: room name + seeds; bottom: up to two hint lines + debug line)
-    local bandLineH = gFonts['default']:getHeight() + 4
-    local bottomTop = h - 52 - bandLineH - 6
-    love.graphics.setColor(0, 0, 0, 0.45)
-    love.graphics.rectangle('fill', 0, 0, w, 32 + bandLineH + 4)
-    love.graphics.rectangle('fill', 0, bottomTop, w, h - bottomTop)
-    love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.setFont(gFonts['default'])
-    love.graphics.print(string.format('%s  (%d/%d)', self.room.name, self.roomIndex, self:levelCount()), 10, 10)
+    local font = gFonts['default']
+    love.graphics.setFont(font)
 
-    -- seed counts for the types this room uses (no coins in the backrooms);
-    -- each is labelled with its key, and the selected type is bracketed
-    local x = 10
-    local keyOf = {}
-    for i, t in ipairs(SEED_TYPES) do keyOf[t] = i end
-    for _, t in ipairs(self:visibleSeedTypes()) do
-        local i = keyOf[t]
-        local selected = t == self.selectedSeed
-        local n = self.gameData.seeds[t] or 0
-        local label = string.format(selected and '[%d %s x%d]' or ' %d %s x%d ', i, SeedName(t), n)
-        if selected then love.graphics.setColor(1, 1, 0.4, 1)
-        elseif n == 0 then love.graphics.setColor(0.6, 0.6, 0.6, 1)
-        else love.graphics.setColor(1, 1, 1, 1) end
-        love.graphics.print(label, x, 32)
-        x = x + gFonts['default']:getWidth(label) + 12
-    end
+    -- compact room-name plate (top left), no full-width band
+    local title = string.format('%s  (%d/%d)', self.room.name, self.roomIndex, self:levelCount())
+    love.graphics.setColor(0, 0, 0, 0.4)
+    love.graphics.rectangle('fill', 8, 8, font:getWidth(title) + 16, font:getHeight() + 8, 4, 4)
     love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.print(title, 16, 12)
+
+    Hotbar.draw(w, h, self.gameData.seeds, self.selectedSeed, function(t) return self:isSeedVisible(t) end)
+    love.graphics.setFont(font)
 
     local plot = self:targetPlot()
     if plot then
@@ -439,27 +449,33 @@ function BackroomsState:renderHUD()
             prompt = 'This ' .. SeedName(plot.crop.type) .. ' needs a ' .. SeedName(plot.crop.type) .. ' seed'
         elseif reason == 'no-seeds' then prompt = 'No ' .. SeedName(self.selectedSeed) .. ' seeds (Q: switch)'
         else prompt = 'Plot in use' end
-        love.graphics.printf(prompt, 0, h / 2 + 24, w, 'center')
+        shadowPrintf(prompt, h / 2 + 24, w, 1)
     end
     if self.message then
-        love.graphics.printf(self.message.text, 0, h / 2 + 48, w, 'center')
+        shadowPrintf(self.message.text, h / 2 + 48, w, 1)
     end
 
     -- crosshair
     love.graphics.line(w / 2 - 6, h / 2, w / 2 + 6, h / 2)
     love.graphics.line(w / 2, h / 2 - 6, w / 2, h / 2 + 6)
 
-    -- the controls hint is split over two lines when one would not fit
-    -- (e.g. a 640 px wide window), instead of letting printf wrap mid-phrase
-    local font = gFonts['default']
-    local hints = self.mouseCaptured
-        and {'WASD: move   mouse: look   E: plant   Right-click / X: uproot (refund)   Q / 1-3: seed', 'R: reset room   Esc: free mouse'}
-        or {'Click to capture the mouse'}
-    local joined = table.concat(hints, '   ')
-    if font:getWidth(joined) <= w - 20 then hints = {joined} end
-    local lineH = font:getHeight() + 4
-    for i, line in ipairs(hints) do
-        love.graphics.printf(line, 0, h - 52 - (#hints - i) * lineH, w, 'center')
+    -- controls hint: fades after BACKROOMS_HINT_SECONDS with the mouse captured;
+    -- always shown while the mouse is free. Sits above the hotbar.
+    local alpha = 1
+    if self.mouseCaptured then
+        alpha = math.max(0, math.min(1, self.hintTime / BACKROOMS_HINT_FADE))
+    end
+    if alpha > 0 then
+        local hints = self.mouseCaptured
+            and {'WASD: move   mouse: look   E / left-click: plant   Right-click / X: uproot (refund)   Wheel / Q / 1-3: seed', 'R: reset room   Esc: free mouse'}
+            or {'Click to capture the mouse'}
+        local joined = table.concat(hints, '   ')
+        if font:getWidth(joined) <= w - 20 then hints = {joined} end
+        local lineH = font:getHeight() + 4
+        local lay = Hotbar.layout(w, h, #SEED_TYPES)
+        for i, line in ipairs(hints) do
+            shadowPrintf(line, lay.y - 10 - (#hints - i + 1) * lineH, w, alpha)
+        end
     end
     if DEBUG_MODE then
         love.graphics.print(DEBUG_ADVANCE_KEY .. ': debug skip room   fps: ' .. love.timer.getFPS(), 10, h - 26)

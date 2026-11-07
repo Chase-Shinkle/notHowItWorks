@@ -441,3 +441,6 @@ UI_BUTTON_FILL = {0.1, 0.08, 0.05, 0.6}
 UI_BUTTON_FILL_HI = {0.9, 0.75, 0.3, 0.85}
 UI_BUTTON_TEXT = {1, 1, 1, 1}
 UI_BUTTON_TEXT_HI = {0.15, 0.1, 0.05, 1}
+
+BACKROOMS_HINT_SECONDS = 8   -- controls hint stays this long (mouse captured), then fades
+BACKROOMS_HINT_FADE = 1.5
