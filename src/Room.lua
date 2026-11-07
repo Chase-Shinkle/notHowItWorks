@@ -601,8 +601,11 @@ end
 -- Is the player box (pmin, pmax) on top of, inside or touching `crop`'s full
 -- volume? A little slack above (standing on it) and around (climbing).
 function Room.playerOnCrop(crop, pmin, pmax)
-    local lo = {crop.min[1] - BACKROOMS_UPROOT_MARGIN, crop.min[2] - BACKROOMS_UPROOT_MARGIN, crop.min[3] - BACKROOMS_UPROOT_MARGIN}
-    local hi = {crop.max[1] + BACKROOMS_UPROOT_MARGIN, crop.max[2] + BACKROOMS_UPROOT_MARGIN, crop.max[3] + BACKROOMS_UPROOT_MARGIN}
+    -- Slack is vertical only: a player standing flush beside the collider (the normal
+    -- spot for targeting) is clear of it; a horizontal margin would refuse that.
+    local m, h = BACKROOMS_UPROOT_MARGIN, 0.01
+    local lo = {crop.min[1] - h, crop.min[2] - h, crop.min[3] - m}
+    local hi = {crop.max[1] + h, crop.max[2] + h, crop.max[3] + m}
     return PlayerController.boxesOverlap(pmin, pmax, lo, hi)
 end
 

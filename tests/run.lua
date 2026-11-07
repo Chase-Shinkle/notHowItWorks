@@ -312,6 +312,8 @@ test('every loaded sound is hooked into the game code', function()
     -- footstep-N keys are wired dynamically: BackroomsAudio builds gSounds['footstep-' .. i] for
     -- 1..#BACKROOMS_FOOTSTEP_FILES, and BackroomsState creates and updates it.
     local fa = assert(io.open('src/BackroomsAudio.lua', 'r')); local audioCode = fa:read('*a'); fa:close()
+    code = code .. audioCode   -- BackroomsAudio wires the hum (gSounds['backrooms-hum']) itself
+    assert(audioCode:find("gSounds['backrooms-hum']", 1, true), 'BackroomsAudio uses the hum stream')
     assert(audioCode:find("gSounds%['footstep%-' %.%. i%]", 1, false), 'BackroomsAudio loads footstep-i dynamically')
     assert(audioCode:find('for i = 1, #BACKROOMS_FOOTSTEP_FILES', 1, true), 'all footstep files are loaded')
     assert(code:find('BackroomsAudio.new()', 1, true) and code:find('self.audio:update(', 1, true),
