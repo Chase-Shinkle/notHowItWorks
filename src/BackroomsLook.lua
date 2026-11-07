@@ -203,6 +203,15 @@ function BackroomsLook.validate(data)
             end
         end
     end
+    if data.zones ~= nil then
+        if type(data.zones) ~= 'table' then return false, 'zones must be a list' end
+        for i, z in ipairs(data.zones) do
+            if type(z.id) ~= 'string' then return false, 'zone ' .. i .. ' needs an id' end
+            if z.lighting ~= nil and not BACKROOMS_LIGHT_PRESETS[z.lighting] then
+                return false, 'zone ' .. z.id .. ' unknown lighting preset ' .. tostring(z.lighting)
+            end
+        end
+    end
     local lt = data.lighting
     if lt ~= nil then
         local name = type(lt) == 'string' and lt or (type(lt) == 'table' and lt.preset)
@@ -218,11 +227,15 @@ end
 -- preset and a hash of the room id and the fixture's index, so it is
 -- reproducible and independent of layout RNG. Returns a list of light tables
 -- (see the data format above; `panelZ` is the ceiling underside it hangs from).
-function BackroomsLook.autoLights(boxes, preset, roomId)
+-- `zonePresets` (optional, zone id -> resolved preset): a ceiling box with a `zone` is lit from its zone's
+-- preset (colour, intensity, lit/flicker/buzz mix, litEvery counted per zone); other boxes use `preset`.
+function BackroomsLook.autoLights(boxes, preset, roomId, zonePresets)
     local lights = {}
     local seed = hashString(tostring(roomId))
+    local zoneCount = {}
     for _, b in ipairs(boxes) do
         if b.kind == 'ceiling' and b.collide ~= false then
+            local preset = zonePresets and b.zone and zonePresets[b.zone] or preset
             local nx = math.max(1, math.floor(b.size[1] / BACKROOMS_LIGHT_SPACING + 0.5))
             local ny = math.max(1, math.floor(b.size[2] / BACKROOMS_LIGHT_SPACING + 0.5))
             local zUnder = b.pos[3] - b.size[3] / 2
@@ -231,13 +244,15 @@ function BackroomsLook.autoLights(boxes, preset, roomId)
                     local x = b.pos[1] - b.size[1] / 2 + (i - 0.5) * b.size[1] / nx
                     local y = b.pos[2] - b.size[2] / 2 + (j - 0.5) * b.size[2] / ny
                     local n = #lights + 1
+                    local zk = b.zone or ''
+                    zoneCount[zk] = (zoneCount[zk] or 0) + 1
                     local r = hash01(seed + n * 7.31)
                     local mode = 'steady'
-                    if (n - 1) % preset.litEvery ~= 0 then mode = 'dead'
+                    if (zoneCount[zk] - 1) % preset.litEvery ~= 0 then mode = 'dead'
                     elseif r < preset.flicker then mode = 'flicker'
                     elseif r < preset.flicker + preset.buzz then mode = 'buzz' end
-                    lights[n] = {pos = {x, y, zUnder - 0.12}, color = BACKROOMS_LIGHT_COLOR,
-                        intensity = preset.intensity, radius = BACKROOMS_LIGHT_RADIUS, mode = mode,
+                    lights[n] = {pos = {x, y, zUnder - 0.12}, color = preset.fixtureColor or BACKROOMS_LIGHT_COLOR,
+                        zone = b.zone, intensity = preset.intensity, radius = BACKROOMS_LIGHT_RADIUS, mode = mode,
                         phase = hash01(seed + n * 3.17), panelZ = zUnder}
                 end
             end
@@ -262,12 +277,46 @@ function BackroomsLook.nearestLights(lights, x, y, z, n)
     return out
 end
 
+-- Zone blend ---------------------------------------------------------------------
+
+-- Ambient / fog / gameplay floor seen from the camera at (x, y): the camera's zone preset, blended toward each
+-- connected neighbouring zone within BACKROOMS_ZONE_BLEND_DISTANCE of the shared cell edge. The weight of a
+-- neighbour is 0.5 * (1 - d / blend), so it is exactly 0.5 on both sides of the boundary: continuous across it.
+-- Pure given the room (needs room.zoneNeighbours / room.zoneLighting); rooms without zones return room.lighting unchanged.
+function BackroomsLook.blendedLighting(room, x, y)
+    if not room.zoneNeighbours then return room.lighting end
+    local zid, near = room:zoneNeighbours(x, y, BACKROOMS_ZONE_BLEND_DISTANCE)
+    local own = zid and room.zoneLighting[zid]
+    if not own then return room.lighting end
+    local total = 0
+    for _, n in ipairs(near) do if room.zoneLighting[n.zone] then total = total + n.w end end
+    local scale = total > 0.5 and 0.5 / total or 1       -- the own zone always keeps at least half
+    local ownW = 1 - math.min(total, 0.5)
+    local out = {name = own.name, ambient = {own.ambient[1] * ownW, own.ambient[2] * ownW, own.ambient[3] * ownW},
+        fogColor = {own.fogColor[1] * ownW, own.fogColor[2] * ownW, own.fogColor[3] * ownW},
+        fogDensity = own.fogDensity * ownW, gameplayFloor = own.gameplayFloor * ownW}
+    for _, n in ipairs(near) do
+        local other = room.zoneLighting[n.zone]
+        if other then
+            local w = n.w * scale
+            for k = 1, 3 do
+                out.ambient[k] = out.ambient[k] + other.ambient[k] * w
+                out.fogColor[k] = out.fogColor[k] + other.fogColor[k] * w
+            end
+            out.fogDensity = out.fogDensity + other.fogDensity * w
+            out.gameplayFloor = out.gameplayFloor + other.gameplayFloor * w
+        end
+    end
+    return out
+end
+
 -- Uploads the per-frame uniforms for `room` seen from (cx, cy, cz) at time t.
 -- Returns the shader, or nil when the look is off.
 function BackroomsLook.begin(room, cx, cy, cz, t)
     if not BackroomsLook.enabled then return nil end
     local shader = BackroomsLook.shader
-    local lighting = room.lighting
+    local lighting = BackroomsLook.blendedLighting(room, cx, cy)
+    BackroomsLook.lastBlend = lighting
     local pos, color, radius = {}, {}, {}
     local picked = BackroomsLook.nearestLights(room.lights, cx, cy, cz, BACKROOMS_LOOK_MAX_LIGHTS)
     for k = 1, BACKROOMS_LOOK_MAX_LIGHTS do
@@ -343,7 +392,7 @@ end
 -- opaque geometry. Camera-facing in yaw (billboards). Visual only.
 function BackroomsLook.drawShafts(room, cx, cy)
     if not BackroomsLook.shaftsEnabled() then return end
-    local strength = BackroomsLook.shaftStrength(room.lighting.fogDensity)
+    local strength = BackroomsLook.shaftStrength((BackroomsLook.lastBlend or room.lighting).fogDensity)
     if strength <= 0 then return end
     room.shafts = room.shafts or {}
     local cam = g3d.camera and g3d.camera.position

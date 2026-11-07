@@ -385,13 +385,13 @@ BACKROOMS_FIXTURE_SIZE = {1.2, 0.6}          -- recessed panel, m
 -- the minimum light on plots, crops, pickups and the exit, so they stay
 -- readable in every preset.
 BACKROOMS_LIGHT_PRESETS = {
-    ['bright'] = {ambient = {0.62, 0.58, 0.36}, fogColor = {0.56, 0.47, 0.22}, fogDensity = 0.030,
+    ['bright'] = {fixtureColor = {1, 0.97, 0.82}, ambient = {0.62, 0.58, 0.36}, fogColor = {0.56, 0.47, 0.22}, fogDensity = 0.030,
         intensity = 1.6, litEvery = 1, flicker = 0.08, buzz = 0.08, gameplayFloor = 0.7},
-    ['dim'] = {ambient = {0.34, 0.31, 0.19}, fogColor = {0.30, 0.24, 0.11}, fogDensity = 0.046,
+    ['dim'] = {fixtureColor = {1, 0.9, 0.66}, ambient = {0.34, 0.31, 0.19}, fogColor = {0.30, 0.24, 0.11}, fogDensity = 0.046,
         intensity = 1.7, litEvery = 1, flicker = 0.30, buzz = 0.15, gameplayFloor = 0.72},
-    ['single-bulb'] = {ambient = {0.20, 0.18, 0.10}, fogColor = {0.17, 0.14, 0.07}, fogDensity = 0.055,
+    ['single-bulb'] = {fixtureColor = {1, 0.78, 0.48}, ambient = {0.20, 0.18, 0.10}, fogColor = {0.17, 0.14, 0.07}, fogDensity = 0.055,
         intensity = 2.0, litEvery = 4, flicker = 0.45, buzz = 0.2, gameplayFloor = 0.78},
-    ['near-dark'] = {ambient = {0.16, 0.14, 0.08}, fogColor = {0.07, 0.06, 0.03}, fogDensity = 0.075,
+    ['near-dark'] = {fixtureColor = {0.82, 0.9, 1}, ambient = {0.16, 0.14, 0.08}, fogColor = {0.07, 0.06, 0.03}, fogDensity = 0.075,
         intensity = 1.6, litEvery = 5, flicker = 0.4, buzz = 0.2, gameplayFloor = 0.82},
 }
 -- default preset for a room with no `lighting`: picked from its id by hash
