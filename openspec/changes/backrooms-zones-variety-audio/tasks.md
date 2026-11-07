@@ -42,3 +42,7 @@
 - 3.1: `fixtureColor` per preset; `BackroomsLook.autoLights(boxes, preset, roomId, zonePresets)` lights each ceiling box from its zone's preset (litEvery counted per zone).
 - 3.2: `BackroomsLook.blendedLighting(room, x, y)` (weight 0.5*(1-d/blend) toward connected neighbour zones, so continuous across the edge); used by `BackroomsLook.begin`, shafts and `litFloor`. Screenshot review of a dark zone NOT done.
 - Tests: `tests/zones_lighting.lua` (written, not run; not yet in check_all.sh).
+
+## Room shapes (4.1-4.3 written, UNVERIFIED; 4.4 not done)
+
+- `LevelGen.build` step 3b stamps room1x2, room2x3, roomL, gallery (1x3/1x4), pillared (3x3, 4 pillars), atrium (plus, +ceiling) after the 2x2 pass on its own RNG stream (`seed*37+4421`); closets (`seed*41+6203`) are inset, lower-ceiling dead ends. Metadata: `meta.rooms[i].shape/pillars`, `meta.cells[i].shape`, `meta.pillars`, `meta.shapeCounts`. Pillars are `solid` boxes (colliders). Nothing has been run: no test, sweep or syntax check. `tests/zones_shapes.lua` is new and untested; 4.4 stays open until the full suite (incl. `tests/levels_sweep.sh`) passes on the real runtime.
