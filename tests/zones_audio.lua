@@ -99,6 +99,26 @@ for _, mode in ipairs({'airborne', 'falling', 'climbing'}) do
     check(a.steps == 0 and stepCount() == 0, 'no footsteps while ' .. mode)
 end
 
+-- contact flicker: grounded drops for single frames while walking; every stride still steps
+installFakes(); a = BackroomsAudio.new()
+p = {x = 0, y = 0, grounded = true}
+a:update(0, p)
+for f = 1, math.floor(BACKROOMS_FOOTSTEP_STRIDE * 10 / 0.05) + 1 do
+    p.x = p.x + 0.05
+    p.grounded = (f % 3 ~= 0)             -- every third frame reads ungrounded
+    a:update(1 / 60, p)
+end
+check(a.steps == 10, 'flickering grounded still gives a step per stride, got ' .. a.steps)
+-- sustained air time (> grace) wipes the bank; no steps in the air; landing resumes cleanly
+installFakes(); a = BackroomsAudio.new()
+p = {x = 0, y = 0, grounded = true}
+a:update(0, p)
+p.x = 1.5; a:update(1 / 60, p)            -- banks 1.5 m
+p.grounded = false
+for _ = 1, 30 do p.x = p.x + 0.05; a:update(1 / 60, p) end
+p.grounded = true; p.x = p.x + 0.3; a:update(1 / 60, p)
+check(a.steps == 0, 'airborne distance not banked and bank cleared after sustained air time')
+
 installFakes(); a = BackroomsAudio.new()
 p = {x = 0, y = 0, grounded = true}
 a:update(0, p)
