@@ -54,7 +54,7 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
     rgb = mix(rgb, texel.rgb * 1.6, clamp(emissive, 0.0, 1.0));   // fixture panels glow past white
 
     float fog = 1.0 - exp(-fogDensity * max(length(wp - camPos) - FOG_NEAR, 0.0));
-    if (gameplay) { fog = min(fog, 0.35); }
+    if (gameplay) { fog = min(fog, 0.2); }
     rgb = mix(rgb, fogColor, clamp(fog, 0.0, 1.0));
     return vec4(rgb, texel.a);
 }

@@ -12,21 +12,21 @@ local CELL, DOOR = LEVELGEN_CELL, LEVELGEN_DOOR
 -- name -> {texture, height, tags (room types it suits), solid = false}.
 -- Textures reuse the loaded farm props; tags are room types: filler, hall,
 -- dead, nook, loop.
+-- Heights are deliberately small (decor, not furniture) and none uses the
+-- seed-bag look: no sacks/crate, so nothing is mistaken for a collectible.
 PROP_CATALOGUE = {
-    crate  = {texture = 'sacks',       height = 0.7, tags = {'filler', 'dead', 'loop'}},
-    sacks  = {texture = 'sacks',       height = 1.0, tags = {'dead', 'nook'}},
-    bucket = {texture = 'bucket',      height = 0.5, tags = {'filler', 'hall', 'loop'}},
-    well   = {texture = 'well',        height = 1.6, tags = {'hall'}},
-    fence  = {texture = 'fence',       height = 0.9, tags = {'hall', 'loop'}},
-    shovel = {texture = 'tool-shovel', height = 0.8, tags = {'dead', 'nook', 'filler'}},
-    can    = {texture = 'tool-can',    height = 0.5, tags = {'filler', 'hall'}},
-    sickle = {texture = 'tool-sickle', height = 0.5, tags = {'dead', 'nook'}},
+    bucket = {texture = 'bucket',      height = 0.35, tags = {'filler', 'hall', 'loop'}},
+    well   = {texture = 'well',        height = 1.0,  tags = {'hall'}},
+    fence  = {texture = 'fence',       height = 0.55, tags = {'hall', 'loop', 'dead'}},
+    shovel = {texture = 'tool-shovel', height = 0.6,  tags = {'dead', 'nook', 'filler', 'loop'}},
+    can    = {texture = 'tool-can',    height = 0.35, tags = {'filler', 'hall', 'loop'}},
+    sickle = {texture = 'tool-sickle', height = 0.4,  tags = {'dead', 'nook'}},
 }
 -- Storytelling groupings.
 PROP_GROUPS = {   -- each: list of {prop, dx, dy} offsets
-    {name = 'abandoned-camp', props = {{'bucket', 0, 0}, {'sacks', 0.6, 0.3}, {'sickle', -0.5, 0.4}}},
+    {name = 'abandoned-camp', props = {{'bucket', 0, 0}, {'sickle', -0.5, 0.4}}},
     {name = 'lone-tool',      props = {{'shovel', 0, 0}}},
-    {name = 'spilled-store',  props = {{'crate', 0, 0}, {'sacks', 0.7, -0.2}, {'can', 0.2, 0.7}}},
+    {name = 'spilled-store',  props = {{'bucket', 0, 0}, {'can', 0.2, 0.7}}},
 }
 
 -- Room type of a meta cell.
@@ -124,10 +124,10 @@ function Dressing.apply(data, seed)
                 spots[#spots + 1] = {X0 + CELL - 0.8, Y0 + t}
             end
             rng:shuffle(spots)
-            local want = (rt == 'hall' or rt == 'filler') and 2 or 1
+            local want = (rt == 'hall' and rng:chance(0.5)) and 1 or 0
             local made = 0
             -- one storytelling grouping per ~2 cells, never in fillers beside spawn
-            if rt ~= 'filler' or rng:chance(0.3) then
+            if rng:chance(rt == 'filler' and 0.15 or 0.5) then
                 local g = rng:pick(PROP_GROUPS)
                 for _, s in ipairs(spots) do
                     local ok = true

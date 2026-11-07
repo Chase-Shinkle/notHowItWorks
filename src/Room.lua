@@ -50,7 +50,9 @@ ROOM_BOX_STYLES = {
     ceiling = {texture = 'ceiling', fallbackTexture = 'wall', color = {0.93, 0.9, 0.72, 1}, textured = {1, 1, 0.92, 1}},
     solid = {texture = 'wall', color = {0.78, 0.72, 0.42, 1}, textured = {0.9, 0.88, 0.8, 1}},
 }
-ROOM_EXIT_COLOR = {0.55, 1, 0.6, 0.85}
+ROOM_EXIT_COLOR = {0.45, 1, 0.55, 0.9}
+ROOM_BASEBOARD_HEIGHT, ROOM_BASEBOARD_DEPTH = 0.14, 0.03
+ROOM_BASEBOARD_COLOR = {0.78, 0.7, 0.5, 1}
 
 -- Material themes: a consistent wall/floor/ceiling set. Texture values are
 -- gTextures keys; `tint` multiplies a loaded texture, `fallbackColor` is the
@@ -261,6 +263,32 @@ function Room:init(data)
             self.colliders[#self.colliders + 1] = {
                 verts = verts, transform = model, min = min, max = max, kind = b.kind or 'solid',
             }
+        end
+    end
+
+    -- generated levels: one merged, render-only beige baseboard along both
+    -- faces of every wall (no collider, no data change)
+    if data.meta then
+        local trim = {}
+        for _, b in ipairs(data.boxes) do
+            if b.kind == 'wall' and not b.obstacle and b.size[3] > 1 then
+                local alongX = b.size[1] >= b.size[2]
+                local th = alongX and b.size[2] or b.size[1]
+                local z = b.pos[3] - b.size[3] / 2 + ROOM_BASEBOARD_HEIGHT / 2
+                for side = -1, 1, 2 do
+                    local ox = alongX and 0 or side * (th / 2 + ROOM_BASEBOARD_DEPTH / 2)
+                    local oy = alongX and side * (th / 2 + ROOM_BASEBOARD_DEPTH / 2) or 0
+                    local sx = alongX and b.size[1] or ROOM_BASEBOARD_DEPTH
+                    local sy = alongX and ROOM_BASEBOARD_DEPTH or b.size[2]
+                    for _, v in ipairs(NewRoomBoxVerts(sx, sy, ROOM_BASEBOARD_HEIGHT, ROOM_BASEBOARD_COLOR)) do
+                        v[1], v[2], v[3] = v[1] + b.pos[1] + ox, v[2] + b.pos[2] + oy, v[3] + z
+                        trim[#trim + 1] = v
+                    end
+                end
+            end
+        end
+        if #trim > 0 then
+            self.models[#self.models + 1] = g3d.newModel(trim, gTextures['white'] or texture(nil, 'floor'), {0, 0, 0})
         end
     end
 

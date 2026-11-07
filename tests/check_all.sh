@@ -22,6 +22,12 @@ step "pit-rim measurement (tests/rim.lua): pit plots plantable over >= 2.5 m of 
 love tests/love_runner tests/rim.lua > /tmp/check_rim.txt 2>&1 || fail=1
 grep -E '^room|FAIL|rim:' /tmp/check_rim.txt
 
+step "backrooms look fallback ladder (tests/backrooms_review.sh fallback): bad shader == --no-shader, bad post differs, no ERROR"
+sh tests/backrooms_review.sh fallback /tmp/check_fallback > /tmp/check_fallback.txt 2>&1 || fail=1
+grep -E 'FAILED|ERROR|^DIFF .*noshader' /tmp/check_fallback.txt && fail=1
+n_same=$(grep -c '^same .*noshader' /tmp/check_fallback.txt); n_diff=$(grep -c '^DIFF .*badpost' /tmp/check_fallback.txt)
+if [ "$n_same" = 3 ] && [ "$n_diff" = 3 ]; then echo "ok (badshader == noshader x3, badpost != full x3)"; else echo "FAIL (same=$n_same diff=$n_diff)"; fail=1; fi
+
 for mode in "" "--placeholder-assets"; do
     step "plain launch, 8 s: love . $mode"
     xvfb-run -a timeout 8 love . $mode > /tmp/check_launch.txt 2>&1

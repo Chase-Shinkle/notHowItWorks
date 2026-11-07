@@ -36,7 +36,7 @@ Section 5 verification: new `src/Dressing.lua` (PROP_CATALOGUE, room-type tags, 
 
 ## 6. Review and integration
 
-- [ ] 6.1 Add a backrooms screenshot script (modelled on `tests/farm_shots.lua`) and review lighting presets, fog, themes and dressing across several seeds; record findings and tuned defaults.
+- [x] 6.1 Add a backrooms screenshot script (modelled on `tests/farm_shots.lua`) and review lighting presets, fog, themes and dressing across several seeds; record findings and tuned defaults.
 - [ ] 6.2 Add the new tests to `tests/check_all.sh` and run it green on the real LÖVE runtime, including a full autotest run with the look enabled.
 
 ## Section 3 verification (atmos-3)

@@ -4306,5 +4306,30 @@ test('dressing 5.4: equal seeds give equal props; adding dressing leaves the lay
     end
 end)
 
+test('dressing review: props never use the seed-bag/sacks look, stay small and sparse, and the baseboard is render-only', function()
+    loadGame()
+    local n, levels = 0, 0
+    for seed = 1, 30 do
+        local d = gen(seed, 2)
+        levels = levels + 1
+        for _, b in ipairs(propsOf(d)) do
+            n = n + 1
+            assert(b.texture ~= 'sacks' and not tostring(b.texture):find('seedbag'), 'prop looks like a seed bag: ' .. b.prop)
+            assert(b.height <= 1.0, 'prop is small')
+        end
+        assert(#propsOf(d) <= #d.meta.cells, 'at most ~1 prop per cell on average')
+    end
+    assert(n / levels >= 3, 'still dressed: ' .. n / levels .. ' props/level')
+    -- baseboard adds one non-colliding model and no colliders
+    local data = gen(3, 2)
+    local colliders = 0
+    local room = Room(data)
+    for _ in ipairs(room.colliders) do colliders = colliders + 1 end
+    local solidBoxes = 0
+    for _, b in ipairs(data.boxes) do if b.collide ~= false then solidBoxes = solidBoxes + 1 end end
+    eq(colliders, solidBoxes, 'baseboard adds no colliders')
+    eq(#room.models, #data.boxes + 1, 'one merged baseboard model on top of the boxes')
+end)
+
 realPrint(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)

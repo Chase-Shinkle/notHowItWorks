@@ -85,7 +85,10 @@ local function moduleScene(name)
         for _, c in ipairs(room.data.meta and room.data.meta.cells or {}) do
             if c.module == name then
                 local x0 = c.cx * CELL
-                return x0 + 0.4, c.cy * CELL, c.elev, 0, -0.25
+                -- from the cell before the module, eyes level with its start, so
+                -- the obstacle and the approach are both in frame
+                local back = name == 'ledge' and 4.5 or 0.4
+                return x0 - back + (name == 'ledge' and 0 or 0), c.cy * CELL, c.elev, 0, -0.18
             end
         end
     end
