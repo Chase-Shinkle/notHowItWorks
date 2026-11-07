@@ -37,6 +37,10 @@ function BackroomsState:enter(gameData, rooms)
     self.message = nil                   -- {text, time left}
     print('[backrooms] seeds received: ' .. FormatSeeds(self.gameData.seeds))
 
+    -- looping ambience (silent placeholder until sounds/backrooms_hum.ogg exists)
+    local hum = gSounds['backrooms-hum']
+    if hum then hum:setLooping(true); hum:play() end
+
     g3d.camera.resize(love.graphics.getDimensions())
     self:setMouseCaptured(true)
     self.finished = false
@@ -45,6 +49,8 @@ end
 
 function BackroomsState:exit()
     Timer.clear(self.timers)
+    local hum = gSounds['backrooms-hum']
+    if hum then hum:stop() end
     self:setMouseCaptured(false)
 end
 
@@ -254,6 +260,13 @@ end
 
 function BackroomsState:renderHUD()
     local w, h = love.graphics.getDimensions()
+    -- translucent bands keep the white HUD text readable on the pale walls
+    -- (top: room name + seeds; bottom: up to two hint lines + debug line)
+    local bandLineH = gFonts['default']:getHeight() + 4
+    local bottomTop = h - 52 - bandLineH - 6
+    love.graphics.setColor(0, 0, 0, 0.45)
+    love.graphics.rectangle('fill', 0, 0, w, 32 + bandLineH + 4)
+    love.graphics.rectangle('fill', 0, bottomTop, w, h - bottomTop)
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.setFont(gFonts['default'])
     love.graphics.print(string.format('%s  (%d/%d)', self.room.name, self.roomIndex, #self.rooms), 10, 10)
@@ -290,10 +303,18 @@ function BackroomsState:renderHUD()
     love.graphics.line(w / 2 - 6, h / 2, w / 2 + 6, h / 2)
     love.graphics.line(w / 2, h / 2 - 6, w / 2, h / 2 + 6)
 
-    local hint = self.mouseCaptured
-        and 'WASD: move   mouse: look   E: plant   Q / 1-3: seed   R: reset room   Esc: free mouse'
-        or 'Click to capture the mouse'
-    love.graphics.printf(hint, 0, h - 52, w, 'center')
+    -- the controls hint is split over two lines when one would not fit
+    -- (e.g. a 640 px wide window), instead of letting printf wrap mid-phrase
+    local font = gFonts['default']
+    local hints = self.mouseCaptured
+        and {'WASD: move   mouse: look   E: plant   Q / 1-3: seed', 'R: reset room   Esc: free mouse'}
+        or {'Click to capture the mouse'}
+    local joined = table.concat(hints, '   ')
+    if font:getWidth(joined) <= w - 20 then hints = {joined} end
+    local lineH = font:getHeight() + 4
+    for i, line in ipairs(hints) do
+        love.graphics.printf(line, 0, h - 52 - (#hints - i) * lineH, w, 'center')
+    end
     if DEBUG_MODE then
         love.graphics.print(DEBUG_ADVANCE_KEY .. ': debug skip room   fps: ' .. love.timer.getFPS(), 10, h - 26)
     end

@@ -32,11 +32,13 @@
 Room = Class{}
 
 -- Default look per box kind: texture key and flat backrooms-yellow colour.
+-- `color` tints a flat placeholder texture; `textured` is the (lighter) tint
+-- used when the real texture loaded, since vertex colours multiply it.
 ROOM_BOX_STYLES = {
-    floor = {texture = 'floor', color = {0.62, 0.56, 0.32, 1}},
-    wall = {texture = 'wall', color = {0.86, 0.8, 0.46, 1}},
-    ceiling = {texture = 'wall', color = {0.93, 0.9, 0.72, 1}},
-    solid = {texture = 'wall', color = {0.78, 0.72, 0.42, 1}},
+    floor = {texture = 'floor', color = {0.62, 0.56, 0.32, 1}, textured = {0.85, 0.8, 0.6, 1}},
+    wall = {texture = 'wall', color = {0.86, 0.8, 0.46, 1}, textured = {1, 1, 1, 1}},
+    ceiling = {texture = 'ceiling', fallbackTexture = 'wall', color = {0.93, 0.9, 0.72, 1}, textured = {1, 1, 0.92, 1}},
+    solid = {texture = 'wall', color = {0.78, 0.72, 0.42, 1}, textured = {0.9, 0.88, 0.8, 1}},
 }
 ROOM_EXIT_COLOR = {0.55, 1, 0.6, 0.85}
 ROOM_PLOT_SIZE = 1.2
@@ -171,9 +173,12 @@ function Room:init(data)
     self.colliders = {}
     for _, b in ipairs(data.boxes) do
         local style = ROOM_BOX_STYLES[b.kind or 'solid']
-        local color = b.color or style.color
+        local tex = texture(b.texture, style.texture)
+        if not tex and style.fallbackTexture then tex = texture(nil, style.fallbackTexture) end
+        local color = b.color
+            or ((style.textured and tex and not Assets.isPlaceholder(tex)) and style.textured or style.color)
         local verts = NewRoomBoxVerts(b.size[1], b.size[2], b.size[3], color)
-        local model = g3d.newModel(verts, texture(b.texture, style.texture), {b.pos[1], b.pos[2], b.pos[3]})
+        local model = g3d.newModel(verts, tex, {b.pos[1], b.pos[2], b.pos[3]})
         self.models[#self.models + 1] = model
         if b.collide ~= false then
             local min, max = bounds(b.pos, b.size)
@@ -188,7 +193,7 @@ function Room:init(data)
     local emin, emax = bounds(e.pos, e.size)
     self.exit = {pos = {e.pos[1], e.pos[2], e.pos[3]}, size = {e.size[1], e.size[2], e.size[3]}, min = emin, max = emax}
     self.exitModel = g3d.newModel(NewRoomBoxVerts(e.size[1], e.size[2], e.size[3], ROOM_EXIT_COLOR),
-        texture(nil, 'floor'), {e.pos[1], e.pos[2], e.pos[3]})
+        gTextures['white'] or texture(nil, 'floor'), {e.pos[1], e.pos[2], e.pos[3]})
 
     -- fixed plots: flat soil pads just above the surface they sit on
     self.plots = {}

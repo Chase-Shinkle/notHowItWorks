@@ -10,7 +10,14 @@ Assets = {
     forcePlaceholders = false,
     missing = {},             -- paths that fell back to a placeholder
     placeholderSize = 16,
+    -- objects (images, sounds) that are fallbacks, so callers can e.g. pick
+    -- a flat tint for a placeholder and a neutral one for real art
+    placeholders = setmetatable({}, {__mode = 'k'}),
 }
+
+function Assets.isPlaceholder(object)
+    return object ~= nil and Assets.placeholders[object] == true
+end
 
 local function noop() end
 
@@ -64,7 +71,9 @@ function Assets.loadImage(path, fallbackColor, fallbackSize)
         if ok then return image, false end
         recordMissing('image', path, tostring(image))
     end
-    return Assets.newPlaceholderImage(fallbackColor, fallbackSize), true
+    local image = Assets.newPlaceholderImage(fallbackColor, fallbackSize)
+    Assets.placeholders[image] = true
+    return image, true
 end
 
 -- Returns source, isPlaceholder.
@@ -76,7 +85,9 @@ function Assets.loadSound(path, sourceType)
     elseif not love.audio then
         recordMissing('sound', path, 'audio module disabled')
     end
-    return Assets.newSilentSound(), true
+    local stub = Assets.newSilentSound()
+    Assets.placeholders[stub] = true
+    return stub, true
 end
 
 -- Returns font, isPlaceholder.

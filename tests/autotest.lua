@@ -109,6 +109,30 @@ end
 local function script()
     wait(0.5)
     check(state().update == StartState.update, 'boots into the start state')
+
+    -- asset integration (task 6.1): with real assets every texture used by
+    -- the game is the supplied art; sounds that are missing are reported as
+    -- silent placeholders instead of failing
+    local missingImages, missingSounds = {}, 0
+    for _, m in ipairs(Assets.missing) do
+        if m.kind == 'image' then missingImages[#missingImages + 1] = m.path end
+        if m.kind == 'sound' then missingSounds = missingSounds + 1 end
+    end
+    if Assets.forcePlaceholders then
+        check(#missingImages > 0 and Assets.isPlaceholder(gTextures['wall']), 'placeholder mode: textures are flat fallbacks')
+    else
+        check(#missingImages == 0, 'every texture loaded from real art (missing: %s)', table.concat(missingImages, ', '))
+        for _, key in ipairs({'wall', 'floor', 'ceiling', 'grass', 'hero', 'villager', 'plot', 'well'}) do
+            check(gTextures[key] and not Assets.isPlaceholder(gTextures[key]), 'real texture: %s', key)
+        end
+    end
+    local silent, totalSounds = 0, 0
+    for _, s in pairs(gSounds) do
+        totalSounds = totalSounds + 1
+        if Assets.isPlaceholder(s) then silent = silent + 1 end
+    end
+    log('sounds: %d of %d are silent placeholders', silent, totalSounds)
+    check(silent == missingSounds, 'every missing sound is a silent placeholder (%d)', silent)
     shot('01-start')
     press('return')
     check(is(FarmState), 'Enter -> farm')

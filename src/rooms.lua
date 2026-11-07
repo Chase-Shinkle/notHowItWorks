@@ -96,8 +96,11 @@ BACKROOMS_ROOMS = {
         },
         allotment = CopySeeds(FIRST_ROOM_MIN_SEEDS),
         billboards = {
-            {texture = 'crop-beanstalk-4', pos = {-2.5, -2.4, 0}, height = 1.2},
-            {texture = 'seedbag-beanstalk', pos = {-1, 2.5, 0}, height = 0.6},
+            -- kept small and against the side walls so nothing fills the view
+            -- near the spawn
+            {texture = 'crop-beanstalk-4', pos = {0.2, -2.6, 0}, height = 0.7},
+            {texture = 'seedbag-beanstalk', pos = {-1, 2.6, 0}, height = 0.5},
+            {texture = 'well', pos = {1.0, 2.4, 0}, height = 1.0},
             {texture = 'villager', pos = {-5.2, 2.2, 0}, height = 1.6},
         },
     },
@@ -129,6 +132,7 @@ BACKROOMS_ROOMS = {
             {texture = 'crop-pumpkin-5', pos = {-7.4, 2.4, 0}, height = 1},
             {texture = 'produce-vine', pos = {-0.6, -2.4, 0}, height = 0.6},
             {texture = 'hero', pos = {8.5, 2.4, 0}, height = 1.5},
+            {texture = 'bucket', pos = {-5.5, -2.6, 0}, height = 0.5},
         },
     },
 
@@ -162,6 +166,7 @@ BACKROOMS_ROOMS = {
         billboards = {
             {texture = 'crop-vine-5', pos = {-8.4, -2.4, 0}, height = 1.1},
             {texture = 'seedbag-pumpkin', pos = {-2.2, 2.4, 0}, height = 0.6},
+            {texture = 'sacks', pos = {-8.5, 2.5, 0}, height = 0.6},
             {texture = 'villager', pos = {8.8, -2.2, 2.6}, height = 1.6},
         },
     },

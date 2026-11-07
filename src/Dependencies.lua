@@ -50,8 +50,15 @@ Assets.loadAll(gTextures, {
     ['grass'] = {FARM_PACK .. 'Ground/Tiles - Grass - 01.png', {0.35, 0.65, 0.3, 1}},
     ['soil'] = {FARM_PACK .. 'Ground/Tiles - Soil - 01.png', {0.45, 0.3, 0.2, 1}},
     ['hero'] = {FARM_PACK .. 'Sprites/Hero  white - 001 copy.png', {0.9, 0.9, 0.9, 1}},
-    ['wall'] = {'graphics/backrooms/wall.png', {1, 1, 1, 1}},
+    -- backrooms surfaces: extracted unchanged from the user-supplied
+    -- models/Backrooms.glb by tools/extract_glb_textures.py
+    ['wall'] = {'graphics/backrooms/wall.jpg', {1, 1, 1, 1}},
     ['floor'] = {'graphics/backrooms/floor.png', {1, 1, 1, 1}},
+    ['ceiling'] = {'graphics/backrooms/ceiling.jpg', {1, 1, 1, 1}},
+    -- old farm props, used as backrooms billboards
+    ['well'] = {FARM_PACK .. 'Buldings & Stractures/WELLS/Prop -Well 01 -01.png', {0.55, 0.5, 0.45, 1}, 14},
+    ['bucket'] = {FARM_PACK .. 'Tools/Tools - ITEMS/Items - Bucket.png', {0.6, 0.45, 0.3, 1}, 10},
+    ['sacks'] = {FARM_PACK .. 'Tools/Tools - ITEMS/Props - Icons - Sacks.png', {0.75, 0.65, 0.45, 1}, 10},
     ['plot'] = {FARM_PACK .. 'Ground/Props - Soil Preparation.png', {0.36, 0.22, 0.13, 1}},
     ['villager'] = {FARM_PACK .. 'Sprites/Hero  white - 001 copy 2.png', {0.7, 0.5, 0.85, 1}, 13},
 }, function(path, color, size) return Assets.loadImage(path, color, size) end)

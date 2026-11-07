@@ -5,7 +5,13 @@
 > headless tests, 84/84 reachability assignments, clean launches, and a
 > scripted real-game playthrough of the whole flow with 72/72 checks, with
 > and without placeholder assets). Human visual / playfeel / audio checks
-> are still pending for 1.1-5.7; see `verification.md`.
+> are still pending for 1.1-6.3; see `verification.md`.
+>
+> Section 6 (2026-11-07): `sh tests/check_all.sh` now also builds the `.love`
+> twice (same sha256) and runs the launch and playthrough checks on that
+> artifact: 105/105 headless tests, 84/84 assignments, 82 playthrough checks
+> with real assets and 74 with placeholders, from the source tree and from the
+> package.
 
 ## 1. Foundation and render path
 
@@ -48,5 +54,7 @@
 ## 6. Integration
 
 - [ ] 6.1 Hook in user-provided graphics and sounds (farm sprites, backrooms textures, music, SFX) and verify they appear/play without errors.
-- [ ] 6.2 Play through the full flow from start to ending, fixing blockers; verify the run completes in under about 15 minutes with no soft-locks.
-- [ ] 6.3 Package a `.love` build and verify it runs with `love game.love`.
+  - Graphics: **done**. The farm sprites were already used. The backrooms wallpaper, carpet and ceiling textures come from the supplied `models/Backrooms.glb` (`tools/extract_glb_textures.py`), plus the well, bucket and sacks farm props as billboards. The autotest checks there are 0 image placeholders.
+  - Sounds: **blocked, no files supplied**. `sounds/` does not exist, so all 7 hooked sounds (farm music, backrooms hum, plant, harvest, sell, deny, glitch) are silent placeholders. The hum was never played before; it is now hooked. Nothing audible has been checked. Unchecked until sound files are added and heard.
+- [x] 6.2 Play through the full flow from start to ending, fixing blockers; verify the run completes in under about 15 minutes with no soft-locks.
+- [x] 6.3 Package a `.love` build and verify it runs with `love game.love`.

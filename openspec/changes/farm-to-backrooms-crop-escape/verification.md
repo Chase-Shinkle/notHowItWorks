@@ -4,7 +4,47 @@ Checked tasks in `tasks.md` mean **the code is written**. Each task's
 "verify ..." step is tracked here and is only marked done once it has
 actually been performed.
 
-## Current status (2026-11-07, section 5 review run)
+## Current status (2026-11-07, section 6 run)
+
+`sh tests/check_all.sh` (all on LÖVE 11.5 / LuaJIT 2.1, Xvfb + Mesa llvmpipe):
+
+| Check | Result |
+|-------|--------|
+| Headless tests (`tests/run.lua`) | **105 passed, 0 failed** (3 new 6.1 asset/sound-hook tests) |
+| Reachability sweep | **84 assignments, 0 unexpected** |
+| `xvfb-run -a timeout 8 love .` / `--placeholder-assets` | exit 124, no `Error` (both) |
+| `love . --autotest` (real assets) | **82 checks, 0 failed** (10 new asset checks), 3344 frames, 55.7 s simulated |
+| `love . --autotest --placeholder-assets` | **74 checks, 0 failed** |
+| `sh tools/package.sh` twice | same sha256 both times; `main.lua`/`conf.lua`/notices at the ZIP root; no `.git`, `.claude`, `openspec/`, `tools/`, `models/`, `dist/`, caches or other tests (checked by listing the ZIP) |
+| `xvfb-run -a timeout 8 love dist/not-how-it-works.love` / `--placeholder-assets` (run from `/tmp`) | exit 124, no `Error` (both) |
+| `love dist/not-how-it-works.love --autotest` (from `/tmp`) | **82 checks, 0 failed**: the whole game played from the packaged files, 0 image placeholders |
+| same with `--placeholder-assets` | **74 checks, 0 failed** |
+
+Artifact at this run: `dist/not-how-it-works.love`, 282 files, about 2.0 MB.
+`dist/` is git-ignored, so rebuild it with `sh tools/package.sh`. The sha256
+is printed by the script and is only stable for an unchanged tree.
+
+### Section 6 rows
+
+| Task | What was done | Automated evidence | Still pending (human / missing input) |
+|------|---------------|--------------------|---------------------------------------|
+| 6.1 graphics + sounds | Backrooms wallpaper, carpet and ceiling-tile textures copied byte-for-byte from the supplied `models/Backrooms.glb` into `graphics/backrooms/` by `tools/extract_glb_textures.py` (reproducible). Rooms use a light tint on real textures and keep the flat colours for placeholders. The exit marker is untextured green. Farm props (well, bucket, sacks) added as backrooms billboards. `Assets.isPlaceholder` added. Found and fixed: `backrooms-hum` was loaded but never played. It now loops while in the backrooms, and a unit test checks every loaded sound is used in the code. | 0 image placeholders and real `wall/floor/ceiling/grass/hero/villager/plot/well` asserted in the real-asset playthrough, from the source tree and from the `.love`. Placeholder mode still passes the full playthrough. The new unit tests check the tint switch. Screenshots looked at by eye (llvmpipe). | **Audio: no sound files exist** (`sounds/` is absent). All 7 hooked sounds are silent placeholders, so nothing has been heard. 6.1 stays unchecked until files are supplied. Art licenses are not recorded (see `THIRD_PARTY_NOTICES.md`). |
+| 6.2 full flow, blockers | Full flow start -> farm -> break -> rooms 1-3 -> ending -> start, including a wasted seed, a fall + respawn and an R reset in room 2, covered by the autotest. No soft-lock or blocker found. Readability fixes: the backrooms hint splits into two whole lines when it does not fit (it wrapped mid-phrase at 640 px). Translucent bands sit behind the HUD text (white text was hard to read on the pale wallpaper). The Room 1 crop billboard is smaller (1.2 -> 0.7 m) and moved to the side wall (it filled the right of the view at the spawn). The well now stands next to the ledge, not the spawn. No gameplay values changed. | 55.7 s simulated scripted run (fixed 1/60 s steps, perfect input). Reachability unchanged (billboards do not collide). | **Real player time (target under about 15 min) and "no soft-locks" in free play are not human-verified.** The 55.7 s is a scripted best case, not a playtest. |
+| 6.3 package | `tools/package.sh` builds `dist/not-how-it-works.love`: sorted entries, fixed 1980 timestamps and permissions, so it is reproducible. It refuses credential-like file names. It includes `tests/autotest.lua` and no other test file, so the exact artifact can be verified with `--autotest` (the file only loads with that flag). `RELEASE.md` has run instructions and controls. | Launch + playthrough on the artifact, see the table above. | A run on Windows/macOS and on a real GPU. `DEBUG_MODE` (F1 skip) is still on in the package; whether to turn it off for release is the owner's call. |
+
+### Still needs a human (updated for section 6)
+
+Everything in the section 5 list below still applies, plus:
+- Listening to every sound, once sound files exist (none have been heard).
+- A timed, unassisted full run by a new player (6.2's "under about 15
+  minutes"). Automated simulated timing is not a playfeel or timing approval.
+- Look at the new wallpaper/carpet/ceiling texture scale (2 m per repeat) on a
+  real GPU, and the HUD bands at several window sizes.
+- Before publishing: licenses for the farm pack, the Backrooms model and
+  knife (`THIRD_PARTY_NOTICES.md`), the window title (still "Game Jam") and
+  `DEBUG_MODE`.
+
+## Previous status (2026-11-07, section 5 review run)
 
 LÖVE 11.5 is now installed (`/home/box/.local/bin/love`, an extracted
 AppImage that bundles LuaJIT 2.1). Everything below marked **passed** was
@@ -85,7 +125,8 @@ playfeel review below.
   nothing audible has been checked.
 - Visual polish: billboard sizes (the Room 1 crop billboard near the spawn
   looks large and blurry close up), the 8 px farm font at 800x800, the hint
-  bar wrapping at 640 px wide, glitch harshness.
+  bar wrapping at 640 px wide, glitch harshness. *(Section 6: the Room 1
+  billboard and the 640 px hint wrap are fixed; the rest is still for a human.)*
 - Real GPU/driver rendering (only llvmpipe was used).
 
 ## Earlier per-task tables

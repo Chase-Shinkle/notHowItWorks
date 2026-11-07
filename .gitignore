@@ -3,3 +3,6 @@
 *.zip
 *.exe
 *.app/
+dist/
+__pycache__/
+*.pyc

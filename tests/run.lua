@@ -170,6 +170,48 @@ test('game launches with every asset forced to placeholders', function()
     eq(gStateMachine.current.usesPush, false, 'reached backrooms')
 end)
 
+-- 6.1 asset integration ---------------------------------------------------------
+test('supplied art is used: backrooms textures load and rooms switch to the light tint', function()
+    loadGame()
+    for _, key in ipairs({'wall', 'floor', 'ceiling', 'well', 'bucket', 'sacks'}) do
+        assert(gTextures[key], 'texture ' .. key)
+        eq(Assets.isPlaceholder(gTextures[key]), false, 'real texture ' .. key)
+    end
+    local _, isPh = Assets.loadImage('graphics/nope.png')
+    eq(isPh, true)
+    -- placeholders are flagged on the object too
+    local img = Assets.loadImage('graphics/nope.png')
+    eq(Assets.isPlaceholder(img), true)
+    eq(Assets.isPlaceholder(Assets.loadSound('sounds/nope.wav')), true)
+    -- a real wall texture is tinted white, not multiplied by the flat yellow
+    local room = Room({id = 't', spawn = {0, 0, 0}, boxes = {{kind = 'wall', pos = {0, 0, 0}, size = {1, 1, 1}}},
+        exit = {pos = {5, 0, 1}, size = {1, 1, 1}}, allotment = {}})
+    assert(room.models[1], 'wall model')
+    local v = room.colliders[1].verts[1]
+    eq(v[9] >= 0.84 and v[10] >= 0.84 and v[11] >= 0.84, true, 'light tint on real texture')
+end)
+
+test('forced placeholders keep the flat room colours', function()
+    loadGame({'.', '--placeholder-assets'})
+    eq(Assets.isPlaceholder(gTextures['wall']), true)
+    local room = Room({id = 't', spawn = {0, 0, 0}, boxes = {{kind = 'wall', pos = {0, 0, 0}, size = {1, 1, 1}}},
+        exit = {pos = {5, 0, 1}, size = {1, 1, 1}}, allotment = {}})
+    local v = room.colliders[1].verts[1]
+    eq(v[11] < 0.5, true, 'flat yellow tint (blue channel low) on placeholder')
+end)
+
+test('every loaded sound is hooked into the game code', function()
+    loadGame()
+    local code = ''
+    for _, f in ipairs({'src/states/game/FarmState.lua', 'src/states/game/BackroomsState.lua',
+                        'src/states/game/StartState.lua', 'src/states/game/EndingState.lua'}) do
+        local fh = assert(io.open(f, 'r')); code = code .. fh:read('*a'); fh:close()
+    end
+    for key in pairs(gSounds) do
+        assert(code:find("gSounds%['" .. key:gsub('%-', '%%-') .. "'%]"), 'sound ' .. key .. ' is never used')
+    end
+end)
+
 -- geometry ---------------------------------------------------------------------
 test('box verts have 36 vertices with outward-facing winding', function()
     loadGame()
