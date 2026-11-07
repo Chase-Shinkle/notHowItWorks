@@ -2,9 +2,9 @@
 
 ## 1. Pixel-art filtering (M1)
 
-- [ ] 1.1 Move `love.graphics.setDefaultFilter('nearest','nearest')` to the top of `main.lua` before `require 'src/Dependencies'` and remove the later call; verify a headless/real-runtime probe reports `getFilter()` = nearest for hero, crop, plot, well, bucket images and the default and small fonts.
-- [ ] 1.2 Keep `wall`, `floor`, `ceiling` linear (mipmapped only if artifact-free) and confirm placeholder images are nearest; verify with the same probe and a screenshot of text and sprites up close.
-- [ ] 1.3 Add the filter probe as an automated check in `tests/` (runs under `sh tests/check_all.sh`) and verify it fails if the call order is reverted.
+- [x] 1.1 Move `love.graphics.setDefaultFilter('nearest','nearest')` to the top of `main.lua` before `require 'src/Dependencies'` and remove the later call; verify a headless/real-runtime probe reports `getFilter()` = nearest for hero, crop, plot, well, bucket images and the default and small fonts.
+- [x] 1.2 Keep `wall`, `floor`, `ceiling` linear (mipmapped only if artifact-free) and confirm placeholder images are nearest; verify with the same probe and a screenshot of text and sprites up close.
+- [x] 1.3 Add the filter probe as an automated check in `tests/` (runs under `sh tests/check_all.sh`) and verify it fails if the call order is reverted.
 
 ## 2. Release config (M2)
 

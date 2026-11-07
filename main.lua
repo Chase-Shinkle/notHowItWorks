@@ -1,7 +1,12 @@
+-- Nearest-neighbour by default, before any asset exists: src/Dependencies
+-- loads every image and font at require time, so setting the default later
+-- (e.g. in love.load) would leave them all linear and blurry. The large
+-- backrooms surface textures opt back into linear in src/Dependencies.lua.
+love.graphics.setDefaultFilter('nearest', 'nearest')
+
 require 'src/Dependencies'
 
 function love.load()
-    love.graphics.setDefaultFilter('nearest', 'nearest')
     math.randomseed(os.time())
     love.window.setTitle('Game Jam')
 

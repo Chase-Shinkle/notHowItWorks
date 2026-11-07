@@ -76,6 +76,20 @@ function Assets.loadImage(path, fallbackColor, fallbackSize)
     return image, true
 end
 
+-- Linear filtering for a large 3D surface texture loaded from `path`: rebuilt
+-- with mipmaps (linear mipmap filter) when possible, else plain linear.
+-- Placeholders are returned unchanged (they stay nearest). Returns the image.
+function Assets.smoothImage(image, path)
+    if image == nil or Assets.isPlaceholder(image) then return image end
+    local ok, mipmapped = pcall(love.graphics.newImage, path, {mipmaps = true})
+    if ok and mipmapped then
+        image = mipmapped
+        if image.setMipmapFilter then image:setMipmapFilter('linear') end
+    end
+    image:setFilter('linear', 'linear')
+    return image
+end
+
 -- Returns source, isPlaceholder.
 function Assets.loadSound(path, sourceType)
     if love.audio and available('sound', path) then

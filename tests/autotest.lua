@@ -98,8 +98,24 @@ local function analyse(name, data)
         name, ncolors, 100 * (1 - dark / total), file)
 end
 
-local function shot(name)
-    pendingShots[#pendingShots + 1] = name
+-- Saves a nearest-scaled close-up of the screenshot region {x, y, w, h}
+-- (window pixels) as <name>-zoom.png, to inspect sprite and text edges.
+local function saveZoom(name, data, crop)
+    local x0, y0, w, h, s = crop[1], crop[2], crop[3], crop[4], crop[5] or 4
+    local dw, dh = data:getDimensions()
+    w, h = math.min(w, dw - x0), math.min(h, dh - y0)
+    local zoom = love.image.newImageData(w * s, h * s)
+    zoom:mapPixel(function(x, y)
+        return data:getPixel(x0 + math.floor(x / s), y0 + math.floor(y / s))
+    end)
+    local f = io.open(OUT .. '/' .. name .. '-zoom.png', 'wb')
+    if f then f:write(zoom:encode('png'):getString()); f:close() end
+    log('close-up %s-zoom.png (%d,%d %dx%d x%d)', name, x0, y0, w, h, s)
+end
+
+-- `crop` (optional) {x, y, w, h, scale}: also save a close-up (saveZoom).
+local function shot(name, crop)
+    pendingShots[#pendingShots + 1] = {name = name, crop = crop}
     coroutine.yield()     -- captured at the end of this frame's draw
     coroutine.yield()     -- callback has run after present
 end
@@ -126,6 +142,23 @@ local function script()
             check(gTextures[key] and not Assets.isPlaceholder(gTextures[key]), 'real texture: %s', key)
         end
     end
+    -- pixel-art filtering (polish M1), on the real runtime: sprites, tiles,
+    -- billboards and fonts are nearest; real backrooms surfaces are linear
+    -- (placeholders for them stay nearest)
+    local function filterOf(obj) local a, b = obj:getFilter(); return a .. '/' .. b end
+    for _, key in ipairs({'hero', 'crop-beanstalk-3', 'crop-pumpkin-5', 'plot', 'well', 'bucket',
+            'villager', 'grass', 'soil', 'seedbag-vine', 'produce-pumpkin'}) do
+        check(filterOf(gTextures[key]) == 'nearest/nearest', 'filter %s: %s', key, filterOf(gTextures[key]))
+    end
+    for _, key in ipairs({'default', 'small'}) do
+        check(filterOf(gFonts[key]) == 'nearest/nearest', 'filter font %s: %s', key, filterOf(gFonts[key]))
+    end
+    for _, key in ipairs(SMOOTH_SURFACE_TEXTURES) do
+        local want = Assets.isPlaceholder(gTextures[key]) and 'nearest/nearest' or 'linear/linear'
+        check(filterOf(gTextures[key]) == want, 'filter surface %s: %s (want %s, mipmaps %d)', key,
+            filterOf(gTextures[key]), want, gTextures[key]:getMipmapCount())
+    end
+
     local silent, totalSounds = 0, 0
     for _, s in pairs(gSounds) do
         totalSounds = totalSounds + 1
@@ -138,7 +171,7 @@ local function script()
     check(is(FarmState), 'Enter -> farm')
     local farm = state()
     wait(0.3)
-    shot('02-farm')
+    shot('02-farm', {0, 0, 400, 250, 3})        -- HUD text, seed bags, hero, plots
 
     -- plant on the plot above the start tile (3,5), wait, harvest
     local seedsBefore = Farm.totalSeeds(farm.gameData)
@@ -176,7 +209,7 @@ local function script()
     check(back.roomIndex == 1 and (back.gameData.seeds.beanstalk or 0) >= 1, 'room 1 with at least one beanstalk')
     wait(0.3)
     check(Billboard.getAlphaShader() ~= nil, 'billboard alpha-discard shader compiled (no fallback)')
-    shot('06-room1-arrival')
+    shot('06-room1-arrival', {0, 0, 400, 70, 3}) -- Room 1 HUD text and seed list
 
     -- mouse look: turn right then back
     local d0 = g3d.camera.getDirectionPitch()
@@ -219,7 +252,7 @@ local function script()
     check(reached, 'room 1: climb the beanstalk and walk to the exit -> room 2')
     check(seeds() == FormatSeeds({pumpkin = 2, vine = 2}), 'room 2 allotment: %s', seeds())
     wait(0.3)
-    shot('09-room2-arrival')
+    shot('09-room2-arrival', {290, 380, 120, 80, 5}) -- billboard sprite edges
 
     -- Room 2: wrong type in the pit, then reset, then the right solution
     p = back.player
@@ -311,8 +344,11 @@ function love.run()
         love.graphics.origin()
         love.graphics.clear(love.graphics.getBackgroundColor())
         love.draw()
-        for _, name in ipairs(pendingShots) do
-            love.graphics.captureScreenshot(function(data) analyse(name, data) end)
+        for _, pending in ipairs(pendingShots) do
+            love.graphics.captureScreenshot(function(data)
+                analyse(pending.name, data)
+                if pending.crop then saveZoom(pending.name, data, pending.crop) end
+            end)
         end
         pendingShots = {}
         love.graphics.present()

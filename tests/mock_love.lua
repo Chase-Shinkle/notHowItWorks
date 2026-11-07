@@ -13,41 +13,58 @@ local function fileExists(path)
     return false
 end
 
-local function newImageObject(w, h, source)
-    return {
-        source = source, w = w, h = h,
-        setFilter = function() end, setWrap = function() end,
+-- Filters follow LÖVE: new images and fonts take the current default filter
+-- (linear until setDefaultFilter is called); setFilter changes one object.
+local function filterMethods(obj)
+    obj.filter = {M.defaultFilter[1], M.defaultFilter[2]}
+    obj.setFilter = function(self, min, mag) self.filter = {min, mag or min} end
+    obj.getFilter = function(self) return self.filter[1], self.filter[2] end
+    obj.setMipmapFilter = function(self, mode) self.mipmapFilter = mode end
+    obj.getMipmapFilter = function(self) return self.mipmapFilter end
+    return obj
+end
+
+local function newImageObject(w, h, source, settings)
+    return filterMethods({
+        source = source, w = w, h = h, mipmaps = settings and settings.mipmaps or false,
+        setWrap = function() end,
         getDimensions = function(self) return self.w, self.h end,
         getWidth = function(self) return self.w end,
         getHeight = function(self) return self.h end,
-    }
+    })
 end
 
 function M.install()
     M.calls, M.printed, M.pressed, M.held = {}, {}, {}, {}
     M.mouseX, M.mouseY = 0, 0
     M.relativeMode = false
+    M.defaultFilter = {'linear', 'linear'}
 
     local graphics = {
         getDimensions = function() return 800, 800 end,
         getWidth = function() return 800 end,
         getHeight = function() return 800 end,
         getCanvas = function() return nil end,
-        newImage = function(src)
+        newImage = function(src, settings)
             if type(src) == 'string' then
                 if not fileExists(src) then error('Could not open file ' .. src) end
-                return newImageObject(32, 32, src)
+                return newImageObject(32, 32, src, settings)
             end
-            return newImageObject(src.w, src.h, src)
+            return newImageObject(src.w, src.h, src, settings)
         end,
         newFont = function(a, b)
             local size = type(a) == 'number' and a or b or 12
-            return {
+            return filterMethods({
                 size = size,
                 getHeight = function() return size end,
                 getWidth = function(_, text) return #tostring(text) * math.ceil(size / 2) end,
-            }
+            })
         end,
+        setDefaultFilter = function(min, mag)
+            M.defaultFilter = {min, mag or min}
+            record('setDefaultFilter', min, mag)
+        end,
+        getDefaultFilter = function() return M.defaultFilter[1], M.defaultFilter[2] end,
         setDepthMode = function(...) record('setDepthMode', ...) end,
     }
     setmetatable(graphics, {__index = function(_, name)

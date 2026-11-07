@@ -41,6 +41,48 @@ local function find(list, pattern)
     for _, line in ipairs(list) do if line:find(pattern, 1, true) then return line end end
 end
 
+-- pixel-art filtering (polish M1) -------------------------------------------
+-- Every sprite, tile, billboard texture and font must be nearest; only the
+-- large backrooms surfaces may be linear. Fails if main.lua sets the default
+-- filter after src/Dependencies has already loaded the assets.
+local function filterOf(obj)
+    local min, mag = obj:getFilter()
+    return min .. '/' .. mag
+end
+
+test('filtering: sprites, tiles, billboards and fonts load nearest; surfaces are linear', function()
+    loadGame()
+    local surfaces = {}
+    for _, key in ipairs(SMOOTH_SURFACE_TEXTURES) do surfaces[key] = true end
+    local n = 0
+    for key, image in pairs(gTextures) do
+        if not surfaces[key] then
+            eq(filterOf(image), 'nearest/nearest', 'texture ' .. key)
+            n = n + 1
+        end
+    end
+    assert(n > 20, 'checked every pixel-art texture (' .. n .. ')')
+    for _, key in ipairs({'hero', 'crop-pumpkin-3', 'plot', 'well', 'bucket'}) do
+        eq(filterOf(gTextures[key]), 'nearest/nearest', key)
+    end
+    eq(filterOf(gFonts['default']), 'nearest/nearest', 'default font')
+    eq(filterOf(gFonts['small']), 'nearest/nearest', 'small font')
+    for key in pairs(surfaces) do
+        eq(filterOf(gTextures[key]), 'linear/linear', 'surface ' .. key)
+        eq(gTextures[key].mipmaps, true, 'surface ' .. key .. ' mipmapped')
+        eq(gTextures[key]:getMipmapFilter(), 'linear', 'surface ' .. key .. ' mipmap filter')
+    end
+end)
+
+test('filtering: forced placeholder images are nearest too (surfaces included)', function()
+    loadGame({'--placeholder-assets'})
+    for key, image in pairs(gTextures) do
+        assert(Assets.isPlaceholder(image) or key == 'white', key .. ' is a placeholder')
+        eq(filterOf(image), 'nearest/nearest', 'placeholder ' .. key)
+    end
+    eq(filterOf(gFonts['default']), 'nearest/nearest', 'default font')
+end)
+
 -- 1.1 render path ------------------------------------------------------------
 test('push states render through push with depth disabled', function()
     loadGame()

@@ -45,8 +45,9 @@ Assets.loadAll(gFonts, {
     ['small'] = {nil, 8},
 }, function(path, size) return Assets.loadFont(path, size) end)
 
--- Textures: {path, flat fallback color}
-Assets.loadAll(gTextures, {
+-- Textures: {path, flat fallback color}. Everything loads with the nearest
+-- default filter set at the top of main.lua (crisp pixel art).
+local TEXTURE_MANIFEST = {
     ['grass'] = {FARM_PACK .. 'Ground/Tiles - Grass - 01.png', {0.35, 0.65, 0.3, 1}},
     ['soil'] = {FARM_PACK .. 'Ground/Tiles - Soil - 01.png', {0.45, 0.3, 0.2, 1}},
     ['hero'] = {FARM_PACK .. 'Sprites/Hero  white - 001 copy.png', {0.9, 0.9, 0.9, 1}},
@@ -61,7 +62,16 @@ Assets.loadAll(gTextures, {
     ['sacks'] = {FARM_PACK .. 'Tools/Tools - ITEMS/Props - Icons - Sacks.png', {0.75, 0.65, 0.45, 1}, 10},
     ['plot'] = {FARM_PACK .. 'Ground/Props - Soil Preparation.png', {0.36, 0.22, 0.13, 1}},
     ['villager'] = {FARM_PACK .. 'Sprites/Hero  white - 001 copy 2.png', {0.7, 0.5, 0.85, 1}, 13},
-}, function(path, color, size) return Assets.loadImage(path, color, size) end)
+}
+Assets.loadAll(gTextures, TEXTURE_MANIFEST, function(path, color, size) return Assets.loadImage(path, color, size) end)
+
+-- The large tiling backrooms surfaces are photographic, not pixel art: they
+-- stay smooth (linear + mipmaps) so they do not shimmer at a distance.
+-- Placeholders for them keep the nearest default.
+SMOOTH_SURFACE_TEXTURES = {'wall', 'floor', 'ceiling'}
+for _, key in ipairs(SMOOTH_SURFACE_TEXTURES) do
+    gTextures[key] = Assets.smoothImage(gTextures[key], TEXTURE_MANIFEST[key][1])
+end
 
 -- Crop art per seed type. The pack has no beanstalk/vine crops yet, so green
 -- pepper and zucchini stand in; swap the folder/pattern when real art lands.
