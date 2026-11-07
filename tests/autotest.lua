@@ -114,7 +114,7 @@ local function analyse(name, data)
     local f = io.open(file, 'wb')
     if f then f:write(data:encode('png'):getString()); f:close() end
     check(errBlue / total < 0.3, 'screenshot %s: not the error screen (%.0f%% error blue)', name, 100 * errBlue / total)
-    -- the ending is a mostly black text screen (~99% black); the start screen is a lit farm scene, so "not blank" means
+    -- the title is a farm scene and the ending a lit 3D hallway; "not blank" means
     -- several colours and at least 0.2% lit pixels
     check(ncolors >= 3 and dark / total < 0.998, 'screenshot %s: not blank (%d colours, %.2f%% lit) -> %s',
         name, ncolors, 100 * (1 - dark / total), file)
@@ -411,7 +411,7 @@ local function script()
         faceAndShot(string.format('16-level%d-pickup-b', idx), firstCrit, 1.2)
         -- collect one by walking onto it, then reset: pickups back, stock empty
         back.player:setPosition(firstCrit.pos[1], firstCrit.pos[2], firstCrit.pos[3])
-        wait(0.2)
+    wait(0.2)
         local gained = totalSeeds() - (#data.pickups - nPick)
         check(gained >= 1 and gained == nPick - #back.room.pickups, 'level %d: pickup collected (+%d seed, %d left)', idx, gained, #back.room.pickups)
         shot(string.format('17-level%d-collected', idx))
@@ -510,10 +510,16 @@ local function script()
         if not ok then break end
     end
     check(ok and is(EndingState), 'last generated level exit -> ending')
-    wait(0.8)
-    shot('15-ending')
+    -- the ending is a live 3D hallway (native path) with text and buttons fading in
+    check(state().usesPush == false and state().room and state().menu, 'ending: 3D scene with a menu')
+    check(love.mouse.getRelativeMode() == false, 'ending: mouse is free')
     press('return')
-    check(state().update == StartState.update, 'ending: Enter returns to start')
+    wait(0.5)
+    check(is(EndingState), 'ending: early Enter (before the buttons show) does nothing')
+    wait(ENDING_BUTTONS_AT + ENDING_FADE + 0.3)
+    shot('15-ending')
+    press('return')   -- first button: Back to Title
+    check(state().update == StartState.update, 'ending: Enter on Back to Title returns to start')
     wait(0.2)
 
     -- window resize keeps both render paths working

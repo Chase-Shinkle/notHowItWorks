@@ -444,3 +444,13 @@ UI_BUTTON_TEXT_HI = {0.15, 0.1, 0.05, 1}
 
 BACKROOMS_HINT_SECONDS = 8   -- controls hint stays this long (mouse captured), then fades
 BACKROOMS_HINT_FADE = 1.5
+
+-- Ending screen (src/states/game/EndingState.lua)
+ENDING_CAM_SPEED = 0.6          -- m/s along the hallway path
+ENDING_CAM_LOOKAHEAD = 2.0      -- m ahead on the path that the camera faces
+ENDING_CAM_SWAY = 0.12          -- m of sideways sway (cells are 6 m wide)
+ENDING_PATH_CELLS = 5           -- most leading flat path cells used for the drift
+ENDING_LEVEL_INDEX = 99         -- LevelGen.levelSeed index of the ending hallway
+ENDING_LEVEL_TRIES = 3          -- generated candidates before the authored hallway
+ENDING_LIGHTING = 'dim'         -- flickering preset
+ENDING_HEADLINE_AT, ENDING_SUBTITLE_AT, ENDING_BUTTONS_AT, ENDING_FADE = 1.0, 2.5, 4.0, 1.2
