@@ -29,6 +29,6 @@
 
 ## 5. Solvability verification
 
-- [ ] 5.1 Extend `tests/reachability.lua` to sweep hundreds of seeds per difficulty: exit unreachable with no crops, reachable with the intended crops; fix any generator failures found.
-- [ ] 5.2 Add the sweep and property tests to `tests/check_all.sh` and run it green on the real LÖVE runtime.
-- [ ] 5.3 Playtest each generated level index with a few seeds, tune the difficulty table and pickup radius, and record seeds that exposed bugs in the verification notes.
+- [x] 5.1 Extend `tests/reachability.lua` to sweep hundreds of seeds per difficulty: exit unreachable with no crops, reachable with the intended crops; fix any generator failures found.
+- [x] 5.2 Add the sweep and property tests to `tests/check_all.sh` and run it green on the real LÖVE runtime.
+- [x] 5.3 Playtest each generated level index with a few seeds, tune the difficulty table and pickup radius, and record seeds that exposed bugs in the verification notes.

@@ -1,7 +1,6 @@
 # Verification: procedural-backrooms-levels
 
-Scope: sections 1-4 (sections 1-2 first run, 3 and 4 below, pickups now also verified in the real runtime). Section 5 (solvability sweep, check_all, playtest) is untouched.
-No `check_all.sh`, no package build. `openspec` CLI is not installed in this environment, so tasks were read from and checked in `tasks.md` by hand.
+Scope: sections 1-5. `check_all.sh` and package builds were run in the section 5 pass only. `openspec` CLI is not installed in this environment, so tasks were read from and checked in `tasks.md` by hand.
 
 ## Section 1: Generator foundation
 
@@ -68,8 +67,43 @@ full autotest set in `/workspace/qa/levels/autotest/`.
 Notes: old puzzle rooms 2-3 in `rooms.lua` are unused by the game now; unit tests reach them via `BackroomsState.roomsOverride`
 (the test-only override from the design). The autotest no longer plays them in the real runtime.
 
+## Section 5: Solvability verification (final pass)
+
+Commands (repo root, `love` 11.5 + xvfb-run + python3):
+- Everything: `sh tests/check_all.sh` -> **ALL CHECKS PASSED**, 1787 s wall on 8 cores (log: `/workspace/qa/levels/check_all.txt`).
+  Includes: `tests/run.lua` 175 passed / 0 failed; `tests/reachability.lua` 84 assignments, 0 unexpected;
+  level sweep (below); rim; launch x2; autotest 171 checks (assets) / 163 (placeholder) / 168 (--debug on the .love), 0 failed each;
+  `tools/package.sh` twice, same sha256, 297 files, no dev-only files; artifact launches and playthroughs.
+- Level sweep alone: `sh tests/levels_sweep.sh [FROM TO [DIFFS]]` (default `1 70 1,2,3`; `SWEEP_JOBS`, `SWEEP_NEG=0` env). One shard:
+  `SWEEP_FROM=1 SWEEP_TO=5 SWEEP_DIFFS=2 love tests/love_runner tests/levels_sweep.lua`.
+- Run seeds: `AUTOTEST_RUN_SEED=7 AUTOTEST_OUT=/tmp/x xvfb-run -a -s '-screen 0 1024x1024x24' love . --autotest`.
+
+### 5.1 Sweep result
+Seeds **1..70 x difficulties 1,2,3 = 210 generated levels** (70 per difficulty; 8 shards), 3150 `Reach.search` runs, **0 failures**
+(log `/workspace/qa/levels/levels_sweep_1-70.txt`; obstacles across all: pit/gap/ledge all appear, ~250 each total). Per level, on the real
+PlayerController/Room/LevelGen with physics-sampled BFS (no teleports; strafe actions skipped because 8 yaws of forward repeat them):
+spawn settles grounded; critical allotment per type == chain multiset; no crops -> exit unreachable; for each obstacle k with crops 1..k-1 grown,
+all its critical pickups and a planting spot for plot k (`Room:nearestPlot`) are reachable; all chain crops -> exit reachable and every pickup
+(extras too) reachable; negatives: any single chain plot left empty, or planted with either wrong type, leaves the exit unreachable
+(15 searches/level). Timing: ~40 s CPU per level, 1000-1560 s CPU per shard. An earlier 24-level (seeds 1-8) pass also had 0 failures.
+No generator failure was found, so no generator change. Support changes: `tests/reach.lua` got a `goal` callback, `noStrafe`, and exact
+per-state collider culling (same results, modestly faster).
+
+### 5.2
+Sweep added to `check_all.sh` (210 levels, adds ~20 min), full script green on the real LOVE runtime, package builds included.
+
+### 5.3 Scripted playtests (no human playtest)
+Full autotest flows with run seeds 7, 1234, 98765 (plus fixed 4242 in check_all): each 171 checks, 0 failed, levels 2-4 solved in chain order,
+reset per level, ending reached. Logs/screenshots: `/workspace/qa/levels/run-seed-<N>.log` and `run-seed-<N>/`.
+**Teleports vs navigation:** the autotest teleports the player next to each critical pickup and to the foot of each obstacle, then plants, grows,
+climbs/crosses, collides, exits and resets for real. Walking from spawn between those points is NOT exercised in the real window; it is covered
+only by the headless physics sweep above (same controller, no window/input handlers). A human playtest of feel/tuning was not done; the
+difficulty table and pickup radius (0.9 m) were left unchanged because nothing in the sweeps failed. Bug-exposing seeds: none.
+Uproot/reset/sequence progression: unit tests `uproot 3.1/3.2`, `sequence 4.1-4.3` and autotest (reset per generated level); not part of the sweep.
+
+Limitations: BFS is sampled (8 yaws, 0.25 s actions, 0.4 m cells), so "unreachable" negatives are evidence, not proof; seeds beyond 70 were not swept.
+
 ## Not done / pending
 
-- Section 5 (200+ seed physical sweep, check_all.sh, package builds, playtest) unchecked.
-- No check_all.sh or package build in this pass (only the unit file and the autotest).
+- Human playtest of generated levels (feel, tuning).
 - Atmosphere/visual change not started.

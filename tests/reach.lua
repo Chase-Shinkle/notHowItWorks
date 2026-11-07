@@ -51,7 +51,10 @@ end
 
 -- Returns reached (bool), info {cells, frames, at = {x, y, z} | nil,
 -- maxX, maxZ}. opts: cell (0.4), duration (0.25), dt (1/20), yaws (8),
--- cap (60000 cells), start {x, y, z} (default the room spawn).
+-- noStrafe (skip strafe actions: with 8+ yaws they repeat forward moves; used by the
+-- level sweep for speed), cap (60000 cells), start {x, y, z} (default the room spawn), goal (optional
+-- function(player, pmin, pmax) -> bool replacing the exit test; it is called
+-- after every simulated frame and may keep state to need several targets).
 function Reach.search(room, opts)
     opts = opts or {}
     local cell = opts.cell or 0.4
@@ -67,7 +70,7 @@ function Reach.search(room, opts)
     for k = 0, yaws - 1 do
         local d = 2 * math.pi * k / yaws
         actions[#actions + 1] = {forward = 1, strafe = 0, dir = d}
-        actions[#actions + 1] = {forward = 0, strafe = 1, dir = d}
+        if not opts.noStrafe then actions[#actions + 1] = {forward = 0, strafe = 1, dir = d} end
         actions[#actions + 1] = {forward = -1, strafe = 0, dir = d}
     end
 
@@ -76,8 +79,15 @@ function Reach.search(room, opts)
             math.floor(p.z / cell + 0.5), tostring(p.climbing ~= nil), tostring(p.grounded))
     end
 
+    local goal = opts.goal or function(_, pmin, pmax) return room:overlapsExit(pmin, pmax) end
     local p0 = PlayerController(s[1], s[2], s[3])
     for _ = 1, 20 do p0:update(dt, {}, 0, colliders, climbables) end
+    do
+        local pmin, pmax = p0:bounds()
+        if goal(p0, pmin, pmax) then
+            return true, {cells = 1, frames = 0, at = {p0.x, p0.y, p0.z}, maxX = p0.x, maxZ = p0.z}
+        end
+    end
     local seen, count = {[key(p0)] = true}, 1
     local frontier = {snapshot(p0)}
     local info = {cells = 1, frames = 0, maxX = p0.x, maxZ = p0.z}
@@ -85,15 +95,22 @@ function Reach.search(room, opts)
     while #frontier > 0 do
         local nextFrontier = {}
         for _, st in ipairs(frontier) do
+            -- only boxes within reach of this state matter for one action (<= 0.25 s of
+            -- movement); culling them is exact and makes the sweep several times faster
+            local near = {}
+            for _, c in ipairs(colliders) do
+                if c.max[1] >= st[1] - 3 and c.min[1] <= st[1] + 3 and c.max[2] >= st[2] - 3 and c.min[2] <= st[2] + 3
+                    and c.max[3] >= st[3] - 3 and c.min[3] <= st[3] + 4 then near[#near + 1] = c end
+            end
             for _, a in ipairs(actions) do
                 local p = restore(st)
                 local alive = true
                 for _ = 1, frames do
-                    p:update(dt, a, a.dir, colliders, climbables)
+                    p:update(dt, a, a.dir, near, climbables)
                     info.frames = info.frames + 1
                     if p.z < room.killZ then alive = false break end
                     local pmin, pmax = p:bounds()
-                    if room:overlapsExit(pmin, pmax) then
+                    if goal(p, pmin, pmax) then
                         info.cells, info.at = count, {p.x, p.y, p.z}
                         return true, info
                     end

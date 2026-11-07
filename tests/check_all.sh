@@ -14,6 +14,10 @@ step "reachability sweep (tests/reachability.lua)"
 love tests/love_runner tests/reachability.lua > /tmp/check_reach.txt 2>&1 || fail=1
 grep -v '^ok ' /tmp/check_reach.txt | tail -5
 
+step "generated-level physical sweep (tests/levels_sweep.sh: seeds 1..70 x difficulties 1-3 = 210 levels, ~20 min on 8 cores)"
+sh tests/levels_sweep.sh 1 70 > /tmp/check_sweep.txt 2>&1 || fail=1
+tail -12 /tmp/check_sweep.txt
+
 step "pit-rim measurement (tests/rim.lua): pit plots plantable over >= 2.5 m of floor"
 love tests/love_runner tests/rim.lua > /tmp/check_rim.txt 2>&1 || fail=1
 grep -E '^room|FAIL|rim:' /tmp/check_rim.txt
