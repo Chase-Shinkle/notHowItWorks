@@ -545,10 +545,29 @@ function LevelGen.build(seed, difficulty)
             end
         end
         srng:shuffle(cand)
+        -- large shapes first (stable after the shuffle): small 1x2 / gallery candidates are far more numerous and
+        -- would otherwise use up ROOM_SHAPE_MAX before a pillared hall, atrium, 2x3 or L room is ever tried.
+        local bigDone = {}
+        local PRIORITY = {pillared = 1, atrium = 2, room2x3 = 3, roomL = 4}
+        for i, cd in ipairs(cand) do cd.order = i end
+        table.sort(cand, function(a, b)
+            local pa, pb = PRIORITY[a.shape] or 9, PRIORITY[b.shape] or 9
+            if pa ~= pb then return pa < pb end
+            return a.order < b.order
+        end)
         for _, cd in ipairs(cand) do
             if stamped >= ROOM_SHAPE_MAX then break end
             local w = ROOM_SHAPE_WEIGHTS[cd.shape] or 0
-            if w > 0 and usable(cd.cells, cd.n or #cd.cells) and srng:chance(w * ROOM_SHAPE_CHANCE) then
+            -- keep two slots for the small shapes so the variety stays mixed
+            if PRIORITY[cd.shape] and stamped >= ROOM_SHAPE_MAX - 2 then w = 0 end
+            -- sites for the rare big shapes are few (often 1-3 per level), so a 0.1-0.2 roll would almost never fire:
+            -- the first eligible pillared hall / atrium is taken (one of each per level), the rest roll normally.
+            local p = w * ROOM_SHAPE_CHANCE
+            if w > 0 and (cd.shape == 'pillared' or cd.shape == 'atrium') then
+                if bigDone[cd.shape] then p = 0 else p = ROOM_SHAPE_BIG_CHANCE end
+            end
+            if w > 0 and usable(cd.cells, cd.n or #cd.cells) and srng:chance(p) then
+                if p == ROOM_SHAPE_BIG_CHANCE then bigDone[cd.shape] = true end
                 stamped = stamped + 1
                 local id = #rooms + 1
                 local r = {id = id, shape = cd.shape, cells = {}}
@@ -801,17 +820,41 @@ function LevelGen.build(seed, difficulty)
         end
         return ok[zoneRng:int(1, #ok)]
     end
-    local colourOrder = {}   -- most-connected zones first (Welsh-Powell) so the small pools rarely run out
+    -- Exact backtracking colouring (most-connected first, fewest-options tie-break). Themes and lightings are
+    -- coloured independently; if a pool cannot properly colour the adjacency graph (e.g. 3 themes vs a K4), the
+    -- greedy least-shared fallback runs and the clash stays visible in meta.zoneClashes (never silent).
+    local colourOrder = {}
     for i, z in ipairs(zoneList) do
         local deg = 0; for _ in pairs(z.adj) do deg = deg + 1 end
         colourOrder[i] = {z = z, deg = deg, i = i}
     end
     table.sort(colourOrder, function(a, b) if a.deg ~= b.deg then return a.deg > b.deg end return a.i < b.i end)
-    for _, o in ipairs(colourOrder) do
-        local z = o.z
-        z.theme = pickDistinct(MATERIAL_THEME_NAMES, 'theme', z)
-        z.lighting = pickDistinct(BACKROOMS_ZONE_LIGHTING_POOL, 'lighting', z)
+    local function colourField(pool, field)
+        local n, steps = #colourOrder, 0
+        local function solve(k)
+            if k > n then return true end
+            steps = steps + 1
+            if steps > 20000 then return false end
+            local z = colourOrder[k].z
+            local start = zoneRng:int(1, #pool)
+            for off = 0, #pool - 1 do
+                local v = pool[(start + off - 1) % #pool + 1]
+                local clash = false
+                for nid in pairs(z.adj) do if zoneById[nid][field] == v then clash = true; break end end
+                if not clash then
+                    z[field] = v
+                    if solve(k + 1) then return true end
+                    z[field] = nil
+                end
+            end
+            return false
+        end
+        if solve(1) then return end
+        for _, o in ipairs(colourOrder) do o.z[field] = nil end
+        for _, o in ipairs(colourOrder) do o.z[field] = pickDistinct(pool, field, o.z) end
     end
+    colourField(MATERIAL_THEME_NAMES, 'theme')
+    colourField(BACKROOMS_ZONE_LIGHTING_POOL, 'lighting')
     local themes = {}
     for _, c in ipairs(list) do themes[c] = zoneById[c.zone].theme end
     local boxes, plots, billboards = {}, {}, {}

@@ -1,5 +1,5 @@
--- Section 1 (audio) assertions for backrooms-zones-variety-audio. Standalone, not wired
--- into run.lua:  luajit tests/zones_audio.lua   (or lua / love tests/love_runner tests/zones_audio.lua)
+-- Section 1 (audio) assertions for backrooms-zones-variety-audio (wired into tests/check_all.sh):
+--   love tests/love_runner tests/zones_audio.lua   (or luajit tests/zones_audio.lua)
 package.path = './?.lua;./?/init.lua;' .. package.path
 local realPrint = print
 local mock = dofile('tests/mock_love.lua')
@@ -135,6 +135,19 @@ state:advance()                           -- last exit -> ending
 check(gStateMachine.current ~= state and next(playing) == nil, 'ending run leaves nothing playing')
 gStateMachine:change('start')
 check(next(playing) == nil, 'back at the start screen: silence')
+
+-- 1.3b the real fall: the farm break (glitch + fall) is silent; the hum starts only when the backrooms state is entered
+installFakes()
+gStateMachine:change('start'); gStateMachine:change('farm', NewGameData())
+local farm = gStateMachine.current
+farm:startBreak('idle')
+for _ = 1, 30 do farm:updateBreak(1 / 60) end
+check(gStateMachine.current == farm and next(playing) == nil, 'fall transition (farm break in progress) is silent')
+farm.breakDone = true
+farm:updateBreak(1 / 60)
+check(gStateMachine.current ~= farm and playing[gSounds['backrooms-hum']], 'hum starts when the fall lands in the backrooms')
+gStateMachine:change('start')
+check(next(playing) == nil, 'silent again at start')
 
 print(fails == 0 and 'zones_audio: OK' or ('zones_audio: ' .. fails .. ' FAILED'))
 os.exit(fails == 0 and 0 or 1)

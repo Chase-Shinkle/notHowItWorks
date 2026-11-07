@@ -410,6 +410,7 @@ BACKROOMS_ZONE_BLEND_DISTANCE = 2.5    -- m over which ambient/fog blend toward 
 ROOM_SHAPE_NAMES = {'hall', 'room2x2', 'room1x2', 'room2x3', 'roomL', 'pillared', 'atrium', 'gallery', 'closet'}
 ROOM_SHAPE_WEIGHTS = {hall = 1, room2x2 = 1, room1x2 = 1, room2x3 = 0.6, roomL = 0.8, pillared = 0.4, atrium = 0.3, gallery = 0.6, closet = 0.5}
 ROOM_SHAPE_CHANCE = 0.45               -- per candidate stamp: chance = weight * this
+ROOM_SHAPE_BIG_CHANCE = 1              -- chance the first eligible pillared hall / atrium site is taken (weight 0 still disables)
 ROOM_SHAPE_MAX = 6                     -- most new-shape rooms per level (2x2 rooms have LEVELGEN_MAX_ROOMS)
 ROOM_PILLAR_SIZE = 0.7                 -- m, square pillar
 ROOM_CLOSET_INSET = 0.6                -- m of side slab per side in a closet
