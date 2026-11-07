@@ -2,10 +2,10 @@
 
 ## 1. Generator foundation
 
-- [ ] 1.1 Add seeded RNG and level-seed derivation in `src/LevelGen.lua`; unit test that equal seeds give equal sequences and different seeds differ (tests/run.lua).
-- [ ] 1.2 Define pit, ledge and gap obstacle modules from the current room measurements (entry/exit faces, plots, dirs, elevation change, min ceiling); test each module's dimensions against the Crop sizes.
-- [ ] 1.3 Implement chain selection by difficulty and the cell grid layout with filler rooms, halls, loops, dead ends and secret nooks, emitting room-format boxes, plots and exit; test: no overlapping cells, all regions connected, `Room.validate` passes.
-- [ ] 1.4 Track floor elevation and ceiling clearance through the chain; test a ledge-then-gap chain keeps the exit reachable with enough headroom.
+- [x] 1.1 Add seeded RNG and level-seed derivation in `src/LevelGen.lua`; unit test that equal seeds give equal sequences and different seeds differ (tests/run.lua).
+- [x] 1.2 Define pit, ledge and gap obstacle modules from the current room measurements (entry/exit faces, plots, dirs, elevation change, min ceiling); test each module's dimensions against the Crop sizes.
+- [x] 1.3 Implement chain selection by difficulty and the cell grid layout with filler rooms, halls, loops, dead ends and secret nooks, emitting room-format boxes, plots and exit; test: no overlapping cells, all regions connected, `Room.validate` passes.
+- [x] 1.4 Track floor elevation and ceiling clearance through the chain; test a ledge-then-gap chain keeps the exit reachable with enough headroom.
 
 ## 2. Seeds and pickups
 

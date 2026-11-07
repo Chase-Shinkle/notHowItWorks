@@ -18,6 +18,7 @@ require 'src/Billboard'
 require 'src/Crop'
 require 'src/Room'
 require 'src/rooms'
+require 'src/LevelGen'
 
 require 'src/states/game/BaseState'
 require 'src/states/game/StartState'

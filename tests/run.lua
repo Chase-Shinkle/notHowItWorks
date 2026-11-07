@@ -3396,5 +3396,96 @@ test('shader: the backrooms never uses the farm pass', function()
     eq(next(shader.sent), nil, 'no uniforms sent')
 end)
 
+-- procedural levels (openspec procedural-backrooms-levels, sections 1-2) ------
+test('levelgen 1.1: equal seeds give equal sequences, different seeds differ', function()
+    local a, b, c = LevelGen.rng(42), LevelGen.rng(42), LevelGen.rng(43)
+    local same, diff = true, false
+    for _ = 1, 50 do
+        local x, y, z = a:next(), b:next(), c:next()
+        if x ~= y then same = false end
+        if x ~= z then diff = true end
+        assert(x >= 0 and x < 1, 'in [0, 1)')
+    end
+    assert(same, 'equal seeds equal'); assert(diff, 'different seeds differ')
+    eq(LevelGen.levelSeed(7, 2), LevelGen.levelSeed(7, 2), 'levelSeed deterministic')
+    local seen = {}
+    for i = 1, 20 do seen[LevelGen.levelSeed(7, i)] = true end
+    local count = 0
+    for _ in pairs(seen) do count = count + 1 end
+    eq(count, 20, 'level seeds of one run are distinct')
+    assert(LevelGen.levelSeed(7, 1) ~= LevelGen.levelSeed(8, 1), 'run seed matters')
+end)
+
+test('levelgen 1.2: module dimensions match the crop sizes', function()
+    loadGame()
+    local M = LevelGen.MODULES
+    local pumpkin = CROP_DEFS.pumpkin.size
+    eq(M.pit.pitX1 - M.pit.pitX0, pumpkin[1], 'pit width = pumpkin width')
+    eq(M.pit.depth, pumpkin[3], 'pit depth = pumpkin height')
+    eq(M.pit.plot[3], -M.pit.depth, 'pit plot at the pit bottom')
+    eq((M.pit.pitX0 + M.pit.pitX1) / 2, M.pit.plot[1], 'pit plot centred')
+    local beanstalk = CROP_DEFS.beanstalk.size[3]
+    assert(M.ledge.rise <= beanstalk, 'beanstalk reaches the ledge top')
+    assert(beanstalk <= M.ledge.minCeiling, 'ledge ceiling clears the beanstalk')
+    assert(math.abs((M.ledge.faceX - M.ledge.plot[1]) - 0.8) < 1e-9, 'ledge plot 0.8 m before the face')
+    -- the vine, planted on the gap plot, spans the gap and lands on the floor
+    local mn, mx = Crop.fullBounds('vine', {pos = M.gap.plot, dir = M.gap.dir})
+    assert(mn[1] <= M.gap.gapX0 and mx[1] >= M.gap.gapX1, 'vine spans the gap')
+    assert(mx[1] <= 6 + 1.4, 'vine lands within the next cell floor')
+end)
+
+local function gen(seed, d, opts) return LevelGen.generate(seed, d, opts) end
+
+test('levelgen 1.3: layouts are valid, connected, non-overlapping and deterministic', function()
+    loadGame()
+    for d = 1, #LEVELGEN_DIFFICULTY do
+        for seed = 1, 40 do
+            local data = gen(seed, d)
+            assert(Room.validate(data))
+            Room(data)
+            eq(data.meta.obstacles, LEVELGEN_DIFFICULTY[d].obstacles, 'chain length')
+            local ok, msg = LevelGen.check(data)
+            assert(ok, 'seed ' .. seed .. ': ' .. tostring(msg))
+        end
+    end
+    local a, b = gen(5, 2), gen(5, 2)
+    eq(#a.boxes, #b.boxes, 'same boxes'); eq(#a.pickups, #b.pickups, 'same pickups')
+    for i, bx in ipairs(a.boxes) do eq(bx.pos[1], b.boxes[i].pos[1]); eq(bx.size[2], b.boxes[i].size[2]) end
+    for i, p in ipairs(a.pickups) do eq(p.pos[1], b.pickups[i].pos[1]); eq(p.seed, b.pickups[i].seed) end
+    eq(a.exit.pos[1], b.exit.pos[1], 'same exit')
+    local differing = 0
+    for s = 1, 20 do if #gen(s, 2).boxes ~= #gen(s + 100, 2).boxes or gen(s, 2).exit.pos[1] ~= gen(s + 100, 2).exit.pos[1] then differing = differing + 1 end end
+    assert(differing >= 12, 'most seed pairs differ: ' .. differing)
+    -- a hand-made overlap is caught
+    local bad = gen(5, 2)
+    table.insert(bad.meta.cells, bad.meta.cells[1])
+    assert(not LevelGen.check(bad), 'overlap rejected')
+end)
+
+test('levelgen 1.4: elevation and headroom track the chain (ledge then gap)', function()
+    loadGame()
+    local found = 0
+    for seed = 1, 300 do
+        local data = gen(seed, 3)
+        local cells = data.meta.cells
+        for i, c in ipairs(cells) do
+            if c.kind == 'module' and c.module == 'ledge' then
+                eq(c.elevOut, c.elev + LevelGen.MODULES.ledge.rise, 'ledge raises the floor')
+                assert(c.ceil - c.elevOut >= BACKROOMS_PLAYER_HEIGHT + 0.5, 'headroom above the ledge')
+                for _, o in ipairs(cells) do
+                    if o.kind == 'module' and o.k == c.k + 1 and o.module == 'gap' then
+                        eq(o.elev, c.elevOut, 'gap sits at ledge height')
+                        local plot
+                        for _, p in ipairs(data.plots) do if p.id == 'p' .. o.k then plot = p end end
+                        eq(plot.pos[3], c.elevOut, 'gap plot at ledge height')
+                        found = found + 1
+                    end
+                end
+            end
+        end
+    end
+    assert(found > 0, 'a ledge-then-gap chain occurred')
+end)
+
 realPrint(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)

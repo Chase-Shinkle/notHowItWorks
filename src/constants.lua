@@ -314,3 +314,22 @@ BACKROOMS_KEYS = {
     seedSlots = {'1', '2', '3'},      -- select SEED_TYPES[i] directly
     reset = {'r'},
 }
+
+-- Procedural backrooms levels (src/LevelGen.lua). Cells are square, CELL m on
+-- a side; modules (obstacles) are exactly one cell long.
+LEVELGEN_CELL = 6
+LEVELGEN_WALL = 0.2                  -- wall / ceiling / floor slab thickness
+LEVELGEN_DOOR = 2.4                  -- doorway width between side cells
+LEVELGEN_CEILING = 6                 -- ceiling height above a cell's entry floor
+LEVELGEN_VOID_Z = -4                 -- bottom of pits and gaps
+LEVELGEN_KILL_Z = -0.5
+LEVELGEN_MAX_ATTEMPTS = 20           -- derived-seed retries by the self-check
+LEVELGEN_BRANCH_CHANCE = 0.45        -- per filler cell and side
+LEVELGEN_LOOP_CHANCE = 0.4           -- per filler region with 2+ cells
+-- Difficulty table: chain obstacle count and the obstacle types allowed. The
+-- level sequence (later section) indexes into it.
+LEVELGEN_DIFFICULTY = {
+    {obstacles = 2, types = {'pit', 'gap'}},
+    {obstacles = 3, types = {'pit', 'gap', 'ledge'}},
+    {obstacles = 4, types = {'pit', 'gap', 'ledge'}},
+}
