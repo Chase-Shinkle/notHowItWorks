@@ -3018,5 +3018,168 @@ test('hud: a new farm shows day 1; empty slots dim and the selected slot stays h
     eq(colorBeforeDraw(produce)[4], 1)
 end)
 
+-- farm game feel: world dressing (section 4) ----------------------------------------
+local function decorTiles(kind)
+    if kind == 'barn' then return FARM_DECOR.barn.blocks end
+    return FARM_DECOR[kind]
+end
+
+test('decor: solid dressing blocks movement (the farmer only turns); path tiles do not', function()
+    local farm = toFarm()
+    for _, kind in ipairs({'fence', 'well', 'bushes', 'pond', 'barn'}) do
+        for _, t in ipairs(decorTiles(kind)) do
+            eq(farm:isWalkable(t[1], t[2]), false, kind .. ' (' .. t[1] .. ',' .. t[2] .. ') blocks')
+            -- approach from a walkable neighbour and press toward it
+            for dir, d in pairs({left = {1, 0}, right = {-1, 0}, up = {0, 1}, down = {0, -1}}) do
+                local c, r = t[1] + d[1], t[2] + d[2]
+                if farm:isWalkable(c, r) then
+                    farm.player.col, farm.player.row = c, r
+                    eq(farm:tryMove(dir), false, kind .. ' entered from ' .. dir)
+                    eq(farm.player.col, c); eq(farm.player.row, r); eq(farm.player.facing, dir, 'turned to face it')
+                end
+            end
+        end
+    end
+    for _, t in ipairs(FARM_DECOR.path) do
+        eq(farm:isWalkable(t[1], t[2]), true, 'path (' .. t[1] .. ',' .. t[2] .. ') walkable')
+    end
+    -- walk along the path: start (3,6) -> right x4 -> (7,6) -> up x2 -> (7,4)
+    farm.player.col, farm.player.row = FARM_PLAYER_START.col, FARM_PLAYER_START.row
+    for _ = 1, 4 do press('right') end
+    eq(farm.player.col, 7); eq(farm.player.row, 6, 'walked onto the path')
+    press('up'); press('up')
+    eq(farm.player.row, 4, 'up the path'); press('right'); eq(farm:facingTarget().kind, 'villager')
+end)
+
+test('decor: nothing sits on the HUD rows, start tile, plots, villager or stall; the barn tops out behind the HUD', function()
+    local farm = toFarm()
+    local reserved = {[FARM_PLAYER_START.col .. ',' .. FARM_PLAYER_START.row] = 'start',
+        [FARM_VILLAGER.col .. ',' .. FARM_VILLAGER.row] = 'villager', [FARM_SHOP.col .. ',' .. FARM_SHOP.row] = 'stall'}
+    for _, p in ipairs(farm.plots) do reserved[p.col .. ',' .. p.row] = 'plot' end
+    for _, kind in ipairs({'fence', 'path', 'well', 'bushes', 'pond', 'barn'}) do
+        for _, t in ipairs(decorTiles(kind)) do
+            local k = t[1] .. ',' .. t[2]
+            eq(reserved[k], nil, kind .. ' on ' .. tostring(reserved[k]) .. ' at ' .. k)
+            assert(t[2] >= FARM_FIELD_TOP and t[2] <= FARM_FIELD_BOTTOM, kind .. ' inside the field rows')
+        end
+    end
+    for _, g in ipairs(farm.groundDecor) do
+        assert(not reserved[g.col .. ',' .. g.row] and not farm:isBlockedDecor(g.col, g.row), 'ground variation on free grass')
+    end
+    -- the fence flanks the plot block left and right only
+    for _, t in ipairs(FARM_DECOR.fence) do
+        assert((t[1] == FARM_PLOTS.col - 1 or t[1] == FARM_PLOTS.col + FARM_PLOTS.cols)
+            and t[2] >= FARM_PLOTS.row and t[2] < FARM_PLOTS.row + FARM_PLOTS.rows, 'fence beside the plots')
+    end
+    -- the barn is drawn bottom-aligned on its row; its top is under the HUD bar
+    mock.reset(); love.draw()
+    for _, c in ipairs(mock.calls) do
+        if c.name == 'draw' and c.args[1] == gTextures['barn'] then
+            local y = c.args[3]
+            eq(y + 96, FARM_DECOR.barn.row * FARM_TILE, 'barn bottom on row ' .. FARM_DECOR.barn.row)
+            assert(y < FARM_TILE, 'roof behind the HUD bar')
+        end
+    end
+end)
+
+test('decor: from the start, every plot, the villager and the stall have a reachable walkable neighbour', function()
+    local farm = toFarm()
+    local seen, queue = {}, {{FARM_PLAYER_START.col, FARM_PLAYER_START.row}}
+    seen[FARM_PLAYER_START.col .. ',' .. FARM_PLAYER_START.row] = true
+    while #queue > 0 do
+        local c = table.remove(queue, 1)
+        for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
+            local nc, nr = c[1] + d[1], c[2] + d[2]
+            if not seen[nc .. ',' .. nr] and farm:isWalkable(nc, nr) then
+                seen[nc .. ',' .. nr] = true; queue[#queue + 1] = {nc, nr}
+            end
+        end
+    end
+    local function reachable(col, row)
+        for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
+            if seen[(col + d[1]) .. ',' .. (row + d[2])] then return true end
+        end
+        return false
+    end
+    for _, p in ipairs(farm.plots) do assert(reachable(p.col, p.row), 'plot ' .. p.col .. ',' .. p.row) end
+    assert(reachable(FARM_VILLAGER.col, FARM_VILLAGER.row), 'villager')
+    assert(reachable(FARM_SHOP.col, FARM_SHOP.row), 'stall')
+    local n = 0; for _ in pairs(seen) do n = n + 1 end
+    assert(n > 40, 'most of the field is open (' .. n .. ' tiles)')
+end)
+
+test('decor: ground variation is identical on two entries and leaves the global RNG alone', function()
+    local farm = toFarm()
+    local function sig(f)
+        local parts = {}
+        for _, g in ipairs(f.groundDecor) do parts[#parts + 1] = table.concat({g.kind, g.col, g.row, g.x, g.y}, ':') end
+        return table.concat(parts, ' ')
+    end
+    local a = sig(farm)
+    assert(#farm.groundDecor >= 10, 'some tufts and stones (' .. #farm.groundDecor .. ')')
+    math.randomseed(7); local r1 = math.random()
+    math.randomseed(7)
+    gStateMachine:change('farm', NewGameData())
+    local r2 = math.random()
+    eq(r1, r2, 'entering the farm does not consume the global RNG')
+    eq(sig(gStateMachine.current), a, 'same layout on the second entry')
+end)
+
+test('decor: three soil looks (untilled, tilled, watered) are drawn differently', function()
+    local farm = toFarm()
+    local plot = farm:facingTarget().plot
+    local x, y = FarmTileToPixel(plot.col, plot.row)
+    local function look()
+        mock.reset(); farm:renderSoil(plot, x, y)
+        local parts = {}
+        for _, c in ipairs(mock.calls) do
+            local a = c.args
+            if c.name == 'setColor' then parts[#parts + 1] = 'c' .. table.concat({a[1], a[2], a[3]}, ',')
+            elseif c.name == 'draw' then
+                for k, v in pairs(gTextures) do if v == a[1] then parts[#parts + 1] = k end end
+            end
+        end
+        return table.concat(parts, ' ')
+    end
+    local untilled = look()
+    press('e'); local tilled = look()
+    press('e'); press('e'); local watered = look()
+    assert(untilled ~= tilled and tilled ~= watered and untilled ~= watered, 'three different looks')
+    assert(not untilled:find('plot', 1, true) and tilled:find('plot', 1, true), 'furrows only once tilled')
+    assert(watered:find('c0.7,0.82,1', 1, true), 'wet sheen when watered')
+end)
+
+test('decor: ambient sway and shimmer move with time but tile positions never change; frozen in the break', function()
+    local farm = farmAtVillager({crops = {beanstalk = 1}})
+    local plot = farm:plotAt(FARM_PLOTS.col, FARM_PLOTS.row)
+    plot.tilled = true; Farm.plant(plot, farm.gameData, 'beanstalk')
+    local function frame()
+        mock.reset(); love.draw()
+        local soil, skews = {}, {}
+        for _, c in ipairs(mock.calls) do
+            if c.name == 'draw' and c.args[1] == gTextures['soil'] then soil[#soil + 1] = c.args[2] .. ',' .. c.args[3] end
+            if c.name == 'draw' and c.args[9] then skews[#skews + 1] = c.args[9] end
+        end
+        return table.concat(soil, ' '), table.concat(skews, ',')
+    end
+    local positions = {}
+    for _, p in ipairs(farm.plots) do positions[#positions + 1] = p.col .. ',' .. p.row end
+    local soil1, sway1 = frame()
+    run(0.7)
+    local soil2, sway2 = frame()
+    eq(soil2, soil1, 'soil tiles drawn at the same positions')
+    assert(sway1 ~= sway2, 'something sways over time')
+    local after = {}
+    for _, p in ipairs(farm.plots) do after[#after + 1] = p.col .. ',' .. p.row end
+    eq(table.concat(after, ' '), table.concat(positions, ' '), 'plot tiles unchanged')
+    eq(farm.player.col, FARM_VILLAGER.col - 1); eq(FARM_VILLAGER.col, 8)
+    -- the break freezes ambient time
+    press('e'); press('e')                     -- sale, then over-sell
+    eq(farm.breaking, true)
+    local t = farm.time
+    run(1)
+    eq(farm.time, t, 'ambient time frozen during the break')
+end)
+
 realPrint(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)

@@ -169,6 +169,26 @@ scene('hud', function()
         #bad == 0 and 'none' or table.concat(bad, ', '))
 end)
 
+scene('farm-start', function()
+    newFarm()
+    wait(0.5)
+    shot('farm-start-daylight', 'fresh farm (new game data), 0.5 s after entering, no input', nil)
+end)
+
+scene('soil', function()
+    local farm = newFarm()
+    -- setup: three plots of the top row put directly into the untilled,
+    -- tilled-with-crop (dry) and watered-with-crop states
+    local a, b, c = farm:plotAt(2, 4), farm:plotAt(3, 4), farm:plotAt(4, 4)
+    b.tilled = true; Farm.plant(b, farm.gameData, 'pumpkin')
+    c.tilled = true; Farm.plant(c, farm.gameData, 'pumpkin'); Farm.water(c)
+    local d = farm:plotAt(2, 5); d.tilled = true
+    face(farm, 6, 6, 'down')
+    wait(0.5)
+    shot('soil-three-looks', 'setup: row 4 = untilled | tilled+unwatered crop | watered crop; (2,5) tilled empty',
+        {FARM_TILE * 0, FARM_TILE * 3 - 8, FARM_TILE * 6, FARM_TILE * 2 + 16, 3})
+end)
+
 scene('characters-data', function()
     -- the loaded villager image really differs from the hero's pixels
     local function imageData(path) return love.image.newImageData(path) end

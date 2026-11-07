@@ -42,6 +42,11 @@ requests a 24-bit depth buffer for the window.
   crop, and lost at harvest; watering part-way keeps the progress. A first
   till -> plant -> water -> harvest -> sell cycle takes about 20 s (about
   32 s without watering).
+- World dressing (`FARM_DECOR`): fence beside the plots, a dirt path to the
+  villager and the stall, the barn behind the villager, a well, berry bushes
+  and a pond. Fence, barn, well, bushes and pond block movement (you turn to
+  face them); the path and the scattered tufts and stones do not. Every plot,
+  the villager and the stall stay reachable from the start (a test checks).
 - Names: the `vine` seed type is shown to the player as "corn" everywhere
   (`SEED_DISPLAY_NAMES` / `SeedName`); internal keys and art are unchanged.
 

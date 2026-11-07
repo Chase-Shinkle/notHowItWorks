@@ -64,6 +64,7 @@ function FarmState:enter(gameData)
     self.gameData = gameData or NewGameData()
     self.timers = {}                      -- knife Timer group for crop growth
     self.plots = Farm.newPlots()
+    self:buildDecor()
 
     self.player = {
         col = FARM_PLAYER_START.col,
@@ -134,10 +135,51 @@ function FarmState:targetAt(col, row)
     return nil
 end
 
+-- Builds the dressing from FARM_DECOR: `blocked` (solid tiles), `pathTiles`
+-- and the ground variation (tufts and stones on free grass tiles), from a
+-- fixed-seed local generator so the layout is the same on every entry and the
+-- global math.random sequence (used by the break's corruption) is untouched.
+function FarmState:buildDecor()
+    local D = FARM_DECOR
+    local function key(c, r) return c .. ',' .. r end
+    self.blocked, self.pathTiles = {}, {}
+    for _, list in ipairs({D.fence, D.well, D.bushes, D.pond, D.barn.blocks}) do
+        for _, t in ipairs(list) do self.blocked[key(t[1], t[2])] = true end
+    end
+    for _, t in ipairs(D.path) do self.pathTiles[key(t[1], t[2])] = true end
+
+    local seed = D.groundSeed
+    local function rand()
+        seed = (seed * 16807) % 2147483647
+        return seed / 2147483647
+    end
+    self.groundDecor = {}
+    for row = FARM_FIELD_TOP, FARM_FIELD_BOTTOM do
+        for col = 1, FARM_COLS do
+            local k = key(col, row)
+            local free = not self.blocked[k] and not self.pathTiles[k] and not self:targetAt(col, row)
+                and not (col == FARM_PLAYER_START.col and row == FARM_PLAYER_START.row)
+            local r1, r2, r3, r4 = rand(), rand(), rand(), rand()
+            if free and r1 < D.tuftChance then
+                self.groundDecor[#self.groundDecor + 1] = {kind = 'tuft', col = col, row = row,
+                    x = math.floor(4 + r2 * 22), y = math.floor(8 + r3 * 18), phase = r4 * 6.28}
+            elseif free and r1 < D.tuftChance + D.stoneChance then
+                self.groundDecor[#self.groundDecor + 1] = {kind = 'stone', col = col, row = row,
+                    x = math.floor(4 + r2 * 22), y = math.floor(6 + r3 * 20), big = r4 < 0.4}
+            end
+        end
+    end
+end
+
+function FarmState:isBlockedDecor(col, row)
+    return self.blocked[col .. ',' .. row] == true
+end
+
 function FarmState:isWalkable(col, row)
     if col < 1 or col > FARM_COLS or row < FARM_FIELD_TOP or row > FARM_FIELD_BOTTOM then
         return false
     end
+    if self:isBlockedDecor(col, row) then return false end
     return self:targetAt(col, row) == nil
 end
 
@@ -582,18 +624,98 @@ local function drawIcon(image, x, y, size, pulse, alpha)
     love.graphics.draw(image, x + size / 2, y + size / 2, 0, s, s, iw / 2, ih / 2)
 end
 
-local function drawSprite(image, x, y, tint, sx, sy)
+local function drawSprite(image, x, y, tint, sx, sy, kx)
     -- draws an image scaled x2, bottom-centred in the tile at (x, y); sx/sy
-    -- (optional) multiply the scale around the bottom centre (pops, squash)
+    -- (optional) multiply the scale around the bottom centre (pops, squash);
+    -- kx (optional) skews it around the bottom (ambient sway)
     local w, h = image:getDimensions()
     local scale = math.min(2, (FARM_TILE - 4) / math.max(w, h))
     love.graphics.setColor(tint or {1, 1, 1, 1})
-    love.graphics.draw(image, x + FARM_TILE / 2, y + FARM_TILE - 2, 0, scale * (sx or 1), scale * (sy or 1), w / 2, h)
+    love.graphics.draw(image, x + FARM_TILE / 2, y + FARM_TILE - 2, 0, scale * (sx or 1), scale * (sy or 1), w / 2, h,
+        kx or 0, 0)
+end
+
+-- A soft drop shadow under something standing on the tile at (x, y).
+local function drawShadow(x, y, width)
+    love.graphics.setColor(0, 0, 0, 0.22)
+    love.graphics.ellipse('fill', x + FARM_TILE / 2, y + FARM_TILE - 3, (width or 20) / 2, 3)
 end
 
 local function drawTiled(image, x, y)
     local w, h = image:getDimensions()
     love.graphics.draw(image, x, y, 0, FARM_TILE / w, FARM_TILE / h)
+end
+
+-- Ambient sway (an x-skew) for something at `phase`; frozen with self.time
+-- during the break. Never moves logical positions.
+function FarmState:sway(phase)
+    return math.sin((self.time or 0) * FARM_SWAY_SPEED + phase) * FARM_SWAY_SKEW
+end
+
+-- The three soil looks: untilled (pale, dry, flat), tilled (furrows),
+-- watered (dark and wet).
+function FarmState:renderSoil(plot, x, y)
+    if not plot.tilled then
+        love.graphics.setColor(0.86, 0.78, 0.6, 1)
+        drawTiled(gTextures['soil'], x, y)
+        love.graphics.setColor(0.35, 0.25, 0.15, 0.3)
+        love.graphics.rectangle('line', x + 1.5, y + 1.5, FARM_TILE - 3, FARM_TILE - 3)
+        return
+    end
+    local wet = plot.watered and plot.state ~= PLOT_EMPTY
+    local k = wet and 0.62 or 1
+    love.graphics.setColor(k, k * 0.95, wet and 0.66 or 1, 1)
+    drawTiled(gTextures['soil'], x, y)
+    drawTiled(gTextures['plot'], x, y)
+    if wet then
+        -- dark damp patches and a cool wet sheen
+        love.graphics.setColor(0.18, 0.1, 0.1, 0.35)
+        love.graphics.rectangle('fill', x + 3, y + 24, 9, 4)
+        love.graphics.rectangle('fill', x + 20, y + 4, 8, 3)
+        love.graphics.setColor(0.7, 0.82, 1, 0.6)
+        love.graphics.rectangle('fill', x + 5, y + 6, 3, 1)
+        love.graphics.rectangle('fill', x + 22, y + 23, 3, 1)
+        love.graphics.rectangle('fill', x + 25, y + 12, 1, 1)
+    end
+end
+
+function FarmState:renderPond()
+    local set = {}
+    for _, t in ipairs(FARM_DECOR.pond) do set[t[1] .. ',' .. t[2]] = true end
+    local function has(c, r) return set[c .. ',' .. r] end
+    -- insets only on sides without another pond tile, so the tiles merge
+    local function insets(c, r)
+        return has(c - 1, r) and 0 or 3, has(c + 1, r) and 0 or 3, has(c, r - 1) and 0 or 4, has(c, r + 1) and 0 or 3
+    end
+    -- three passes (bank, water, highlights) so no tile's bank covers another's water
+    for pass = 1, 3 do
+        for _, t in ipairs(FARM_DECOR.pond) do
+            local c, r = t[1], t[2]
+            local x, y = FarmTileToPixel(c, r)
+            local l, rr, u, d = insets(c, r)
+            local w, h = FARM_TILE - l - rr, FARM_TILE - u - d
+            if pass == 1 then
+                love.graphics.setColor(0.2, 0.32, 0.22, 1)
+                love.graphics.rectangle('fill', x + l - 1, y + u - 1, w + 2, h + 2, 4, 4)
+            elseif pass == 2 then
+                love.graphics.setColor(0.24, 0.5, 0.78, 1)
+                love.graphics.rectangle('fill', x + l, y + u, w, h, 3, 3)
+                if u > 0 then
+                    love.graphics.setColor(0.17, 0.38, 0.62, 1)   -- shaded top bank edge
+                    love.graphics.rectangle('fill', x + l, y + u, w, 2)
+                end
+            else
+                -- shimmer: highlight pixels drifting with time
+                local t0 = (self.time or 0) * FARM_POND_SHIMMER_SPEED
+                for i = 0, 2 do
+                    local px = x + l + 3 + ((i * 9 + c * 5 + math.floor(t0 * 4 + i * 3)) % math.max(1, w - 8))
+                    local py = y + u + 5 + i * 6 + math.floor(math.sin(t0 + i + r) + 0.5)
+                    love.graphics.setColor(0.85, 0.95, 1, 0.55 + 0.35 * math.sin(t0 * 2 + i * 2 + c))
+                    love.graphics.rectangle('fill', px, py, 3, 1)
+                end
+            end
+        end
+    end
 end
 
 function FarmState:renderField()
@@ -605,15 +727,44 @@ function FarmState:renderField()
         end
     end
 
+    -- dirt path to the villager and the stall
+    for _, t in ipairs(FARM_DECOR.path) do
+        local x, y = FarmTileToPixel(t[1], t[2])
+        love.graphics.setColor(1, 0.94, 0.82, 1)
+        drawTiled(gTextures['path'], x, y)
+    end
+
+    -- ground variation: swaying tufts and small stones
+    for _, g in ipairs(self.groundDecor) do
+        local x, y = FarmTileToPixel(g.col, g.row)
+        x, y = x + g.x, y + g.y
+        if g.kind == 'tuft' then
+            local lean = math.floor(self:sway(g.phase) * 20 + 0.5)
+            love.graphics.setColor(0.22, 0.45, 0.2, 1)
+            love.graphics.rectangle('fill', x, y - 3, 1, 3)
+            love.graphics.rectangle('fill', x + 2, y - 4, 1, 4)
+            love.graphics.setColor(0.45, 0.72, 0.32, 1)
+            love.graphics.rectangle('fill', x + lean, y - 4, 1, 1)
+            love.graphics.rectangle('fill', x + 2 + lean, y - 5, 1, 1)
+            love.graphics.rectangle('fill', x + 1, y - 2, 1, 2)
+        else
+            love.graphics.setColor(0.35, 0.36, 0.38, 1)
+            love.graphics.rectangle('fill', x, y, g.big and 3 or 2, 2)
+            love.graphics.setColor(0.62, 0.63, 0.62, 1)
+            love.graphics.rectangle('fill', x, y, g.big and 2 or 1, 1)
+        end
+    end
+
+    -- plots: soil look, then the crop with its shadow, pop, squash and sway
     for _, plot in ipairs(self.plots) do
         local x, y = FarmTileToPixel(plot.col, plot.row)
-        love.graphics.setColor(1, 1, 1, 1)
-        drawTiled(gTextures['soil'], x, y)
-        drawTiled(gTextures['plot'], x, y)
+        self:renderSoil(plot, x, y)
         if plot.state ~= PLOT_EMPTY then
             local pop = self.juice:popScale(plot.col .. ',' .. plot.row)
             local sx, sy = self.juice:squashScale('crop-' .. plot.col .. ',' .. plot.row)
-            drawSprite(gTextures['crop-' .. plot.seedType .. '-' .. plot.stage], x, y, nil, sx * pop, sy * pop)
+            drawShadow(x, y, 6 + plot.stage * 3)
+            drawSprite(gTextures['crop-' .. plot.seedType .. '-' .. plot.stage], x, y, nil, sx * pop, sy * pop,
+                self:sway(plot.col * 1.3 + plot.row))
         end
         if plot.state == PLOT_MATURE then
             -- small "ready" marker
@@ -622,8 +773,40 @@ function FarmState:renderField()
         end
     end
 
+    self:renderPond()
+
+    -- solid dressing, back to front
+    local barn = gTextures['barn']
+    local bw, bh = barn:getDimensions()
+    local bx, by = FarmTileToPixel(FARM_DECOR.barn.col, FARM_DECOR.barn.row)
+    love.graphics.setColor(0, 0, 0, 0.22)
+    love.graphics.ellipse('fill', bx + bw / 2, by + FARM_TILE - 3, bw / 2 - 4, 4)
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.draw(barn, bx, by + FARM_TILE - bh * (96 / bh), 0, 96 / bw, 96 / bh)
+
+    for _, t in ipairs(FARM_DECOR.fence) do
+        local x, y = FarmTileToPixel(t[1], t[2])
+        local img = gTextures['fence']
+        local w, h = img:getDimensions()
+        love.graphics.setColor(0, 0, 0, 0.18)
+        love.graphics.rectangle('fill', x + FARM_TILE / 2 - 3, y + 2, 8, FARM_TILE - 2)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(img, x + FARM_TILE / 2 - w, y, 0, 2, FARM_TILE / h)
+    end
+    for _, t in ipairs(FARM_DECOR.well) do
+        local x, y = FarmTileToPixel(t[1], t[2])
+        drawShadow(x, y, 26)
+        drawSprite(gTextures['well'], x, y)
+    end
+    for i, t in ipairs(FARM_DECOR.bushes) do
+        local x, y = FarmTileToPixel(t[1], t[2])
+        drawShadow(x, y, 22)
+        drawSprite(gTextures[i % 2 == 0 and 'bush-2' or 'bush-1'], x, y, nil, 1, 1, self:sway(i * 2.1))
+    end
+
     -- the villager hops after a sale (its tile's pop, see FarmState:emit)
     local vx, vy = FarmTileToPixel(FARM_VILLAGER.col, FARM_VILLAGER.row)
+    drawShadow(vx, vy, 18)
     drawSprite(gTextures['villager'], vx, vy + self:villagerHop())
 
     self:renderShop()
@@ -633,6 +816,7 @@ end
 -- and its price.
 function FarmState:renderShop()
     local x, y = FarmTileToPixel(FARM_SHOP.col, FARM_SHOP.row)
+    drawShadow(x, y + 2, 30)
     -- awning and counter
     love.graphics.setColor(0.75, 0.25, 0.2, 1)
     love.graphics.rectangle('fill', x + 2, y + 2, FARM_TILE - 4, 6)
@@ -695,6 +879,7 @@ function FarmState:renderPlayer(dy, rotation)
     local w, h = image:getDimensions()
     local scale = math.min(2, (FARM_TILE - 4) / math.max(w, h))
     local flip = p.facing == 'left' and -1 or 1
+    if not dy then drawShadow(p.drawX, p.drawY, 18) end
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.draw(image, p.drawX + FARM_TILE / 2, p.drawY + FARM_TILE - 2 + (dy or 0),
         rotation or 0, scale * flip, scale, w / 2, h)

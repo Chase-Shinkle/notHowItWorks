@@ -53,6 +53,32 @@ FARM_VILLAGER = {col = 8, row = 4}
 -- tills it (the next one plants).
 FARM_PLAYER_START = {col = 3, row = 6, facing = 'up'}
 
+-- World dressing (tiles are {col, row}). Solid pieces block movement; the
+-- path and the scattered tufts and stones are ground decoration only.
+-- Layout rules (checked by tests): nothing on the HUD/hint rows, the player
+-- start, a plot, the villager or the stall; the fence flanks the plot block
+-- on its left and right only (row 3 above and row 6 below stay open), so
+-- every plot, the villager and the stall keep a walkable neighbour reachable
+-- from the start; the stall keeps all four neighbours free.
+FARM_DECOR = {
+    fence = {{1, 4}, {1, 5}, {5, 4}, {5, 5}},
+    path = {{4, 6}, {5, 6}, {6, 6}, {7, 6}, {7, 5}, {7, 4}, {7, 7}},
+    -- barn: drawn at native size, left edge on `col`, bottom on the bottom
+    -- edge of `row`, so its roof sits behind the HUD bar; `blocks` tiles
+    barn = {col = 8, row = 3, blocks = {{8, 2}, {9, 2}, {10, 2}, {8, 3}, {9, 3}, {10, 3}}},
+    well = {{10, 7}},
+    bushes = {{6, 2}, {1, 7}, {10, 4}, {5, 9}},
+    pond = {{9, 9}, {10, 9}, {10, 8}},
+    -- ground variation: fixed seed, chance per free grass tile
+    groundSeed = 1337,
+    tuftChance = 0.45,
+    stoneChance = 0.15,
+}
+-- Ambient motion: sway angle (x-skew), its speed, and pond shimmer speed.
+FARM_SWAY_SKEW = 0.08
+FARM_SWAY_SPEED = 1.7
+FARM_POND_SHIMMER_SPEED = 1.2
+
 -- Growth: a crop moves through FARM_GROWTH_STAGES visible stages (1 = seeds,
 -- last = mature), one stage every FARM_STAGE_TIME seconds of full-rate growth
 -- (12 s in total). A watered crop grows at the full rate; an unwatered one at

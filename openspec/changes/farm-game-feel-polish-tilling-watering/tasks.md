@@ -23,9 +23,9 @@
 
 ## 4. World dressing
 
-- [ ] 4.1 Add `FARM_DECOR` (fence, path, bushes, pond, well, barn anchor and blocking flags) and make `isWalkable` honour blocking decor; verify headless tests that blocking tiles stop movement, path tiles do not, and a breadth-first search from the player start finds a reachable walkable neighbour of every plot, the villager and the stall.
-- [ ] 4.2 Render the dressing: ground variation from a fixed-seed local RNG, path, fence, barn, well, bushes, pond, soft shadows under field sprites, and the three soil looks (untilled, tilled, watered); verify identical layout on two entries and a screenshot with no overlap of HUD, start tile, plots, villager or stall.
-- [ ] 4.3 Add ambient motion (sway on bushes, tufts and crops, pond shimmer) that never changes logical positions and is frozen during the break; verify a test that tile positions are unchanged over time and that the break test still passes.
+- [x] 4.1 Add `FARM_DECOR` (fence, path, bushes, pond, well, barn anchor and blocking flags) and make `isWalkable` honour blocking decor; verify headless tests that blocking tiles stop movement, path tiles do not, and a breadth-first search from the player start finds a reachable walkable neighbour of every plot, the villager and the stall.
+- [x] 4.2 Render the dressing: ground variation from a fixed-seed local RNG, path, fence, barn, well, bushes, pond, soft shadows under field sprites, and the three soil looks (untilled, tilled, watered); verify identical layout on two entries and a screenshot with no overlap of HUD, start tile, plots, villager or stall.
+- [x] 4.3 Add ambient motion (sway on bushes, tufts and crops, pond shimmer) that never changes logical positions and is frozen during the break; verify a test that tile positions are unchanged over time and that the break test still passes.
 
 ## 5. Day cycle and shaders
 

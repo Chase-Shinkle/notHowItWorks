@@ -255,17 +255,18 @@ local function script()
         'farm: E with %d coin(s) is refused', farm.gameData.coins)
     check(farm.idleTimer >= idleBefore, 'farm: buying left the idle break timer running (%.2f s)', farm.idleTimer)
     love.mouse.setPosition(5, 5)
-    -- walk to the right of plot (4,5) and plant the bought seed
-    for _ = 1, 3 do press('left'); wait(0.05) end
-    press('up'); wait(0.05)
-    press('left')                                -- plot (4,5) blocks: turns to face it
+    -- walk along the path to below plot (4,5) and plant the bought seed
+    -- (the fence flanks the plots, so it is reached from below)
+    for _ = 1, 4 do press('left'); wait(0.05) end
+    press('up')                                  -- plot (4,5) blocks: turns to face it
     local seedsNow = farm.gameData.seeds.beanstalk
     press('e')                                   -- till
     press('e')                                   -- plant
     check(farm.gameData.seeds.beanstalk == seedsNow - 1 and farm:plotAt(4, 5).state == PLOT_GROWING,
         'farm: planted the bought beanstalk seed on (4,5)')
     -- back to the villager
-    for _ = 1, 3 do press('right'); wait(0.05) end
+    for _ = 1, 4 do press('right'); wait(0.05) end
+    press('up'); wait(0.05)
     press('up')
     check(farm.player.col == 8 and farm.player.row == 5 and farm:facingTarget().kind == 'villager',
         'farm: back facing the villager at (%d,%d)', farm.player.col, farm.player.row)

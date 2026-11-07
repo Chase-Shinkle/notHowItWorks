@@ -69,6 +69,12 @@ local TEXTURE_MANIFEST = {
     -- the farm villager: its own sprite (brown hair, straw hat, apron), made
     -- from the hero by tools/make_villager.py; no draw-time tint
     ['villager'] = {'graphics/characters/villager.png', {0.7, 0.5, 0.85, 1}, 13},
+    -- farm dressing (src/constants.lua FARM_DECOR)
+    ['barn'] = {FARM_PACK .. 'Buldings & Stractures/Props - Stractures - Barn 01.png', {0.7, 0.35, 0.3, 1}, 96},
+    ['fence'] = {FARM_PACK .. 'Fences/Wooden Fence - 01/Tiles - Wooden Fence - 01 -01.png', {0.6, 0.4, 0.25, 1}, 6},
+    ['bush-1'] = {FARM_PACK .. 'CROPS/Crops - RAPSBERRY/Crops RASPBERRY 07.png', {0.25, 0.5, 0.25, 1}, 14},
+    ['bush-2'] = {FARM_PACK .. 'CROPS/Crops - BLACKBERRY/Crops  BLACKBERRY07.png', {0.2, 0.45, 0.3, 1}, 14},
+    ['path'] = {FARM_PACK .. 'Ground/Tile - Stone Soil - 01.png', {0.7, 0.6, 0.45, 1}},
     -- tools shown beside the farmer (the seed bag is the crop's own bag)
     ['tool-shovel'] = {FARM_PACK .. 'Tools/Tools  - Icons - WO (With Outline)/Icon -  Shovel WO 01.png', {0.6, 0.6, 0.65, 1}, 8},
     ['tool-can'] = {FARM_PACK .. 'Tools/Tools  - Icons - WO (With Outline)/Icons - Water Can WO.png', {0.4, 0.6, 0.9, 1}, 8},
