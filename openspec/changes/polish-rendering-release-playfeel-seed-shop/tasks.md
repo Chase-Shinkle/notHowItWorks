@@ -21,10 +21,10 @@
 
 ## 4. Seed stall (M4, farm)
 
-- [ ] 4.1 Add `FARM_SHOP` and `SEED_PRICES` constants (each price below the crop sale value) and a pure `Farm.buySeed(gameData, seedType)`; verify headless tests for success, insufficient coins, and no change to crops or `hasSold`.
-- [ ] 4.2 Add the stall as a target in `FarmState` (draw, hover, click, face + use key, hint text, popups, `deny` on failure, disabled during the break); verify in a playthrough that buying works by keyboard and mouse and the stall tile is walkable-around and not overlapping plots, villager or HUD.
-- [ ] 4.3 Verify the break is unaffected: a test that buying after the first sale leaves `idleTimer` untouched, over-sell still breaks, and carry-over still produces seeds only with the Room 1 top-up.
-- [ ] 4.4 Update `RELEASE.md` controls with the stall and extend `tests/autotest.lua` with a buy step; verify `sh tests/check_all.sh` passes.
+- [x] 4.1 Add `FARM_SHOP` and `SEED_PRICES` constants (each price below the crop sale value) and a pure `Farm.buySeed(gameData, seedType)`; verify headless tests for success, insufficient coins, and no change to crops or `hasSold`.
+- [x] 4.2 Add the stall as a target in `FarmState` (draw, hover, click, face + use key, hint text, popups, `deny` on failure, disabled during the break); verify in a playthrough that buying works by keyboard and mouse and the stall tile is walkable-around and not overlapping plots, villager or HUD.
+- [x] 4.3 Verify the break is unaffected: a test that buying after the first sale leaves `idleTimer` untouched, over-sell still breaks, and carry-over still produces seeds only with the Room 1 top-up.
+- [x] 4.4 Update `RELEASE.md` controls with the stall and extend `tests/autotest.lua` with a buy step; verify `sh tests/check_all.sh` passes.
 
 ## 5. Backrooms HUD (M4, backrooms)
 

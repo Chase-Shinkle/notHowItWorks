@@ -20,10 +20,14 @@ Start / ending screens: **Enter**.
 Farm (2D):
 - Move: **WASD** / **arrow keys** (one tile per press, hold to repeat).
 - Use the highlighted tile: **E** / **Space** / **Enter** (plant on an empty
-  plot, harvest a ripe crop, sell to the villager). Left click on a plot or the
-  villager does the same.
+  plot, harvest a ripe crop, sell to the villager, buy at the seed stall).
+  Left click on a plot, the villager or the stall does the same.
 - Seeds: **1-3** select a type, **Tab** / **Q** cycles; click a seed slot in
   the top bar.
+- Seed stall (the striped stall below the villager): buys one seed of the
+  selected type per use. Prices: beanstalk 2c, vine 3c, pumpkin 4c, each
+  less than the crop sells for. The hint bar shows the price, and "need Nc"
+  appears if you are short.
 - Plant, wait about 12 s, harvest, sell to the villager... then keep selling.
 
 Backrooms (3D, first person):

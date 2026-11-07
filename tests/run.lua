@@ -905,6 +905,163 @@ test('idle: a new sale restarts the idle delay', function()
     eq(farm.breaking, true); eq(farm.breakReason, 'idle')
 end)
 
+-- seed stall (polish M4, farm) ----------------------------------------------------
+test('shop: every seed price is below its crop sale value', function()
+    loadGame()
+    for _, t in ipairs(SEED_TYPES) do
+        assert(SEED_PRICES[t] and SEED_PRICES[t] > 0, 'price for ' .. t)
+        assert(SEED_PRICES[t] < CROP_VALUES[t], t .. ' price ' .. SEED_PRICES[t] .. ' < sale value ' .. CROP_VALUES[t])
+    end
+end)
+
+test('shop: Farm.buySeed succeeds, refuses without enough coins, and only touches coins and that seed', function()
+    loadGame()
+    local data = NewGameData({coins = 5, crops = {pumpkin = 2}, hasSold = true})
+    local ok, seedType, price = Farm.buySeed(data, 'pumpkin')
+    eq(ok, true); eq(seedType, 'pumpkin'); eq(price, SEED_PRICES.pumpkin)
+    eq(data.coins, 5 - SEED_PRICES.pumpkin)
+    eq(FormatSeeds(data.seeds), 'beanstalk=2 pumpkin=3 vine=2', 'one pumpkin seed added')
+    eq(data.crops.pumpkin, 2, 'crops unchanged'); eq(data.hasSold, true, 'hasSold unchanged')
+    eq(data.hasBroken, false, 'break flag unchanged')
+    -- 1 coin left: not enough for anything but... nothing (cheapest is 2)
+    local before = FormatSeeds(data.seeds)
+    local ok2, reason, price2 = Farm.buySeed(data, 'vine')
+    eq(ok2, false); eq(reason, 'no-coins'); eq(price2, SEED_PRICES.vine)
+    eq(data.coins, 1, 'coins unchanged'); eq(FormatSeeds(data.seeds), before, 'seeds unchanged')
+    -- before any sale, too
+    local fresh = NewGameData()
+    eq(select(2, Farm.buySeed(fresh, 'beanstalk')), 'no-coins')
+    eq(fresh.hasSold, false); eq(fresh.coins, 0)
+    eq(select(2, Farm.buySeed(fresh, 'carrot')), 'unknown-seed')
+end)
+
+test('shop: plant -> harvest -> sell -> rebuy the same seed leaves more coins than before', function()
+    loadGame()
+    for _, t in ipairs(SEED_TYPES) do
+        local data = NewGameData({seeds = {[t] = 1}})
+        local plot = Farm.newPlot(1, 1)
+        local group = {}
+        assert(Farm.plant(plot, data, t, group))
+        Timer.update(FARM_STAGE_TIME * FARM_GROWTH_STAGES, group)
+        Timer.update(FARM_STAGE_TIME * FARM_GROWTH_STAGES, group)
+        assert(Farm.harvest(plot, data), t .. ' harvested')
+        assert(Farm.sell(data, t))
+        assert(Farm.buySeed(data, t))
+        eq(data.seeds[t], 1, t .. ' seed back')
+        assert(data.coins > 0, t .. ': more coins than before the plant (' .. data.coins .. ')')
+    end
+end)
+
+test('shop: the stall is its own tile on the field, clear of plots, villager, start and HUD, and walkable around', function()
+    local farm = toFarm()
+    assert(FARM_SHOP.row >= FARM_FIELD_TOP and FARM_SHOP.row <= FARM_FIELD_BOTTOM, 'inside the field rows (not the HUD bars)')
+    assert(FARM_SHOP.col >= 1 and FARM_SHOP.col <= FARM_COLS)
+    eq(farm:plotAt(FARM_SHOP.col, FARM_SHOP.row), nil, 'not a plot')
+    eq(farm:isVillagerAt(FARM_SHOP.col, FARM_SHOP.row), false, 'not the villager')
+    assert(not (FARM_SHOP.col == FARM_PLAYER_START.col and FARM_SHOP.row == FARM_PLAYER_START.row), 'not the start tile')
+    eq(farm:targetAt(FARM_SHOP.col, FARM_SHOP.row).kind, 'shop')
+    eq(farm:isWalkable(FARM_SHOP.col, FARM_SHOP.row), false, 'the stall blocks movement')
+    for _, d in ipairs({{-1, 0}, {1, 0}, {0, -1}, {0, 1}}) do
+        local c, r = FARM_SHOP.col + d[1], FARM_SHOP.row + d[2]
+        eq(farm:isWalkable(c, r), true, string.format('neighbour (%d,%d) walkable', c, r))
+    end
+    -- the starting hint is still the plant prompt
+    eq(farm:hintText(), '[E] plant beanstalk')
+    mock.reset(); love.draw()
+    local priced = false
+    for _, c in ipairs(mock.calls) do
+        if c.name == 'printf' and c.args[1] == SEED_PRICES.beanstalk .. 'c' then priced = true end
+    end
+    assert(priced, 'stall price drawn')
+end)
+
+test('shop: buying by keyboard (face + E) with feedback, and a denial without coins', function()
+    local farm = toFarm()
+    farm.player.col, farm.player.row, farm.player.facing = FARM_SHOP.col - 1, FARM_SHOP.row, 'right'
+    eq(farm:facingTarget().kind, 'shop')
+    eq(farm:hintText(), 'beanstalk seed costs 2c (have 0c)', 'hint: type and price, not affordable')
+    press('e')
+    eq(farm.gameData.coins, 0); eq(farm.gameData.seeds.beanstalk, STARTING_SEEDS.beanstalk, 'nothing bought')
+    eq(farm.popups[#farm.popups].text, 'need 2c', 'denial message')
+    farm.gameData.coins = 10
+    press('2')
+    eq(farm:hintText(), '[E] buy pumpkin seed (4c)', 'hint follows the selected seed')
+    press('e')
+    eq(farm.gameData.coins, 10 - SEED_PRICES.pumpkin)
+    eq(farm.gameData.seeds.pumpkin, STARTING_SEEDS.pumpkin + 1)
+    eq(farm.popups[#farm.popups].text, '+1 pumpkin -4c', 'purchase feedback')
+    eq(farm:interact(farm:facingTarget()), 'buy')
+    eq(farm:interact(farm:facingTarget()), 'no-coins', '2 coins left < 4')
+    eq(farm.gameData.coins, 2)
+end)
+
+test('shop: buying by mouse (hover shows the hint, click buys), and then planting the bought seed', function()
+    local farm = toFarm()
+    farm.gameData.coins = 3
+    for _, t in ipairs(SEED_TYPES) do farm.gameData.seeds[t] = 0 end
+    local sx, sy = FarmTileToPixel(FARM_SHOP.col, FARM_SHOP.row)
+    mock.mouseAt(sx + 10, sy + 10); step()
+    eq(farm.hover.col, FARM_SHOP.col); eq(farm.hover.row, FARM_SHOP.row)
+    eq(farm:hintText(), '[E] buy beanstalk seed (2c)', 'hover shows the stall hint')
+    mock.reset(); love.draw()
+    local found = false
+    for _, c in ipairs(mock.calls) do
+        if c.name == 'rectangle' and c.args[1] == 'line' and c.args[2] == sx + 3.5 and c.args[3] == sy + 3.5 then found = true end
+    end
+    assert(found, 'hover highlight on the stall')
+    mock.click(1); step()
+    eq(farm.gameData.coins, 1); eq(farm.gameData.seeds.beanstalk, 1, 'bought by click')
+    mock.click(1); step()
+    eq(farm.gameData.coins, 1, 'second click refused'); eq(farm.gameData.seeds.beanstalk, 1)
+    -- the bought seed plants like any other (the farmer starts facing a plot)
+    mock.mouseAt(-50, -50); step()
+    press('e')
+    eq(farm.gameData.seeds.beanstalk, 0)
+    eq(farm:plotAt(FARM_PLAYER_START.col, FARM_PLAYER_START.row - 1).seedType, 'beanstalk')
+end)
+
+test('shop: buying after the first sale does not touch the idle break timer; over-sell still breaks', function()
+    local farm = farmAtVillager({crops = {beanstalk = 1}})
+    press('e')                                    -- first sale: 3 coins
+    eq(farm.gameData.hasSold, true)
+    run(10)
+    local idle, nag = farm.idleTimer, farm.nagTimer
+    -- turn to the stall and buy
+    farm.player.col, farm.player.row, farm.player.facing = FARM_SHOP.col - 1, FARM_SHOP.row, 'right'
+    eq(farm:interact(farm:facingTarget()), 'buy')
+    eq(farm.idleTimer, idle, 'idle timer untouched by buying'); eq(farm.nagTimer, nag, 'nag timer untouched')
+    eq(farm.breaking, false, 'buying never starts the break')
+    run(FARM_IDLE_BREAK_TIME - 10 - 1)
+    eq(farm.breaking, false)
+    run(1.5)
+    eq(farm.breaking, true, 'idle break fires on the original schedule from the last sale')
+    eq(farm.breakReason, 'idle')
+    eq(farm:interact({kind = 'shop', col = FARM_SHOP.col, row = FARM_SHOP.row}), nil, 'stall disabled during the break')
+
+    local farm2 = farmAtVillager({crops = {beanstalk = 1}})
+    press('e')                                    -- sale
+    farm2.player.col, farm2.player.row, farm2.player.facing = FARM_SHOP.col - 1, FARM_SHOP.row, 'right'
+    eq(farm2:interact(farm2:facingTarget()), 'buy')
+    farm2.player.col, farm2.player.row, farm2.player.facing = FARM_VILLAGER.col - 1, FARM_VILLAGER.row, 'right'
+    press('e')                                    -- zero crops after a sale: over-sell
+    eq(farm2.breaking, true); eq(farm2.breakReason, 'oversell')
+end)
+
+test('shop: carry-over after buying is still seeds only, with the Room 1 top-up', function()
+    local farm = farmAtVillager({crops = {pumpkin = 1}, seeds = {beanstalk = 0, pumpkin = 0, vine = 0}})
+    press('e')                                    -- 5 coins
+    farm.player.col, farm.player.row, farm.player.facing = FARM_SHOP.col - 1, FARM_SHOP.row, 'right'
+    farm:selectSeed('vine')
+    eq(farm:interact(farm:facingTarget()), 'buy')         -- 2 coins left
+    eq(farm.gameData.coins, 2)
+    farm:startBreak('oversell')
+    run(FARM_BREAK_GLITCH_TIME + FARM_BREAK_FALL_TIME + 0.2)
+    local back = gStateMachine.current
+    eq(back.usesPush, false, 'in the backrooms')
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=1 pumpkin=0 vine=1', 'bought vine kept; beanstalk topped up')
+    eq(back.gameData.coins, 0, 'coins dropped'); eq(Farm.totalCrops(back.gameData), 0, 'crops dropped')
+end)
+
 test('break: sequence renders and completes with every asset as a placeholder', function()
     local farm = farmAtVillager({hasSold = true}, {'.', '--placeholder-assets'})
     assert(gSounds['glitch'].isPlaceholder, 'glitch sound is a stub')

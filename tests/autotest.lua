@@ -225,6 +225,44 @@ local function script()
     wait(0.3)
     shot('04-farm-sold')
 
+    -- seed stall (polish M4): buy by mouse, a keyboard denial, plant the bought seed
+    local coins, beans = farm.gameData.coins, farm.gameData.seeds.beanstalk
+    local idleBefore = farm.idleTimer
+    press('down')                                -- (8,6), facing the stall at (8,7)
+    check(farm:facingTarget() and farm:facingTarget().kind == 'shop', 'farm: facing the seed stall')
+    check(farm:hintText() == '[E] buy beanstalk seed (2c)', 'farm: stall hint shows type and price (%s)', farm:hintText())
+    local sx, sy = FarmTileToPixel(FARM_SHOP.col, FARM_SHOP.row)
+    -- push:toReal ignores the scale (marked TODO in lib/push.lua); invert toGame
+    local rx = push._OFFSET.x + (sx + FARM_TILE / 2) * push._GWIDTH / push._WWIDTH
+    local ry = push._OFFSET.y + (sy + FARM_TILE / 2) * push._GHEIGHT / push._WHEIGHT
+    love.mouse.setPosition(rx, ry)
+    coroutine.yield()
+    check(farm.hover and farm.hover.col == FARM_SHOP.col and farm.hover.row == FARM_SHOP.row,
+        'farm: mouse hovers the stall')
+    love.mousepressed(rx, ry, 1, false, 1); coroutine.yield()
+    check(farm.gameData.coins == coins - SEED_PRICES.beanstalk and farm.gameData.seeds.beanstalk == beans + 1,
+        'farm: click bought a beanstalk seed (coins %d -> %d)', coins, farm.gameData.coins)
+    wait(0.2)
+    shot('04b-farm-stall', {450, 375, 300, 180, 3})
+    press('e')
+    check(farm.gameData.coins == coins - SEED_PRICES.beanstalk and farm.gameData.seeds.beanstalk == beans + 1,
+        'farm: E with %d coin(s) is refused', farm.gameData.coins)
+    check(farm.idleTimer >= idleBefore, 'farm: buying left the idle break timer running (%.2f s)', farm.idleTimer)
+    love.mouse.setPosition(5, 5)
+    -- walk to the right of plot (4,5) and plant the bought seed
+    for _ = 1, 3 do press('left'); wait(0.05) end
+    press('up'); wait(0.05)
+    press('left')                                -- plot (4,5) blocks: turns to face it
+    local seedsNow = farm.gameData.seeds.beanstalk
+    press('e')
+    check(farm.gameData.seeds.beanstalk == seedsNow - 1 and farm:plotAt(4, 5).state == PLOT_GROWING,
+        'farm: planted the bought beanstalk seed on (4,5)')
+    -- back to the villager
+    for _ = 1, 3 do press('right'); wait(0.05) end
+    press('up')
+    check(farm.player.col == 8 and farm.player.row == 5 and farm:facingTarget().kind == 'villager',
+        'farm: back facing the villager at (%d,%d)', farm.player.col, farm.player.row)
+
     -- over-sell -> break
     local farmSeeds = FormatSeeds(farm.gameData.seeds)
     press('e')

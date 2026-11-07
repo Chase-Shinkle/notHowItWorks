@@ -56,6 +56,17 @@ CROP_VALUES = {
     vine = 4,
 }
 
+-- Seed stall: the player buys one seed of the selected type per use, from the
+-- stall on this tile (face it and press E, or click it). Each price is below
+-- that crop's sale value (a test checks), so plant -> harvest -> sell -> rebuy
+-- nets 1 coin. Buying never affects the break (src/states/game/FarmState.lua).
+FARM_SHOP = {col = 8, row = 7}
+SEED_PRICES = {
+    beanstalk = 2,
+    pumpkin = 4,
+    vine = 3,
+}
+
 -- Grid movement: one tile per press; holding a key repeats after a delay.
 FARM_MOVE_REPEAT_DELAY = 0.25
 FARM_MOVE_REPEAT_INTERVAL = 0.12

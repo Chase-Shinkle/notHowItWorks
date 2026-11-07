@@ -22,10 +22,14 @@ requests a 24-bit depth buffer for the window.
 
 - Move: WASD / arrow keys (one tile per press, hold to repeat).
 - Use the highlighted tile: E / Space / Enter: plant on an empty plot,
-  harvest a mature crop, or sell to the villager.
+  harvest a mature crop, sell to the villager, or buy a seed at the seed stall.
 - Seeds: 1-3 select a type, Tab/Q cycles. If the selected type is empty, the
   next type that still has seeds is planted.
-- Mouse: hovering a plot or the villager outlines it; left click uses it.
+- Seed stall (`FARM_SHOP`, below the villager): one seed of the selected type
+  per use for `SEED_PRICES` coins (beanstalk 2, vine 3, pumpkin 4, each below
+  the sale value). Buying never starts or delays the break.
+- Mouse: hovering a plot, the villager or the stall outlines it; left click
+  uses it.
   Clicking a seed slot in the top bar selects that seed.
 - A crop grows through 5 stages, one every 3 s (`FARM_STAGE_TIME`), so a first
   plant -> harvest -> sell cycle takes about 20 s.

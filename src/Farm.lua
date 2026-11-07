@@ -112,6 +112,19 @@ function Farm.sell(gameData, preferred)
     return true, seedType, value
 end
 
+-- Buys one `seedType` seed for SEED_PRICES[seedType] coins. Only coins and
+-- that seed count change (crops, hasSold and the break are untouched).
+-- Returns ok, seedType, price -- or false, reason ('unknown-seed' |
+-- 'no-coins'), price with nothing changed.
+function Farm.buySeed(gameData, seedType)
+    local price = SEED_PRICES[seedType]
+    if not price then return false, 'unknown-seed' end
+    if (gameData.coins or 0) < price then return false, 'no-coins', price end
+    gameData.coins = gameData.coins - price
+    gameData.seeds[seedType] = (gameData.seeds[seedType] or 0) + 1
+    return true, seedType, price
+end
+
 -- True when a sale attempt right now would be an over-sell: the player has
 -- completed at least one sale and has no crops left. FarmState starts the
 -- break on this; before the first sale an empty-handed attempt is harmless.

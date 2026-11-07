@@ -2,9 +2,10 @@
 --
 -- Controls (keyboard): WASD/arrows move the farmer one tile per press (hold
 -- to repeat); E/Space/Enter uses the tile the farmer faces (plant, harvest,
--- sell); 1-3 pick a seed type, Tab/Q cycles it.
--- Controls (mouse): hover highlights a plot or the villager, left click uses
--- it directly; clicking a seed slot in the top bar selects that seed.
+-- sell, buy at the seed stall); 1-3 pick a seed type, Tab/Q cycles it.
+-- Controls (mouse): hover highlights a plot, the villager or the seed stall,
+-- left click uses it directly; clicking a seed slot in the top bar selects
+-- that seed.
 --
 -- Rules live in src/Farm.lua; growth runs on a knife Timer group owned by this
 -- state, so it only advances while the farm is active.
@@ -112,13 +113,18 @@ function FarmState:isVillagerAt(col, row)
     return col == FARM_VILLAGER.col and row == FARM_VILLAGER.row
 end
 
+function FarmState:isShopAt(col, row)
+    return col == FARM_SHOP.col and row == FARM_SHOP.row
+end
+
 -- What the player can use at a tile: {kind = 'plot', plot} or
--- {kind = 'villager'} or nil.
+-- {kind = 'villager'} or {kind = 'shop'} or nil.
 function FarmState:targetAt(col, row)
     if not col then return nil end
     local plot = self:plotAt(col, row)
     if plot then return {kind = 'plot', plot = plot, col = col, row = row} end
     if self:isVillagerAt(col, row) then return {kind = 'villager', col = col, row = row} end
+    if self:isShopAt(col, row) then return {kind = 'shop', col = col, row = row} end
     return nil
 end
 
@@ -177,8 +183,9 @@ function FarmState:say(text, duration)
     self.villagerLine = {text = text, time = duration or 2.5}
 end
 
--- Use a target (plot or villager). Returns the action taken:
--- 'plant' | 'harvest' | 'sell' | 'growing' | 'no-seeds' | 'no-crops' | nil.
+-- Use a target (plot, villager or seed stall). Returns the action taken:
+-- 'plant' | 'harvest' | 'sell' | 'buy' | 'growing' | 'no-seeds' | 'no-crops' |
+-- 'no-coins' | nil.
 -- 'oversell' means this attempt started the break. While the break plays
 -- nothing can be used (returns nil).
 function FarmState:interact(target)
@@ -232,6 +239,18 @@ function FarmState:interact(target)
         gSounds['deny']:play()
         self:say('Got any crops?')
         return 'no-crops'
+    elseif target.kind == 'shop' then
+        -- buys one seed of the selected type; never touches the break timers
+        local seedType = self.selectedSeed
+        local ok, _, price = Farm.buySeed(data, seedType)
+        if ok then
+            gSounds['sell']:play()
+            self:popup('+1 ' .. seedType .. ' -' .. price .. 'c', FARM_SHOP.col, FARM_SHOP.row, {0.7, 1, 0.6, 1})
+            return 'buy'
+        end
+        gSounds['deny']:play()
+        self:popup('need ' .. tostring(price or '?') .. 'c', FARM_SHOP.col, FARM_SHOP.row, {1, 0.5, 0.5, 1})
+        return 'no-coins'
     end
     return nil
 end
@@ -404,9 +423,23 @@ function FarmState:update(dt)
     self:updateVillager(dt)
 end
 
--- Context hint for the bottom bar, from the keyboard target.
+-- Bottom-bar hint for the seed stall: the selected type and its price.
+function FarmState:shopHint()
+    local seedType = self.selectedSeed
+    local price = SEED_PRICES[seedType] or 0
+    if (self.gameData.coins or 0) >= price then
+        return '[E] buy ' .. seedType .. ' seed (' .. price .. 'c)'
+    end
+    return seedType .. ' seed costs ' .. price .. 'c (have ' .. (self.gameData.coins or 0) .. 'c)'
+end
+
+-- Context hint for the bottom bar, from the keyboard target. The seed stall
+-- also shows its hint while the mouse hovers it.
 function FarmState:hintText()
     local target = self:facingTarget()
+    if (target and target.kind == 'shop') or (self.hover and self:isShopAt(self.hover.col, self.hover.row)) then
+        return self:shopHint()
+    end
     if target and target.kind == 'plot' then
         local plot = target.plot
         if plot.state == PLOT_EMPTY then
@@ -469,6 +502,34 @@ function FarmState:renderField()
 
     local vx, vy = FarmTileToPixel(FARM_VILLAGER.col, FARM_VILLAGER.row)
     drawSprite(gTextures['villager'], vx, vy, {0.85, 0.7, 1, 1})
+
+    self:renderShop()
+end
+
+-- The seed stall: a wooden counter with the selected type's seed bag on it
+-- and its price.
+function FarmState:renderShop()
+    local x, y = FarmTileToPixel(FARM_SHOP.col, FARM_SHOP.row)
+    -- awning and counter
+    love.graphics.setColor(0.75, 0.25, 0.2, 1)
+    love.graphics.rectangle('fill', x + 2, y + 2, FARM_TILE - 4, 6)
+    love.graphics.setColor(0.95, 0.9, 0.8, 1)
+    for i = 0, 2 do love.graphics.rectangle('fill', x + 6 + i * 8, y + 2, 4, 6) end
+    love.graphics.setColor(0.45, 0.3, 0.17, 1)
+    love.graphics.rectangle('fill', x + 3, y + 8, 2, 14)
+    love.graphics.rectangle('fill', x + FARM_TILE - 5, y + 8, 2, 14)
+    love.graphics.setColor(0.6, 0.4, 0.22, 1)
+    love.graphics.rectangle('fill', x + 2, y + 20, FARM_TILE - 4, 10)
+    -- the selected seed bag on the counter
+    love.graphics.setColor(1, 1, 1, 1)
+    local icon = gTextures['seedbag-' .. self.selectedSeed]
+    if icon then
+        local iw, ih = icon:getDimensions()
+        love.graphics.draw(icon, x + FARM_TILE / 2 - 7, y + 8, 0, 14 / iw, 14 / ih)
+    end
+    love.graphics.setFont(gFonts['small'])
+    love.graphics.setColor(1, 0.9, 0.3, 1)
+    love.graphics.printf((SEED_PRICES[self.selectedSeed] or 0) .. 'c', x, y + 21, FARM_TILE, 'center')
 end
 
 function FarmState:renderHighlights()

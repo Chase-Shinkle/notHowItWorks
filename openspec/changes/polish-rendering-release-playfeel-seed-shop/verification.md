@@ -124,3 +124,44 @@ itself.
   x = [-6.49, -3.96] (2.53 m). Room 3: up to x = -5.96, plantable over
   [-8.50, -5.96] (2.54 m). The pit is targeted at 1.0 m and 2.0 m back in
   both rooms. No pit geometry was changed.
+
+## 4. Seed stall (M4, farm)
+
+- 4.1 `FARM_SHOP = {col = 8, row = 7}` and `SEED_PRICES` (beanstalk 2,
+  pumpkin 4, vine 3; sale values 3, 5, 4) are in `src/constants.lua`. The pure
+  `Farm.buySeed(gameData, seedType)` returns `ok, seedType, price`, or
+  `false, 'no-coins' | 'unknown-seed', price` with nothing changed. Headless
+  tests cover: every price is below its sale value; success changes only
+  coins and that seed (crops, `hasSold` and `hasBroken` untouched); not enough
+  coins changes nothing; an unknown type is refused; a plant -> harvest ->
+  sell -> rebuy cycle leaves more coins (+1) for every type.
+- 4.2 The stall is a new `'shop'` target in `FarmState:targetAt`, so it blocks
+  movement and gets the facing and hover highlights. `interact` buys one seed
+  of the selected type: a `sell` sound and a `+1 <type> -Nc` popup, or a
+  `deny` sound and a `need Nc` popup. During the break `interact` returns
+  nil, so the stall is disabled. The hint bar shows `[E] buy <type> seed (Nc)`
+  or `<type> seed costs Nc (have Mc)` when the stall is faced *or hovered*.
+  Drawing: a striped awning and counter, the selected type's seed-bag sprite
+  (existing art) and its price. Headless tests check the stall is on its own
+  field tile (not a plot, the villager, the start tile or a HUD row), its four
+  neighbours are walkable, the start hint is still `[E] plant beanstalk`, a
+  keyboard buy and denial, a mouse hover hint and highlight, a click buy and
+  denial, and planting a bought seed. On the real runtime the autotest walks
+  to the stall, checks the hint, hovers it with the real cursor
+  (`love.mouse.setPosition`) and buys by click (3 -> 1 coins). It then presses
+  E with 1 coin (refused), walks to plot (4,5), plants the bought seed and
+  over-sells. Screenshot `04b-farm-stall.png` (plus `-zoom`) shows the stall,
+  the price, the purchase popup and the denial hint, with nothing overlapping
+  plots, the villager or the HUD.
+- 4.3 Headless tests: after the first sale, buying leaves `idleTimer` and
+  `nagTimer` unchanged and the idle break fires on schedule from the sale;
+  buying and then selling with zero crops is still an over-sell; after buying
+  and the break, the backrooms gets seeds only (`beanstalk=1 pumpkin=0 vine=1`:
+  the bought vine kept, beanstalk topped up for Room 1), with 0 coins and 0
+  crops. The autotest also checks the idle timer kept running.
+- 4.4 The `RELEASE.md` and `README.md` controls cover the stall and prices.
+  The autotest buy step is described in 4.2. `sh tests/check_all.sh`: ALL
+  CHECKS PASSED. That is 121 headless tests, reachability 84/0, rim ok,
+  autotest 117 (real) and 109 (placeholder) checks from source and artifact,
+  and 114 for the artifact with `--debug`. The package sha256 was stable
+  across two builds (`f34787f3...6c59` at this point).
