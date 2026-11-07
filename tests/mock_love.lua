@@ -93,6 +93,7 @@ function M.install()
                 local src = {path = path, kind = kind, plays = 0, volume = 1, looping = false}
                 function src:play() self.plays = self.plays + 1; M.soundPlays[#M.soundPlays + 1] = self.path; return true end
                 function src:stop() end
+                function src:setPitch(p) self.pitch = p end
                 function src:setVolume(v) self.volume = v end
                 function src:getVolume() return self.volume end
                 function src:setLooping(on) self.looping = on end
