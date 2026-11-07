@@ -109,3 +109,9 @@ end
 for _, a in ipairs(arg or {}) do
     if a == '--backrooms-shots' then require 'tests/backrooms_shots' end
 end
+
+-- `love . --zone-maps`: top-down zone map renders for visual review (tests/zone_maps.lua,
+-- development only; not in the package).
+for _, a in ipairs(arg or {}) do
+    if a == '--zone-maps' then require 'tests/zone_maps' end
+end
