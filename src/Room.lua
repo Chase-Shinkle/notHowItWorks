@@ -197,6 +197,31 @@ function Room.validate(data)
             return fail('pickup ' .. i .. ' tier must be critical or extra')
         end
     end
+    if data.zones ~= nil then
+        local ids = {}
+        if type(data.zones) ~= 'table' then return fail('zones must be a list') end
+        for i, z in ipairs(data.zones) do
+            if type(z) ~= 'table' or type(z.id) ~= 'string' then return fail('zone ' .. i .. ' needs a string id') end
+            if ids[z.id] then return fail('duplicate zone id ' .. z.id) end
+            ids[z.id] = true
+            if z.theme ~= nil and not MATERIAL_THEMES[z.theme] then return fail('zone ' .. z.id .. ' unknown theme ' .. tostring(z.theme)) end
+        end
+        local function check(list, what)
+            for i, item in ipairs(list or {}) do
+                if item.zone ~= nil and not ids[item.zone] then return fail(what .. ' ' .. i .. ' unknown zone ' .. tostring(item.zone)) end
+            end
+        end
+        for _, pair in ipairs({{data.boxes, 'box'}, {data.plots, 'plot'}, {data.pickups, 'pickup'}, {data.billboards, 'billboard'}, {data.lights, 'light'}}) do
+            local ok, msg = check(pair[1], pair[2])
+            if ok == false then return false, msg end
+        end
+        if data.exit.zone ~= nil and not ids[data.exit.zone] then return fail('exit unknown zone ' .. tostring(data.exit.zone)) end
+    else
+        -- a zone id with no zones list is a mistake
+        for i, b in ipairs(data.boxes) do
+            if b.zone ~= nil then return fail('box ' .. i .. ' has a zone but the room has no zones') end
+        end
+    end
     return BackroomsLook.validate(data)
 end
 
@@ -408,7 +433,15 @@ end
 function Room:setLighting(lighting)
     BackroomsLook.init()
     self.lighting = BackroomsLook.resolveLighting(lighting, self.id)
-    self.lights = self.data.lights or BackroomsLook.autoLights(self.data.boxes, self.lighting, self.id)
+    -- zones (generated levels): each zone's preset; ambient/fog follow the camera's zone (BackroomsLook.blendedLighting)
+    self.zoneLighting = nil
+    if lighting == nil and self.data.zones and #self.data.zones > 0 then
+        self.zoneLighting = {}
+        for _, z in ipairs(self.data.zones) do
+            self.zoneLighting[z.id] = BackroomsLook.resolveLighting(z.lighting, self.id)
+        end
+    end
+    self.lights = self.data.lights or BackroomsLook.autoLights(self.data.boxes, self.lighting, self.id, self.zoneLighting)
     self.fixtures, self.blobs = {}, {}
     if not BackroomsLook.enabled then return end
     local white = gTextures['white'] or texture(nil, 'floor')
@@ -637,7 +670,7 @@ function Room:buildCheckpoints()
         end
         if best then
             local x, y = LevelGen.cellCenter(best.cx, best.cy)
-            self.checkpoints[reg.index + 1] = {x, y, reg.elev or 0, self.spawn[4]}
+            self.checkpoints[reg.index + 1] = {x, y, reg.elev or 0, self.spawn[4], zone = best.zone}
         end
     end
     -- region 0 is the level spawn itself
@@ -654,6 +687,52 @@ function Room:regionAt(x, y)
     end
     local c = self.cellIndex[math.floor(x / LEVELGEN_CELL) .. ',' .. math.floor((y + LEVELGEN_CELL / 2) / LEVELGEN_CELL)]
     return c and c.region or nil
+end
+
+-- The generated-level cell under (x, y), or nil.
+function Room:cellAt(x, y)
+    local meta = self.data.meta
+    if not (meta and meta.cells) then return nil end
+    if not self.cellIndex then
+        self.cellIndex = {}
+        for _, c in ipairs(meta.cells) do self.cellIndex[c.cx .. ',' .. c.cy] = c end
+    end
+    return self.cellIndex[math.floor(x / LEVELGEN_CELL) .. ',' .. math.floor((y + LEVELGEN_CELL / 2) / LEVELGEN_CELL)]
+end
+
+-- Zone id under (x, y) (nil for hand-made rooms).
+function Room:zoneAt(x, y)
+    local c = self:cellAt(x, y)
+    return c and c.zone or nil
+end
+
+-- Zone id under (x, y) and the connected neighbouring-zone cells within `dist` m of it:
+-- a list of {zone, w} with w = 0.5 * (1 - d / dist), d the distance to the shared cell edge.
+function Room:zoneNeighbours(x, y, dist)
+    local c = self:cellAt(x, y)
+    if not (c and c.zone) then return nil, {} end
+    local CELL = LEVELGEN_CELL
+    if not self.edgeSet then
+        self.edgeSet = self.data.meta.edges or {}
+    end
+    local x0, y0 = c.cx * CELL, c.cy * CELL - CELL / 2
+    local out = {}
+    for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
+        local nx, ny = c.cx + d[1], c.cy + d[2]
+        local nb = self.cellIndex[nx .. ',' .. ny]
+        if nb and nb.zone and nb.zone ~= c.zone then
+            local ka, kb = c.cx .. ',' .. c.cy, nx .. ',' .. ny
+            if ka > kb then ka, kb = kb, ka end
+            if self.edgeSet[ka .. '|' .. kb] then
+                local dd
+                if d[1] > 0 then dd = x0 + CELL - x elseif d[1] < 0 then dd = x - x0
+                elseif d[2] > 0 then dd = y0 + CELL - y else dd = y - y0 end
+                local w = 0.5 * (1 - math.max(0, dd) / dist)
+                if w > 0 then out[#out + 1] = {zone = nb.zone, w = w} end
+            end
+        end
+    end
+    return c.zone, out
 end
 
 function Room:overlapsExit(min, max)
@@ -680,7 +759,7 @@ function Room:draw(cx, cy)
             f.model:draw(look)
         end
         BackroomsLook.set('emissive', 0)
-        BackroomsLook.set('litFloor', self.lighting.gameplayFloor)
+        BackroomsLook.set('litFloor', (BackroomsLook.lastBlend or self.lighting).gameplayFloor)
     end
     for _, plot in ipairs(self.plots) do plot.model:draw(look) end
     for _, crop in ipairs(self.crops) do crop:draw(look) end

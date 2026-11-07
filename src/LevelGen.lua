@@ -586,20 +586,44 @@ function LevelGen.build(seed, difficulty)
     -- zones: contiguous partition of the connection graph on its own RNG stream (layout untouched).
     -- Multi-cell rooms are one unit. Zone ids are stable ('z1'..'zK', ordered by seed cell in grid order).
     local zoneRng = LevelGen.rng(seed * 31 + 977)
-    local unitOf, units = {}, {}
-    for _, c in ipairs(list) do
-        local u = c.room and ('r' .. tostring(c.room)) or key(c.cx, c.cy)
-        if not unitOf[u] then unitOf[u] = {cells = {}, nbrs = {}}; units[#units + 1] = unitOf[u] end
-        local un = unitOf[u]
-        un.cells[#un.cells + 1] = c
-        c.unit = un
-    end
-    for _, c in ipairs(list) do
-        for _, d in ipairs(SIDES) do
-            local nb = cells[key(c.cx + d[1], c.cy + d[2])]
-            if nb and nb.unit ~= c.unit and conn[edgeKey(c, nb)] then c.unit.nbrs[nb.unit] = true end
+    -- Units are the atoms zones are grown from. Boundaries prefer thresholds: units joined by an
+    -- 'open' edge (hall runs, module approaches) are merged into one block so a zone only changes at
+    -- a doorway. If that leaves fewer blocks than zones wanted, plain units (rooms) are used instead.
+    local function buildUnits(mergeOpen)
+        local unitOf, units, parent = {}, {}, {}
+        local function find(u) while parent[u] ~= u do parent[u] = parent[parent[u]]; u = parent[u] end return u end
+        for _, c in ipairs(list) do
+            local u = c.room and ('r' .. tostring(c.room)) or key(c.cx, c.cy)
+            parent[u] = u; c.unitKey = u
         end
+        if mergeOpen then
+            for _, c in ipairs(list) do
+                for _, d in ipairs(SIDES) do
+                    local nb = cells[key(c.cx + d[1], c.cy + d[2])]
+                    if nb and conn[edgeKey(c, nb)] == 'open' then
+                        local a, b = find(c.unitKey), find(nb.unitKey)
+                        if a ~= b then parent[b] = a end
+                    end
+                end
+            end
+        end
+        for _, c in ipairs(list) do
+            local u = find(c.unitKey)
+            if not unitOf[u] then unitOf[u] = {cells = {}, nbrs = {}}; units[#units + 1] = unitOf[u] end
+            local un = unitOf[u]
+            un.cells[#un.cells + 1] = c
+            c.unit = un
+        end
+        for _, c in ipairs(list) do
+            for _, d in ipairs(SIDES) do
+                local nb = cells[key(c.cx + d[1], c.cy + d[2])]
+                if nb and nb.unit ~= c.unit and conn[edgeKey(c, nb)] then c.unit.nbrs[nb.unit] = true end
+            end
+        end
+        return units
     end
+    local units = buildUnits(true)
+    if #units < math.max(LEVELGEN_MIN_ZONES, math.floor(#list / LEVELGEN_ZONE_CELLS)) then units = buildUnits(false) end
     local K = math.max(LEVELGEN_MIN_ZONES, math.floor(#list / LEVELGEN_ZONE_CELLS))
     K = math.min(K, #units)
     local order = {}
@@ -659,18 +683,19 @@ function LevelGen.build(seed, difficulty)
     local themes = {}
     for _, c in ipairs(list) do themes[c] = zoneById[c.zone].theme end
     local boxes, plots, billboards = {}, {}, {}
-    local function addBox(kind, x0, x1, y0, y1, z0, z1, theme, obstacle)
+    local curZone   -- zone id stamped on every box added (set per cell below)
+    local function addBox(kind, x0, x1, y0, y1, z0, z1, theme, obstacle, zone)
         boxes[#boxes + 1] = {kind = kind, pos = {(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2},
-            size = {x1 - x0, y1 - y0, z1 - z0}, theme = theme, obstacle = obstacle or nil}
+            size = {x1 - x0, y1 - y0, z1 - z0}, theme = theme, obstacle = obstacle or nil, zone = zone or curZone}
     end
     -- plain floors and ceilings are merged into runs of same-height, same-theme cells
     local slabs = {}
     local function slab(kind, c, z0, z1)
         slabs[#slabs + 1] = {kind = kind, x0 = c.cx * CELL, x1 = c.cx * CELL + CELL,
-            y0 = c.cy * CELL - CELL / 2, y1 = c.cy * CELL + CELL / 2, z0 = z0, z1 = z1, theme = themes[c]}
+            y0 = c.cy * CELL - CELL / 2, y1 = c.cy * CELL + CELL / 2, z0 = z0, z1 = z1, theme = themes[c], zone = c.zone}
     end
     local function mergeSlabs(list2, a0, a1, b0, b1)
-        local function gk(s) return s.kind .. '|' .. s.theme .. '|' .. s.z0 .. '|' .. s.z1 .. '|' .. s[b0] .. '|' .. s[b1] end
+        local function gk(s) return s.kind .. '|' .. s.theme .. '|' .. s.zone .. '|' .. s.z0 .. '|' .. s.z1 .. '|' .. s[b0] .. '|' .. s[b1] end
         table.sort(list2, function(p, q)
             local kp, kq = gk(p), gk(q)
             if kp ~= kq then return kp < kq end
@@ -680,7 +705,7 @@ function LevelGen.build(seed, difficulty)
         for _, s in ipairs(list2) do
             local last = out[#out]
             if last and gk(last) == gk(s) and last[a1] == s[a0] then last[a1] = s[a1]
-            else out[#out + 1] = {kind = s.kind, x0 = s.x0, x1 = s.x1, y0 = s.y0, y1 = s.y1, z0 = s.z0, z1 = s.z1, theme = s.theme} end
+            else out[#out + 1] = {kind = s.kind, x0 = s.x0, x1 = s.x1, y0 = s.y0, y1 = s.y1, z0 = s.z0, z1 = s.z1, theme = s.theme, zone = s.zone} end
         end
         return out
     end
@@ -688,6 +713,7 @@ function LevelGen.build(seed, difficulty)
     for _, c in ipairs(list) do
         local X0, Y0 = c.cx * CELL, c.cy * CELL - CELL / 2
         local X1, Y1 = X0 + CELL, Y0 + CELL
+        curZone = c.zone
         slab('ceiling', c, c.ceil, c.ceil + T)
         if c.kind ~= 'module' then
             slab('floor', c, c.elev - T, c.elev)
@@ -704,12 +730,12 @@ function LevelGen.build(seed, difficulty)
             mbox('floor', 0, CELL, -h, h, VOID_Z - T, VOID_Z)
             local px, py = f.point(def.plot[1], def.plot[2])
             local pz = e + def.plot[3]
-            plots[#plots + 1] = {id = c.plotId or ('p' .. c.k), pos = {px, py, pz}, dir = f.dirName(def.dir), reach = def.reach}
+            plots[#plots + 1] = {id = c.plotId or ('p' .. c.k), pos = {px, py, pz}, dir = f.dirName(def.dir), reach = def.reach, zone = c.zone}
             if c.module == 'pit' then
                 mbox('floor', 0, def.pitX0, -h, h, e - T, e)
                 mbox('floor', def.pitX1, CELL, -h, h, e - T, e)
                 boxes[#boxes + 1] = {kind = 'solid', pos = {px, py, (VOID_Z + pz) / 2}, size = {1.2, 1.2, pz - VOID_Z},
-                    color = {0.36, 0.25, 0.16, 1}, collide = false}
+                    color = {0.36, 0.25, 0.16, 1}, collide = false, zone = c.zone}
             elseif c.module == 'gap' then
                 mbox('floor', 0, def.gapX0, -h, h, e - T, e)
             else
@@ -722,7 +748,7 @@ function LevelGen.build(seed, difficulty)
     do
         local merged = mergeSlabs(mergeSlabs(slabs, 'x0', 'x1', 'y0', 'y1'), 'y0', 'y1', 'x0', 'x1')
         for _, s in ipairs(merged) do
-            addBox(s.kind, s.x0, s.x1, s.y0, s.y1, s.z0, s.z1, s.theme)
+            addBox(s.kind, s.x0, s.x1, s.y0, s.y1, s.z0, s.z1, s.theme, nil, s.zone)
         end
     end
 
@@ -730,6 +756,7 @@ function LevelGen.build(seed, difficulty)
         local X0, Y0 = c.cx * CELL, c.cy * CELL - CELL / 2
         local X1, Y1 = X0 + CELL, Y0 + CELL
         local th = themes[c]
+        curZone = c.zone
         local obst = nil
         for _, d in ipairs(SIDES) do
             local nb = cells[key(c.cx + d[1], c.cy + d[2])]
@@ -777,7 +804,7 @@ function LevelGen.build(seed, difficulty)
                     -- doorway lies on the shared face; shift the prop beside it, inside the parent cell
                     local dx, dy = c.cx - par.cx, c.cy - par.cy
                     billboards[#billboards + 1] = {texture = 'sacks', height = 1.1,
-                        pos = {px + dx * (CELL / 2 - 0.7) - dy * 0.7, py + dy * (CELL / 2 - 0.7) + dx * 0.7, par.elev}}
+                        pos = {px + dx * (CELL / 2 - 0.7) - dy * 0.7, py + dy * (CELL / 2 - 0.7) + dx * 0.7, par.elev}, zone = par.zone}
                     nookCount = nookCount + 1
                     break
                 end
@@ -793,6 +820,7 @@ function LevelGen.build(seed, difficulty)
     local exit = {
         pos = {ex + lastStep[1] * (CELL / 2 - 0.3), ey + lastStep[2] * (CELL / 2 - 0.3), path[L].elev + 1.1},
         size = lastStep[1] ~= 0 and {0.6, 1.4, 2.2} or {1.4, 0.6, 2.2},
+        zone = path[L].zone,
     }
 
     -- 7. seeds (prefix rule: critical seed k lies in a region < k; extras off the path)
@@ -805,7 +833,7 @@ function LevelGen.build(seed, difficulty)
         r = r or rng
         local mx, my = LevelGen.cellCenter(c.cx, c.cy)
         pickups[#pickups + 1] = {pos = {mx + (r:next() - 0.5) * 3.4, my + (r:next() - 0.5) * 3.4, c.elev},
-            seed = seedType, tier = tier, obstacle = k}
+            seed = seedType, tier = tier, obstacle = k, zone = c.zone}
     end
     for k = 1, n do
         local branchCells, pathCells = {}, {}
@@ -874,6 +902,7 @@ function LevelGen.build(seed, difficulty)
         allotment = {},
         generated = true,       -- starts with no seeds (RoomStartingSeeds)
         billboards = billboards,
+        zones = metaZones,      -- {id, theme, lighting, cellCount, adjacent}: zone ids also on boxes, plots, pickups, billboards, exit, lights
         pickups = pickups,
         seedTypes = seedTypes,
         meta = {seed = seed, obstacles = n, chain = chain, cells = metaCells, edges = edges, nooks = nookCount,

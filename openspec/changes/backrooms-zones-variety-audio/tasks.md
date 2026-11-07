@@ -34,3 +34,11 @@
 
 - Zone partition (region growing, rooms as units, theme/lighting graph colouring on its own RNG stream) and `meta.zones` / `meta.cells[i].zone` emitted in `LevelGen.build`; per-cell themes replaced by zone themes. Not yet covered by tests (2.1/2.2 still open; doorway snapping and `Room.validate` zones not done).
 - Shared constants added in `src/constants.lua` (zones, shapes, audio). Nothing else implemented; no new tests written.
+
+## Zones/lighting group (implemented, UNVERIFIED — nothing run, not even a syntax check; no Lua interpreter available)
+
+- 2.1: units joined by `open` edges merged into blocks before region growing (zone changes only at doorways), falling back to plain units if that leaves fewer blocks than zones wanted.
+- 2.2/2.3: `data.zones` (= `meta.zones`), `zone` on boxes (slab merge key includes zone), plots, pickups, nook billboards, exit, auto lights, checkpoints (`cp.zone`); `Room.validate` checks zones/ids/themes/lighting and rejects zone ids without a zones list.
+- 3.1: `fixtureColor` per preset; `BackroomsLook.autoLights(boxes, preset, roomId, zonePresets)` lights each ceiling box from its zone's preset (litEvery counted per zone).
+- 3.2: `BackroomsLook.blendedLighting(room, x, y)` (weight 0.5*(1-d/blend) toward connected neighbour zones, so continuous across the edge); used by `BackroomsLook.begin`, shafts and `litFloor`. Screenshot review of a dark zone NOT done.
+- Tests: `tests/zones_lighting.lua` (written, not run; not yet in check_all.sh).
