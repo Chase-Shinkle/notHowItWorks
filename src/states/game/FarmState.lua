@@ -1,14 +1,17 @@
 -- 2D farm. Renders through push at the 320x320 virtual resolution.
 --
 -- Controls (keyboard): WASD/arrows move the farmer one tile per press (hold
--- to repeat); E/Space/Enter uses the tile the farmer faces (plant, harvest,
--- sell, buy at the seed stall); 1-3 pick a seed type, Tab/Q cycles it.
+-- to repeat); E/Space/Enter uses the tile the farmer faces: on a plot it
+-- tills, plants, waters or harvests depending on the plot (plotAction); on the
+-- villager it sells, at the seed stall it buys; 1-3 pick a seed type, Tab/Q
+-- cycles it.
 -- Controls (mouse): hover highlights a plot, the villager or the seed stall,
 -- left click uses it directly; clicking a seed slot in the top bar selects
 -- that seed.
 --
--- Rules live in src/Farm.lua; growth runs on a knife Timer group owned by this
--- state, so it only advances while the farm is active.
+-- Rules live in src/Farm.lua; growth is advanced by elapsed time in
+-- FarmState:update (never during the break). `self.timers` is a knife Timer
+-- group owned by this state for anything farm-local; it is cleared on exit.
 --
 -- The break: after the first sale the villager keeps asking for crops. Trying
 -- to sell with none left (an over-sell), or FARM_IDLE_BREAK_TIME seconds after
@@ -183,9 +186,22 @@ function FarmState:say(text, duration)
     self.villagerLine = {text = text, time = duration or 2.5}
 end
 
+-- What using `plot` would do right now; the single source for the action, the
+-- hint text and the tool icon: 'till' | 'plant' | 'no-seeds' | 'water' |
+-- 'growing' | 'harvest'.
+function FarmState:plotAction(plot)
+    if plot.state == PLOT_EMPTY then
+        if not plot.tilled then return 'till' end
+        return Farm.pickSeed(self.gameData, self.selectedSeed) and 'plant' or 'no-seeds'
+    elseif plot.state == PLOT_MATURE then
+        return 'harvest'
+    end
+    return plot.watered and 'growing' or 'water'
+end
+
 -- Use a target (plot, villager or seed stall). Returns the action taken:
--- 'plant' | 'harvest' | 'sell' | 'buy' | 'growing' | 'no-seeds' | 'no-crops' |
--- 'no-coins' | nil.
+-- 'till' | 'plant' | 'water' | 'harvest' | 'sell' | 'buy' | 'growing' |
+-- 'no-seeds' | 'no-crops' | 'no-coins' | nil.
 -- 'oversell' means this attempt started the break. While the break plays
 -- nothing can be used (returns nil).
 function FarmState:interact(target)
@@ -194,26 +210,35 @@ function FarmState:interact(target)
 
     if target.kind == 'plot' then
         local plot = target.plot
-        if plot.state == PLOT_EMPTY then
-            local ok, seedType = Farm.plant(plot, data, self.selectedSeed, self.timers)
-            if ok then
-                self.selectedSeed = seedType
-                gSounds['plant']:play()
-                self:popup('-1 ' .. seedType, plot.col, plot.row)
-                return 'plant'
-            end
+        local action = self:plotAction(plot)
+        if action == 'till' then
+            Farm.till(plot)
+            gSounds['till']:play()
+            self:popup('tilled', plot.col, plot.row, {0.9, 0.75, 0.5, 1})
+            return 'till'
+        elseif action == 'plant' then
+            local _, seedType = Farm.plant(plot, data, self.selectedSeed)
+            self.selectedSeed = seedType
+            gSounds['plant']:play()
+            self:popup('-1 ' .. SeedName(seedType), plot.col, plot.row)
+            return 'plant'
+        elseif action == 'no-seeds' then
             gSounds['deny']:play()
             self:popup('no seeds', plot.col, plot.row, {1, 0.5, 0.5, 1})
             return 'no-seeds'
-        elseif plot.state == PLOT_MATURE then
+        elseif action == 'water' then
+            Farm.water(plot)
+            gSounds['water']:play()
+            self:popup('watered', plot.col, plot.row, {0.55, 0.8, 1, 1})
+            return 'water'
+        elseif action == 'harvest' then
             local _, seedType = Farm.harvest(plot, data)
             gSounds['harvest']:play()
-            self:popup('+1 ' .. seedType, plot.col, plot.row, {0.7, 1, 0.6, 1})
+            self:popup('+1 ' .. SeedName(seedType), plot.col, plot.row, {0.7, 1, 0.6, 1})
             return 'harvest'
-        else
-            self:popup('growing...', plot.col, plot.row, {0.85, 0.85, 0.85, 1})
-            return 'growing'
         end
+        self:popup('growing...', plot.col, plot.row, {0.85, 0.85, 0.85, 1})
+        return 'growing'
     elseif target.kind == 'villager' then
         if Farm.isOverSell(data) and not data.hasBroken then
             -- sold out after a real sale: the villager pays for a crop that
@@ -228,7 +253,7 @@ function FarmState:interact(target)
             gSounds['sell']:play()
             self:popup('+' .. value .. 'c', FARM_VILLAGER.col, FARM_VILLAGER.row, {1, 0.9, 0.3, 1})
             if Farm.totalCrops(data) > 0 then
-                self:say('Thanks! A ' .. seedType .. '!')
+                self:say('Thanks! A ' .. SeedName(seedType) .. '!')
             else
                 self:say('Thanks! Got another?')
             end
@@ -245,7 +270,7 @@ function FarmState:interact(target)
         local ok, _, price = Farm.buySeed(data, seedType)
         if ok then
             gSounds['sell']:play()
-            self:popup('+1 ' .. seedType .. ' -' .. price .. 'c', FARM_SHOP.col, FARM_SHOP.row, {0.7, 1, 0.6, 1})
+            self:popup('+1 ' .. SeedName(seedType) .. ' -' .. price .. 'c', FARM_SHOP.col, FARM_SHOP.row, {0.7, 1, 0.6, 1})
             return 'buy'
         end
         gSounds['deny']:play()
@@ -339,6 +364,13 @@ function FarmState:updateEffects(dt)
     end
 end
 
+-- Advances every growing plot (never called during the break).
+function FarmState:updateGrowth(dt)
+    for _, plot in ipairs(self.plots) do
+        Farm.advance(plot, dt)
+    end
+end
+
 function FarmState:updateMovement(dt)
     for _, dir in ipairs(DIR_ORDER) do
         if anyPressed(FARM_KEYS[dir]) then
@@ -391,6 +423,7 @@ function FarmState:update(dt)
     end
 
     Timer.update(dt, self.timers)
+    self:updateGrowth(dt)
 
     if IsDebugAdvancePressed() then
         -- same seeds-only hand-off as the real break, so coins/crops never leak
@@ -428,9 +461,9 @@ function FarmState:shopHint()
     local seedType = self.selectedSeed
     local price = SEED_PRICES[seedType] or 0
     if (self.gameData.coins or 0) >= price then
-        return '[E] buy ' .. seedType .. ' seed (' .. price .. 'c)'
+        return '[E] buy ' .. SeedName(seedType) .. ' seed (' .. price .. 'c)'
     end
-    return seedType .. ' seed costs ' .. price .. 'c (have ' .. (self.gameData.coins or 0) .. 'c)'
+    return SeedName(seedType) .. ' seed costs ' .. price .. 'c (have ' .. (self.gameData.coins or 0) .. 'c)'
 end
 
 -- Context hint for the bottom bar, from the keyboard target. The seed stall
@@ -442,17 +475,19 @@ function FarmState:hintText()
     end
     if target and target.kind == 'plot' then
         local plot = target.plot
-        if plot.state == PLOT_EMPTY then
-            local seedType = Farm.pickSeed(self.gameData, self.selectedSeed)
-            return seedType and ('[E] plant ' .. seedType) or 'no seeds left'
-        elseif plot.state == PLOT_MATURE then
-            return '[E] harvest ' .. plot.seedType
+        local action = self:plotAction(plot)
+        if action == 'till' then return '[E] till the soil (shovel)'
+        elseif action == 'plant' then
+            return '[E] plant ' .. SeedName(Farm.pickSeed(self.gameData, self.selectedSeed)) .. ' (seed bag)'
+        elseif action == 'no-seeds' then return 'no seeds left'
+        elseif action == 'water' then return '[E] water ' .. SeedName(plot.seedType) .. ' (watering can)'
+        elseif action == 'harvest' then return '[E] harvest ' .. SeedName(plot.seedType) .. ' (sickle)'
         end
-        return plot.seedType .. ' growing...'
+        return SeedName(plot.seedType) .. ' growing...'
     elseif target and target.kind == 'villager' then
         local cropType = Farm.pickCrop(self.gameData)
         if cropType then
-            return '[E] sell ' .. cropType .. ' (+' .. CROP_VALUES[cropType] .. 'c)'
+            return '[E] sell ' .. SeedName(cropType) .. ' (+' .. CROP_VALUES[cropType] .. 'c)'
         elseif self.gameData.hasSold then
             return '[E] sell another?'
         end

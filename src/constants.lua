@@ -17,6 +17,15 @@ DEBUG_ADVANCE_KEY = 'f1'
 -- Seed types shared by the farm and the backrooms, in display order.
 SEED_TYPES = {'beanstalk', 'pumpkin', 'vine'}
 
+-- Player-facing names of the seed types. Internal keys (game data, room
+-- allotments, art keys) never change; every name the player reads goes
+-- through SeedName() (src/Util.lua), so the vine type reads as "corn".
+SEED_DISPLAY_NAMES = {
+    beanstalk = 'beanstalk',
+    pumpkin = 'pumpkin',
+    vine = 'corn',
+}
+
 -- Seeds the player owns at the start of a new run.
 STARTING_SEEDS = {
     beanstalk = 2,
@@ -41,13 +50,17 @@ FARM_PLOTS = {col = 2, row = 4, cols = 3, rows = 2}
 FARM_VILLAGER = {col = 8, row = 4}
 
 -- Player start: directly below a plot and facing it, so the first key press
--- plants.
+-- tills it (the next one plants).
 FARM_PLAYER_START = {col = 3, row = 6, facing = 'up'}
 
 -- Growth: a crop moves through FARM_GROWTH_STAGES visible stages (1 = seeds,
--- last = mature), one stage every FARM_STAGE_TIME seconds (12 s in total).
+-- last = mature), one stage every FARM_STAGE_TIME seconds of full-rate growth
+-- (12 s in total). A watered crop grows at the full rate; an unwatered one at
+-- FARM_UNWATERED_RATE of it (24 s in total). Growth is advanced by elapsed
+-- time (Farm.advance), so watering mid-growth keeps the progress made.
 FARM_GROWTH_STAGES = 5
 FARM_STAGE_TIME = 3
+FARM_UNWATERED_RATE = 0.5
 
 -- Coins paid by villagers per harvested crop.
 CROP_VALUES = {

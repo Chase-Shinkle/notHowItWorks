@@ -186,7 +186,7 @@ function BackroomsState:plant()
     local ok, result = self.room:plant(plot, seedType, self.gameData.seeds, self.timers)
     if ok then
         gSounds['plant']:play()
-        self:say(result.demo and ('The ' .. seedType .. ' keeps growing...') or ('Planted a ' .. seedType))
+        self:say(result.demo and ('The ' .. SeedName(seedType) .. ' keeps growing...') or ('Planted a ' .. SeedName(seedType)))
         print(string.format('[backrooms] planted %s on plot %s, seeds: %s',
             seedType, plot.id, FormatSeeds(self.gameData.seeds)))
         if (self.gameData.seeds[seedType] or 0) == 0 then self:selectSeed(seedType) end
@@ -194,9 +194,9 @@ function BackroomsState:plant()
         gSounds['deny']:play()
         local fmt = PLANT_MESSAGES[result] or result
         if result == 'wrong-seed' then
-            self:say(string.format(fmt, plot.crop.type, plot.crop.type))
+            self:say(string.format(fmt, SeedName(plot.crop.type), SeedName(plot.crop.type)))
         else
-            self:say(string.format(fmt, seedType))
+            self:say(string.format(fmt, SeedName(seedType)))
         end
     end
     return ok, result
@@ -309,7 +309,7 @@ function BackroomsState:renderHUD()
         local i = keyOf[t]
         local selected = t == self.selectedSeed
         local n = self.gameData.seeds[t] or 0
-        local label = string.format(selected and '[%d %s x%d]' or ' %d %s x%d ', i, t, n)
+        local label = string.format(selected and '[%d %s x%d]' or ' %d %s x%d ', i, SeedName(t), n)
         if selected then love.graphics.setColor(1, 1, 0.4, 1)
         elseif n == 0 then love.graphics.setColor(0.6, 0.6, 0.6, 1)
         else love.graphics.setColor(1, 1, 1, 1) end
@@ -322,9 +322,10 @@ function BackroomsState:renderHUD()
     if plot then
         local ok, reason = self.room:canPlant(plot, self.selectedSeed, self.gameData.seeds)
         local prompt
-        if ok then prompt = 'E / click: plant ' .. self.selectedSeed
-        elseif reason == 'wrong-seed' then prompt = 'This ' .. plot.crop.type .. ' needs a ' .. plot.crop.type .. ' seed'
-        elseif reason == 'no-seeds' then prompt = 'No ' .. self.selectedSeed .. ' seeds (Q: switch)'
+        if ok then prompt = 'E / click: plant ' .. SeedName(self.selectedSeed)
+        elseif reason == 'wrong-seed' then
+            prompt = 'This ' .. SeedName(plot.crop.type) .. ' needs a ' .. SeedName(plot.crop.type) .. ' seed'
+        elseif reason == 'no-seeds' then prompt = 'No ' .. SeedName(self.selectedSeed) .. ' seeds (Q: switch)'
         else prompt = 'Plot in use' end
         love.graphics.printf(prompt, 0, h / 2 + 24, w, 'center')
     end

@@ -1,6 +1,8 @@
 -- 2D farm rules, kept separate from FarmState's input/rendering so they can be
--- tested headlessly. Plots grow through knife Timer callbacks; inventory lives
--- in the shared game-data table (seeds, crops, coins, hasSold).
+-- tested headlessly. Plots must be tilled before they take a seed; growth is
+-- advanced by elapsed time (Farm.advance, called from FarmState:update), at
+-- the full rate when watered and FARM_UNWATERED_RATE otherwise. Inventory
+-- lives in the shared game-data table (seeds, crops, coins, hasSold).
 
 Farm = {}
 
@@ -10,7 +12,9 @@ PLOT_GROWING = 'growing'
 PLOT_MATURE = 'mature'
 
 function Farm.newPlot(col, row)
-    return {col = col, row = row, state = PLOT_EMPTY, seedType = nil, stage = 0, timer = nil}
+    -- progress: full-rate growth seconds since planting
+    return {col = col, row = row, state = PLOT_EMPTY, seedType = nil, stage = 0, progress = 0,
+        tilled = false, watered = false}
 end
 
 -- Builds the plot grid from the FARM_PLOTS rectangle.
@@ -46,11 +50,29 @@ function Farm.pickSeed(gameData, preferred)
     return nil
 end
 
--- Plants on an empty plot, consuming one seed, and starts timed growth.
--- `timerGroup` (optional) is the knife Timer group that drives growth.
--- Returns ok, seedTypeOrReason ('occupied' | 'no-seeds').
-function Farm.plant(plot, gameData, preferred, timerGroup)
+-- Tills an empty, untilled plot. Returns ok, reason ('occupied' | 'tilled').
+function Farm.till(plot)
     if plot.state ~= PLOT_EMPTY then return false, 'occupied' end
+    if plot.tilled then return false, 'tilled' end
+    plot.tilled = true
+    return true
+end
+
+-- Waters a growing, unwatered plot (once per crop; no refill needed).
+-- Returns ok, reason ('not-growing' | 'watered').
+function Farm.water(plot)
+    if plot.state ~= PLOT_GROWING then return false, 'not-growing' end
+    if plot.watered then return false, 'watered' end
+    plot.watered = true
+    return true
+end
+
+-- Plants on an empty tilled plot, consuming one seed. Growth then advances
+-- through Farm.advance. Returns ok, seedTypeOrReason ('occupied' |
+-- 'untilled' | 'no-seeds').
+function Farm.plant(plot, gameData, preferred)
+    if plot.state ~= PLOT_EMPTY then return false, 'occupied' end
+    if not plot.tilled then return false, 'untilled' end
     local seedType = Farm.pickSeed(gameData, preferred)
     if not seedType then return false, 'no-seeds' end
 
@@ -58,24 +80,38 @@ function Farm.plant(plot, gameData, preferred, timerGroup)
     plot.state = PLOT_GROWING
     plot.seedType = seedType
     plot.stage = 1
-
-    -- one stage per interval; the last stage is mature
-    plot.timer = Timer.every(FARM_STAGE_TIME, function()
-        plot.stage = plot.stage + 1
-        if plot.stage >= FARM_GROWTH_STAGES then
-            plot.stage = FARM_GROWTH_STAGES
-            plot.state = PLOT_MATURE
-            plot.timer = nil
-            return false   -- stops (and removes) this timer
-        end
-    end)
-    if timerGroup then plot.timer:group(timerGroup) end
-
+    plot.progress = 0
+    plot.watered = false
     return true, seedType
 end
 
--- Harvests a mature crop into gameData.crops and clears the plot.
--- Returns ok, seedTypeOrReason ('empty' | 'immature').
+-- Current growth rate of a plot (full-rate seconds per second).
+function Farm.growthRate(plot)
+    return plot.watered and 1 or FARM_UNWATERED_RATE
+end
+
+-- Seconds of real time a freshly planted crop needs to mature.
+function Farm.growthTime(watered)
+    return FARM_STAGE_TIME * (FARM_GROWTH_STAGES - 1) / (watered and 1 or FARM_UNWATERED_RATE)
+end
+
+-- Advances a growing plot by `dt` seconds. Returns the new stage when the
+-- stage changed this call (FARM_GROWTH_STAGES means it just matured), else nil.
+function Farm.advance(plot, dt)
+    if plot.state ~= PLOT_GROWING then return nil end
+    plot.progress = plot.progress + dt * Farm.growthRate(plot)
+    -- the tiny epsilon keeps accumulated 1/60 s steps from landing a hair
+    -- short of an exact stage boundary
+    local stage = math.min(FARM_GROWTH_STAGES, 1 + math.floor(plot.progress / FARM_STAGE_TIME + 1e-9))
+    if stage == plot.stage then return nil end
+    plot.stage = stage
+    if stage >= FARM_GROWTH_STAGES then plot.state = PLOT_MATURE end
+    return stage
+end
+
+-- Harvests a mature crop into gameData.crops and clears the plot. The plot
+-- stays tilled; the water is used up. Returns ok, seedTypeOrReason ('empty'
+-- | 'immature').
 function Farm.harvest(plot, gameData)
     if plot.state == PLOT_EMPTY then return false, 'empty' end
     if plot.state ~= PLOT_MATURE then return false, 'immature' end
@@ -85,7 +121,8 @@ function Farm.harvest(plot, gameData)
     plot.state = PLOT_EMPTY
     plot.seedType = nil
     plot.stage = 0
-    plot.timer = nil
+    plot.progress = 0
+    plot.watered = false
     return true, seedType
 end
 

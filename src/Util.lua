@@ -25,3 +25,9 @@ function table.slice(table, first, last, step)
 
     return sliced
 end
+
+-- The name the player reads for a seed type (SEED_DISPLAY_NAMES in
+-- src/constants.lua); unknown types fall back to their key.
+function SeedName(seedType)
+    return (SEED_DISPLAY_NAMES and SEED_DISPLAY_NAMES[seedType]) or tostring(seedType)
+end

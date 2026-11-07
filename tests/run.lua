@@ -351,9 +351,10 @@ test('farm: new game has seeds, an empty plot and a villager on screen', functio
     local vx, vy = FarmTileToPixel(FARM_VILLAGER.col, FARM_VILLAGER.row)
     assert(vx >= 0 and vy >= FARM_TILE and vx + FARM_TILE <= VIRTUAL_WIDTH
         and vy + FARM_TILE <= VIRTUAL_HEIGHT - FARM_TILE, 'villager inside the field')
-    -- farmer starts facing an empty plot: the first E press plants
+    -- farmer starts facing an empty, untilled plot: the first E press tills it
     local target = farm:facingTarget()
     eq(target and target.kind, 'plot'); eq(target.plot.state, PLOT_EMPTY)
+    eq(target.plot.tilled, false); eq(farm:plotAction(target.plot), 'till')
     eq(farm.gameData.coins, 0); eq(Farm.totalCrops(farm.gameData), 0)
 end)
 
@@ -408,21 +409,32 @@ test('farm: facing target is highlighted', function()
     eq(farm:hintText(), 'WASD/arrows move  E use  1-3 seed  or click')
 end)
 
-test('farm: planting consumes one seed of the selected type', function()
+test('farm: the first use tills, the next plants one seed of the selected type', function()
     local farm = toFarm()
     local d = farm.gameData
     eq(farm.selectedSeed, 'beanstalk')
     press('2'); eq(farm.selectedSeed, 'pumpkin')
-    eq(farm:hintText(), '[E] plant pumpkin')
-    press('e')
     local plot = farm:facingTarget().plot
+    eq(farm:hintText(), '[E] till the soil (shovel)')
+    press('e')
+    eq(plot.tilled, true); eq(plot.state, PLOT_EMPTY, 'tilling plants nothing')
+    eq(Farm.totalSeeds(d), Farm.totalSeeds(NewGameData()), 'no seed consumed by tilling')
+    eq(farm.popups[#farm.popups].text, 'tilled', 'tilling feedback')
+    eq(farm:hintText(), '[E] plant pumpkin (seed bag)')
+    press('e')
     eq(plot.state, PLOT_GROWING); eq(plot.seedType, 'pumpkin'); eq(plot.stage, 1)
+    eq(plot.watered, false, 'a new crop starts unwatered')
     eq(d.seeds.pumpkin, STARTING_SEEDS.pumpkin - 1)
     eq(d.seeds.beanstalk, STARTING_SEEDS.beanstalk, 'other seeds untouched')
-    -- interacting again with a growing plot plants nothing more
+    -- interacting again with a growing plot waters it and plants nothing more
+    eq(farm:hintText(), '[E] water pumpkin (watering can)')
     press('space')
+    eq(plot.watered, true)
     eq(d.seeds.pumpkin, STARTING_SEEDS.pumpkin - 1)
     eq(farm:hintText(), 'pumpkin growing...')
+    -- an already-watered crop is unchanged by another use
+    eq(farm:interact(farm:facingTarget()), 'growing')
+    eq(plot.watered, true); eq(d.seeds.pumpkin, STARTING_SEEDS.pumpkin - 1)
 end)
 
 test('farm: planting with no seeds does nothing', function()
@@ -430,6 +442,9 @@ test('farm: planting with no seeds does nothing', function()
     gStateMachine:change('farm', NewGameData({seeds = {}}))
     local farm = gStateMachine.current
     eq(Farm.totalSeeds(farm.gameData), 0)
+    eq(farm:hintText(), '[E] till the soil (shovel)', 'tilling needs no seeds')
+    press('e')
+    eq(farm:facingTarget().plot.tilled, true)
     eq(farm:hintText(), 'no seeds left')
     press('e')
     eq(farm:facingTarget().plot.state, PLOT_EMPTY)
@@ -441,7 +456,8 @@ test('farm: empty selected type falls back to a type that has seeds', function()
     gStateMachine:change('farm', NewGameData({seeds = {vine = 1}}))
     local farm = gStateMachine.current
     farm:selectSeed('beanstalk')
-    eq(farm:hintText(), '[E] plant vine')
+    press('e')                                          -- till
+    eq(farm:hintText(), '[E] plant corn (seed bag)', 'vine reads as corn')
     press('e')
     eq(farm:facingTarget().plot.seedType, 'vine'); eq(farm.gameData.seeds.vine, 0)
     eq(farm.selectedSeed, 'vine')
@@ -456,10 +472,17 @@ test('farm: seed cycling with tab/q and number keys', function()
     press('kp1'); eq(farm.selectedSeed, 'beanstalk')
 end)
 
-test('farm: crops grow through visible stages on the Timer and mature', function()
+-- till, plant and (unless `dry`) water the plot the farmer faces
+local function tillPlantWater(dry)
+    press('e'); press('e')
+    if not dry then press('e') end
+end
+
+test('farm: crops grow through visible stages and mature (watered)', function()
     local farm = toFarm()
-    press('e')
+    tillPlantWater()
     local plot = farm:facingTarget().plot
+    eq(plot.watered, true)
     eq(plot.stage, 1)
     run(FARM_STAGE_TIME + 0.05); eq(plot.stage, 2); eq(plot.state, PLOT_GROWING)
     run(FARM_STAGE_TIME); eq(plot.stage, 3)
@@ -471,7 +494,7 @@ test('farm: crops grow through visible stages on the Timer and mature', function
     assert(drawn, 'stage 3 sprite drawn')
     run(FARM_STAGE_TIME * (FARM_GROWTH_STAGES - 3))
     eq(plot.state, PLOT_MATURE); eq(plot.stage, FARM_GROWTH_STAGES)
-    eq(#farm.timers, 0, 'growth timer removed once mature')
+    eq(#farm.timers, 0, 'growth uses no Timer')
     -- stays mature
     run(FARM_STAGE_TIME * 3); eq(plot.stage, FARM_GROWTH_STAGES)
     mock.reset(); love.draw()
@@ -483,7 +506,7 @@ end)
 
 test('farm: a crop matures after exactly its growth duration, not before', function()
     local farm = toFarm()
-    press('e')
+    tillPlantWater()
     local plot = farm:facingTarget().plot
     local total = FARM_STAGE_TIME * (FARM_GROWTH_STAGES - 1)
     run(total - 0.1)
@@ -494,7 +517,7 @@ end)
 
 test('farm: immature crops cannot be harvested', function()
     local farm = toFarm()
-    press('e')
+    tillPlantWater()
     run(FARM_STAGE_TIME + 0.05)
     press('e')
     local plot = farm:facingTarget().plot
@@ -504,16 +527,18 @@ end)
 
 test('farm: harvesting a mature crop adds it to the inventory and clears the plot', function()
     local farm = toFarm()
-    press('e')
+    tillPlantWater()
     run(FARM_STAGE_TIME * FARM_GROWTH_STAGES)
     local plot = farm:facingTarget().plot
-    eq(farm:hintText(), '[E] harvest beanstalk')
+    eq(farm:hintText(), '[E] harvest beanstalk (sickle)')
     press('e')
     eq(plot.state, PLOT_EMPTY); eq(plot.seedType, nil); eq(plot.stage, 0)
+    eq(plot.tilled, true, 'stays tilled'); eq(plot.watered, false, 'the water is used up')
     eq(farm.gameData.crops.beanstalk, 1)
     eq(farm.gameData.seeds.beanstalk, STARTING_SEEDS.beanstalk - 1, 'harvest gives a crop, not a seed')
-    -- the plot can be replanted
-    press('e'); eq(plot.state, PLOT_GROWING)
+    -- the plot is replanted on the next use, without tilling again, unwatered
+    eq(farm:hintText(), '[E] plant beanstalk (seed bag)')
+    press('e'); eq(plot.state, PLOT_GROWING); eq(plot.watered, false)
 end)
 
 test('farm: selling to the villager adds coins and removes a crop', function()
@@ -554,8 +579,12 @@ test('farm: mouse hover highlights and click uses plots, villager and seed slots
     -- click the third seed slot in the top bar, then click the plot
     mock.mouseAt(4 + 2 * 46 + 10, 10); mock.click(1); step()
     eq(farm.selectedSeed, 'vine')
-    mock.mouseAt(px + 10, py + 10); mock.click(1); step()
+    mock.mouseAt(px + 10, py + 10); mock.click(1); step()          -- till
     local plot = farm:plotAt(FARM_PLOTS.col, FARM_PLOTS.row)
+    eq(plot.tilled, true)
+    mock.click(1); step()                                          -- plant
+    mock.click(1); step()                                          -- water
+    eq(plot.watered, true)
     eq(plot.state, PLOT_GROWING); eq(plot.seedType, 'vine')
     eq(farm.gameData.seeds.vine, STARTING_SEEDS.vine - 1)
     -- click to harvest once mature, then click the villager to sell
@@ -578,7 +607,7 @@ test('farm: first plant -> harvest -> sell cycle by keyboard finishes well under
     local function act(key)               -- press, then ~0.25 s of reaction time
         mock.press(key); step(); frames = frames + 1 + run(0.25)
     end
-    act('e')                                                       -- plant
+    act('e'); act('e'); act('e')                                   -- till, plant, water
     frames = frames + run(FARM_STAGE_TIME * (FARM_GROWTH_STAGES - 1) + 0.1) -- wait
     act('e')                                                       -- harvest
     eq(Farm.totalCrops(farm.gameData), 1, 'harvested')
@@ -594,18 +623,40 @@ test('farm: first plant -> harvest -> sell cycle by keyboard finishes well under
     assert(seconds < 30, 'expected a ~20 s cycle, got ' .. seconds .. ' s')
 end)
 
-test('farm: growth timers are owned by the farm and cleared on exit', function()
+test('farm: first cycle without watering still finishes well under 3 minutes', function()
+    local farm = toFarm()
+    local frames = 0
+    local function act(key) mock.press(key); step(); frames = frames + 1 + run(0.25) end
+    act('e'); act('e')                                             -- till, plant (no water)
+    local plot = farm:facingTarget().plot
+    frames = frames + run(Farm.growthTime(true) + 0.1)
+    eq(plot.state, PLOT_GROWING, 'unwatered: not mature after the watered time')
+    frames = frames + run(Farm.growthTime(false) - Farm.growthTime(true))
+    act('e')
+    eq(Farm.totalCrops(farm.gameData), 1, 'harvested')
+    for _ = 1, FARM_VILLAGER.col - 1 - FARM_PLAYER_START.col do act('right') end
+    for _ = 1, FARM_PLAYER_START.row - FARM_VILLAGER.row do act('up') end
+    act('right'); act('e')
+    eq(farm.gameData.hasSold, true)
+    local seconds = frames / 60
+    assert(seconds < 180 and seconds < 40, 'unwatered cycle took ' .. seconds .. ' s')
+end)
+
+test('farm: growth is not on any Timer group (state or global) and stops on exit', function()
     local farm = toFarm({'--debug'})
-    press('e')
-    eq(#farm.timers, 1)
+    tillPlantWater()
+    eq(#farm.timers, 0, 'no growth timer on the state group')
     eq(#Timer.defaultGroup, 0, 'growth not on the global group')
+    local plot = farm:facingTarget().plot
     mock.press('f1'); step()
-    eq(#farm.timers, 0, 'cleared on leaving the farm')
+    local progress = plot.progress
+    run(5)
+    eq(plot.progress, progress, 'nothing advances the farm once it is left')
 end)
 
 test('farm: renders HUD and field with every asset as a placeholder', function()
     local farm = toFarm({'.', '--placeholder-assets'})
-    press('e')
+    tillPlantWater()
     run(FARM_STAGE_TIME * 2)
     mock.reset(); love.draw()
     assert(mock.count('draw') > 100, 'field tiles and sprites drawn')
@@ -630,7 +681,7 @@ end)
 
 test('farm: seeds spent on the farm stay spent in the backrooms (debug skip)', function()
     local farm = toFarm({'--debug'})
-    press('e')                                          -- spend one beanstalk seed
+    press('e'); press('e')                              -- till, then spend one beanstalk seed
     mock.press('f1'); step()
     local back = gStateMachine.current
     eq(back.usesPush, false, 'in backrooms')
@@ -643,15 +694,22 @@ test('Farm rules: plant/harvest/sell return values', function()
     loadGame()
     local d = NewGameData({seeds = {pumpkin = 1}})
     local plot = Farm.newPlot(1, 1)
-    local group = {}
     local ok, why = Farm.harvest(plot, d); eq(ok, false); eq(why, 'empty')
-    ok, why = Farm.plant(plot, d, 'pumpkin', group); eq(ok, true); eq(why, 'pumpkin')
-    ok, why = Farm.plant(plot, d, 'pumpkin', group); eq(ok, false); eq(why, 'occupied')
+    ok, why = Farm.plant(plot, d, 'pumpkin'); eq(ok, false); eq(why, 'untilled')
+    eq(d.seeds.pumpkin, 1, 'untilled plot takes no seed')
+    ok, why = Farm.water(plot); eq(ok, false); eq(why, 'not-growing')
+    ok = Farm.till(plot); eq(ok, true); eq(plot.tilled, true)
+    ok, why = Farm.till(plot); eq(ok, false); eq(why, 'tilled')
+    ok, why = Farm.plant(plot, d, 'pumpkin'); eq(ok, true); eq(why, 'pumpkin')
+    ok, why = Farm.plant(plot, d, 'pumpkin'); eq(ok, false); eq(why, 'occupied')
+    ok, why = Farm.till(plot); eq(ok, false); eq(why, 'occupied')
     ok, why = Farm.harvest(plot, d); eq(ok, false); eq(why, 'immature')
-    Timer.update(FARM_STAGE_TIME * FARM_GROWTH_STAGES, group)   -- one big step
+    eq(Farm.advance(plot, FARM_STAGE_TIME * FARM_GROWTH_STAGES * 2), FARM_GROWTH_STAGES, 'one big step')
     eq(plot.state, PLOT_MATURE)
+    ok, why = Farm.water(plot); eq(ok, false); eq(why, 'not-growing', 'mature crops need no water')
     ok, why = Farm.harvest(plot, d); eq(ok, true); eq(why, 'pumpkin')
-    ok, why = Farm.plant(plot, d, 'pumpkin', group); eq(ok, false); eq(why, 'no-seeds')
+    eq(plot.tilled, true)
+    ok, why = Farm.plant(plot, d, 'pumpkin'); eq(ok, false); eq(why, 'no-seeds')
     local sold, t, v = Farm.sell(d); eq(sold, true); eq(t, 'pumpkin'); eq(v, CROP_VALUES.pumpkin)
     sold, t = Farm.sell(d); eq(sold, false); eq(t, 'no-crops')
     eq(d.coins, CROP_VALUES.pumpkin); eq(d.hasSold, true)
@@ -747,7 +805,8 @@ test('break: input is locked while the glitch sequence plays', function()
     local plot = farm:plotAt(FARM_PLOTS.col, FARM_PLOTS.row)
     plot.state, plot.seedType, plot.stage = PLOT_MATURE, 'beanstalk', FARM_GROWTH_STAGES
     local growing = farm:plotAt(FARM_PLOTS.col + 1, FARM_PLOTS.row)
-    Farm.plant(growing, farm.gameData, 'beanstalk', farm.timers)
+    growing.tilled = true
+    Farm.plant(growing, farm.gameData, 'beanstalk')
     press('e')
     eq(farm.breaking, true)
     local col, row, facing = farm.player.col, farm.player.row, farm.player.facing
@@ -856,7 +915,8 @@ test('carry-over: high-seed arrival keeps exactly the seeds held at the break', 
         crops = {pumpkin = 1}})
     -- plant one vine on the farm, sell the last crop, then over-sell
     local plot = farm:plotAt(FARM_PLOTS.col, FARM_PLOTS.row)
-    Farm.plant(plot, farm.gameData, 'vine', farm.timers)
+    Farm.till(plot)
+    Farm.plant(plot, farm.gameData, 'vine')
     press('e'); eq(farm.gameData.hasSold, true)
     press('e'); eq(farm.breaking, true)
     run(BREAK_TIME + 0.1)
@@ -940,10 +1000,9 @@ test('shop: plant -> harvest -> sell -> rebuy the same seed leaves more coins th
     for _, t in ipairs(SEED_TYPES) do
         local data = NewGameData({seeds = {[t] = 1}})
         local plot = Farm.newPlot(1, 1)
-        local group = {}
-        assert(Farm.plant(plot, data, t, group))
-        Timer.update(FARM_STAGE_TIME * FARM_GROWTH_STAGES, group)
-        Timer.update(FARM_STAGE_TIME * FARM_GROWTH_STAGES, group)
+        Farm.till(plot)
+        assert(Farm.plant(plot, data, t))
+        Farm.advance(plot, Farm.growthTime(false))
         assert(Farm.harvest(plot, data), t .. ' harvested')
         assert(Farm.sell(data, t))
         assert(Farm.buySeed(data, t))
@@ -965,8 +1024,8 @@ test('shop: the stall is its own tile on the field, clear of plots, villager, st
         local c, r = FARM_SHOP.col + d[1], FARM_SHOP.row + d[2]
         eq(farm:isWalkable(c, r), true, string.format('neighbour (%d,%d) walkable', c, r))
     end
-    -- the starting hint is still the plant prompt
-    eq(farm:hintText(), '[E] plant beanstalk')
+    -- the starting hint is the till prompt for the plot above the start
+    eq(farm:hintText(), '[E] till the soil (shovel)')
     mock.reset(); love.draw()
     local priced = false
     for _, c in ipairs(mock.calls) do
@@ -1015,7 +1074,7 @@ test('shop: buying by mouse (hover shows the hint, click buys), and then plantin
     eq(farm.gameData.coins, 1, 'second click refused'); eq(farm.gameData.seeds.beanstalk, 1)
     -- the bought seed plants like any other (the farmer starts facing a plot)
     mock.mouseAt(-50, -50); step()
-    press('e')
+    press('e'); press('e')                        -- till, plant
     eq(farm.gameData.seeds.beanstalk, 0)
     eq(farm:plotAt(FARM_PLAYER_START.col, FARM_PLAYER_START.row - 1).seedType, 'beanstalk')
 end)
@@ -1877,7 +1936,7 @@ test('planting: E plants the selected seed on the plot in range and only that co
     mock.reset(); love.draw()
     local texts = table.concat(printedTexts(), '\n')
     assert(texts:find('[2 pumpkin x2]', 1, true), 'HUD shows the selected type and its count')
-    assert(texts:find(' 3 vine x2 ', 1, true), 'HUD shows the other counts')
+    assert(texts:find(' 3 corn x2 ', 1, true), 'HUD shows the other counts (vine reads as corn)')
     assert(texts:find('E / click: plant pumpkin', 1, true), 'planting prompt near a plot')
     press('e')
     eq(FormatSeeds(back.gameData.seeds), 'beanstalk=0 pumpkin=1 vine=2', 'one pumpkin consumed')
@@ -2005,11 +2064,11 @@ test('hud: visible seed types follow the room allotment (room 1 beanstalk; room 
     eq(FormatSeeds(back.gameData.seeds), 'beanstalk=3 pumpkin=5 vine=4', 'hidden counts still tracked')
     back:advance()
     eq(table.concat(back:visibleSeedTypes(), ','), 'pumpkin,vine')
-    eq(hudSeedLabels(back), '[2 pumpkin x2]| 3 vine x2 ', 'room 2 HUD: pumpkin and vine, no beanstalk')
+    eq(hudSeedLabels(back), '[2 pumpkin x2]| 3 corn x2 ', 'room 2 HUD: pumpkin and vine (shown as corn), no beanstalk')
     eq(hudHasCoins(), nil)
     back:advance()
     eq(table.concat(back:visibleSeedTypes(), ','), 'beanstalk,pumpkin,vine')
-    eq(hudSeedLabels(back), ' 1 beanstalk x2 |[2 pumpkin x2]| 3 vine x2 ', 'room 3 HUD: all three')
+    eq(hudSeedLabels(back), ' 1 beanstalk x2 |[2 pumpkin x2]| 3 corn x2 ', 'room 3 HUD: all three')
     eq(hudHasCoins(), nil)
 end)
 
@@ -2071,7 +2130,7 @@ test('planting: occupied plots and empty seed types refuse without using seeds',
     eq(back:targetPlot().id, 'edge')
     press('e')
     eq(back.gameData.seeds.vine, 0); eq(back.room:plotById('edge').crop, nil, 'no vine seeds: nothing planted')
-    eq(back.message.text, 'No vine seeds left')
+    eq(back.message.text, 'No corn seeds left')
 end)
 
 test('planting: 1-3 select, Q / Tab cycle through held types, a click plants', function()
@@ -2479,6 +2538,150 @@ test('rooms: every exit is out of reach on entry', function()
         local reached, info = Reach.search(Room(data))
         eq(reached, false, 'room ' .. i .. ' exit reachable without crops (' .. info.cells .. ' cells)')
     end
+end)
+
+-- farm game feel: display names and plot care (section 1) ------------------------
+test('names: vine reads as corn in every farm hint, popup, villager line and shop hint', function()
+    loadGame()
+    gStateMachine:change('farm', NewGameData({seeds = {vine = 2}, coins = 20}))
+    local farm = gStateMachine.current
+    local seen = {}
+    local function note() seen[#seen + 1] = farm:hintText()
+        for _, p in ipairs(farm.popups) do seen[#seen + 1] = p.text end
+        if farm.villagerLine then seen[#seen + 1] = farm.villagerLine.text end
+    end
+    farm:selectSeed('vine')
+    note(); press('e'); note(); press('e'); note(); press('e'); note()   -- till, plant, water
+    run(Farm.growthTime(true) + 0.1); note()
+    press('e'); note()                                                    -- harvest
+    farm.player.col, farm.player.row, farm.player.facing = FARM_VILLAGER.col - 1, FARM_VILLAGER.row, 'right'
+    note(); farm.gameData.crops.vine = 2; note(); press('e'); note()      -- sell (one left: 'Thanks! A corn!')
+    farm.player.col, farm.player.row, farm.player.facing = FARM_SHOP.col - 1, FARM_SHOP.row, 'right'
+    note(); press('e'); note()                                            -- buy
+    farm.gameData.coins = 0; note()
+    -- HUD and stall draws
+    mock.reset(); love.draw()
+    for _, c in ipairs(mock.calls) do
+        if (c.name == 'print' or c.name == 'printf') and type(c.args[1]) == 'string' then seen[#seen + 1] = c.args[1] end
+    end
+    local all = table.concat(seen, ' | ')
+    assert(not all:find('vine', 1, true), 'no player-visible "vine": ' .. all)
+    assert(all:find('plant corn', 1, true) and all:find('harvest corn', 1, true) and all:find('sell corn', 1, true)
+        and all:find('buy corn seed', 1, true) and all:find('Thanks! A corn!', 1, true)
+        and all:find('+1 corn', 1, true) and all:find('-1 corn', 1, true), 'corn named everywhere: ' .. all)
+    -- internal keys are untouched
+    eq(farm.selectedSeed, 'vine'); eq(farm.gameData.seeds.vine ~= nil, true)
+    eq(SeedName('vine'), 'corn'); eq(SeedName('pumpkin'), 'pumpkin'); eq(SeedName('beanstalk'), 'beanstalk')
+    eq(table.concat(SEED_TYPES, ','), 'beanstalk,pumpkin,vine', 'keys unchanged')
+    eq(BACKROOMS_ROOMS[2].allotment.vine, 2, 'allotments keyed by vine')
+    eq(FormatSeeds(CarryOverGameData(farm.gameData).seeds):find('vine=', 1, true) ~= nil, true, 'carry-over keyed by vine')
+end)
+
+test('names: backrooms prompts and messages say corn, never vine', function()
+    local back = toRoom(2)
+    back.player:setPosition(0.8, 0, 0); run(0.2)
+    press('3')
+    mock.reset(); love.draw()
+    local texts = table.concat(printedTexts(), '\n')
+    assert(texts:find('E / click: plant corn', 1, true), 'prompt: ' .. texts)
+    press('e')
+    eq(back.message.text, 'Planted a corn')
+    mock.reset(); love.draw()
+    texts = table.concat(printedTexts(), '\n')
+    assert(not texts:find('vine', 1, true), 'no "vine" on the backrooms HUD: ' .. texts)
+end)
+
+test('plot care: watered crops mature in 12 s, unwatered in 24 s, never blocked', function()
+    loadGame()
+    eq(Farm.growthTime(true), 12); eq(Farm.growthTime(false), 24)
+    for _, watered in ipairs({true, false}) do
+        local d = NewGameData()
+        local plot = Farm.newPlot(1, 1)
+        Farm.till(plot); Farm.plant(plot, d, 'beanstalk')
+        if watered then Farm.water(plot) end
+        local t, stages = 0, {}
+        while plot.state ~= PLOT_MATURE and t < 60 do
+            local s = Farm.advance(plot, 1 / 60); t = t + 1 / 60
+            if s then stages[#stages + 1] = s end
+        end
+        local want = watered and 12 or 24
+        assert(math.abs(t - want) < 0.05, (watered and 'watered' or 'unwatered') .. ' matured at ' .. t)
+        eq(table.concat(stages, ','), '2,3,4,5', 'each stage reported once')
+        eq(Farm.advance(plot, 10), nil, 'mature plots no longer advance')
+    end
+end)
+
+test('plot care: watering mid-growth keeps progress and grows the rest at full rate', function()
+    loadGame()
+    local d = NewGameData()
+    local plot = Farm.newPlot(1, 1)
+    Farm.till(plot); Farm.plant(plot, d, 'pumpkin')
+    for _ = 1, 8 * 60 do Farm.advance(plot, 1 / 60) end          -- 8 s unwatered = 4 s of growth
+    assert(math.abs(plot.progress - 4) < 1e-6, 'progress ' .. plot.progress); eq(plot.stage, 2)
+    Farm.water(plot)
+    eq(plot.stage, 2, 'watering keeps the stage'); assert(math.abs(plot.progress - 4) < 1e-6, 'and the progress')
+    local t = 0
+    while plot.state ~= PLOT_MATURE do Farm.advance(plot, 1 / 60); t = t + 1 / 60 end
+    assert(math.abs(t - 8) < 0.05, 'remaining 8 s at full rate, took ' .. t)
+    -- water is lost on harvest; the replanted crop starts unwatered on tilled soil
+    Farm.harvest(plot, d)
+    eq(plot.tilled, true); eq(plot.watered, false)
+    Farm.plant(plot, d, 'pumpkin')
+    eq(plot.watered, false); eq(Farm.growthRate(plot), FARM_UNWATERED_RATE)
+end)
+
+test('plot care: the hint, the action and the result agree for every plot state', function()
+    local farm = toFarm()
+    local plot = farm:facingTarget().plot
+    local cases = {
+        {'till', '[E] till the soil (shovel)', function() end},
+        {'plant', '[E] plant beanstalk (seed bag)', function() plot.tilled = true end},
+        {'water', '[E] water beanstalk (watering can)', function() Farm.plant(plot, farm.gameData, 'beanstalk') end},
+        {'growing', 'beanstalk growing...', function() Farm.water(plot) end},
+        {'harvest', '[E] harvest beanstalk (sickle)', function() Farm.advance(plot, 100) end},
+    }
+    for _, c in ipairs(cases) do
+        c[3]()
+        eq(farm:plotAction(plot), c[1], 'plotAction')
+        eq(farm:hintText(), c[2], c[1] .. ' hint')
+    end
+    -- every action performed through interact matches what plotAction said
+    local farm2 = toFarm()
+    local p2 = farm2:facingTarget().plot
+    for _, want in ipairs({'till', 'plant', 'water', 'growing'}) do
+        eq(farm2:plotAction(p2), want); eq(farm2:interact(farm2:facingTarget()), want)
+    end
+    Farm.advance(p2, 100)
+    eq(farm2:plotAction(p2), 'harvest'); eq(farm2:interact(farm2:facingTarget()), 'harvest')
+    eq(farm2:plotAction(p2), 'plant', 'harvested plot is still tilled')
+    -- no seeds on a tilled plot
+    for _, t in ipairs(SEED_TYPES) do farm2.gameData.seeds[t] = 0 end
+    eq(farm2:plotAction(p2), 'no-seeds'); eq(farm2:hintText(), 'no seeds left')
+    eq(farm2:interact(farm2:facingTarget()), 'no-seeds')
+end)
+
+test('plot care: tilling and watering after a sale keep the idle countdown; the break freezes growth', function()
+    local farm = farmAtVillager({crops = {beanstalk = 1}})
+    press('e'); eq(farm.gameData.hasSold, true)
+    run(10)
+    local idle, nag = farm.idleTimer, farm.nagTimer
+    local a = farm:plotAt(FARM_PLOTS.col, FARM_PLOTS.row)
+    local b = farm:plotAt(FARM_PLOTS.col + 1, FARM_PLOTS.row)
+    eq(farm:interact({kind = 'plot', plot = a, col = a.col, row = a.row}), 'till')
+    eq(farm:interact({kind = 'plot', plot = a, col = a.col, row = a.row}), 'plant')
+    eq(farm:interact({kind = 'plot', plot = a, col = a.col, row = a.row}), 'water')
+    eq(farm:interact({kind = 'plot', plot = b, col = b.col, row = b.row}), 'till')
+    eq(farm.idleTimer, idle, 'idle countdown untouched'); eq(farm.nagTimer, nag)
+    eq(farm.breaking, false, 'care never starts the break')
+    run(FARM_IDLE_BREAK_TIME - 10 - 0.5)
+    eq(farm.breaking, false)
+    run(1)
+    eq(farm.breaking, true, 'idle break on the schedule from the last sale'); eq(farm.breakReason, 'idle')
+    local progress, stage = a.progress, a.stage
+    run(1)
+    eq(a.progress, progress, 'growth frozen during the break'); eq(a.stage, stage)
+    eq(farm:interact({kind = 'plot', plot = b, col = b.col, row = b.row}), nil, 'no care during the break')
+    eq(b.state, PLOT_EMPTY)
 end)
 
 realPrint(string.format('\n%d passed, %d failed', passed, failed))

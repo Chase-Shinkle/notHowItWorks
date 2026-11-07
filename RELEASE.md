@@ -19,27 +19,30 @@ Start / ending screens: **Enter**.
 
 Farm (2D):
 - Move: **WASD** / **arrow keys** (one tile per press, hold to repeat).
-- Use the highlighted tile: **E** / **Space** / **Enter** (plant on an empty
-  plot, harvest a ripe crop, sell to the villager, buy at the seed stall).
+- Use the highlighted tile: **E** / **Space** / **Enter**. On a plot it does
+  what the plot needs: till untilled soil, plant on tilled soil, water a
+  growing crop (once), harvest a ripe crop. It also sells to the villager and
+  buys at the seed stall. The hint bar names the action and tool.
   Left click on a plot, the villager or the stall does the same.
 - Seeds: **1-3** select a type, **Tab** / **Q** cycles; click a seed slot in
   the top bar.
 - Seed stall (the striped stall below the villager): buys one seed of the
-  selected type per use. Prices: beanstalk 2c, vine 3c, pumpkin 4c, each
+  selected type per use. Prices: beanstalk 2c, corn 3c, pumpkin 4c, each
   less than the crop sells for. The hint bar shows the price, and "need Nc"
   appears if you are short.
-- Plant, wait about 12 s, harvest, sell to the villager... then keep selling.
+- Till, plant, water, wait about 12 s (24 s if you skip watering), harvest,
+  sell to the villager... then keep selling. Harvested plots stay tilled.
 
 Backrooms (3D, first person):
 - Look: **mouse** (captured on entry). Walk: **WASD** / **arrow keys**.
 - Plant the selected seed on the nearest soil plot: **E** / **Enter** / left
   click.
 - Seeds: **1-3** select, **Q** / **Tab** cycle. The HUD lists only the seed
-  types the current room uses (Room 1: beanstalk; Room 2: pumpkin and vine;
+  types the current room uses (Room 1: beanstalk; Room 2: pumpkin and corn;
   Room 3: all three). Keys for other types do nothing there, and seeds you
   carried in are kept.
 - Beanstalk: walk forward into it to climb, back to climb down, sideways to
-  step off at the top. Pumpkins fill pits. Vines bridge gaps.
+  step off at the top. Pumpkins fill pits. Corn (vine) stalks bridge gaps.
 - **R**: reset the room (crops removed, seeds restored). Falling into a pit
   or gap puts you back at the room start.
 - **Esc**: free the mouse; click to capture it again.

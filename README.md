@@ -21,18 +21,29 @@ requests a 24-bit depth buffer for the window.
 ## Farm controls
 
 - Move: WASD / arrow keys (one tile per press, hold to repeat).
-- Use the highlighted tile: E / Space / Enter: plant on an empty plot,
-  harvest a mature crop, sell to the villager, or buy a seed at the seed stall.
+- Use the highlighted tile: E / Space / Enter. On a plot the action depends
+  on the plot: till an untilled plot (shovel), plant on a tilled empty plot
+  (seed bag), water a growing crop once (watering can), harvest a mature crop
+  (sickle). The hint bar names the action and tool. On the villager it sells,
+  at the seed stall it buys a seed.
 - Seeds: 1-3 select a type, Tab/Q cycles. If the selected type is empty, the
   next type that still has seeds is planted.
 - Seed stall (`FARM_SHOP`, below the villager): one seed of the selected type
-  per use for `SEED_PRICES` coins (beanstalk 2, vine 3, pumpkin 4, each below
+  per use for `SEED_PRICES` coins (beanstalk 2, corn 3, pumpkin 4, each below
   the sale value). Buying never starts or delays the break.
 - Mouse: hovering a plot, the villager or the stall outlines it; left click
   uses it.
   Clicking a seed slot in the top bar selects that seed.
-- A crop grows through 5 stages, one every 3 s (`FARM_STAGE_TIME`), so a first
-  plant -> harvest -> sell cycle takes about 20 s.
+- Tilling: an empty plot must be tilled before it takes a seed. It stays
+  tilled after a harvest, so replanting needs one press.
+- Growth: a crop grows through 5 stages. Watered, it matures in 12 s (one
+  stage every `FARM_STAGE_TIME` = 3 s); unwatered it still grows, at
+  `FARM_UNWATERED_RATE` (half speed, 24 s). Watering is unlimited, once per
+  crop, and lost at harvest; watering part-way keeps the progress. A first
+  till -> plant -> water -> harvest -> sell cycle takes about 20 s (about
+  32 s without watering).
+- Names: the `vine` seed type is shown to the player as "corn" everywhere
+  (`SEED_DISPLAY_NAMES` / `SeedName`); internal keys and art are unchanged.
 
 ## The break
 

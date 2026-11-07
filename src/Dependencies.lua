@@ -113,7 +113,9 @@ gTextures['white'] = Assets.newPlaceholderImage({1, 1, 1, 1}, 4)
 Assets.loadAll(gSounds, {
     ['farm-music'] = {'sounds/farm_music.ogg', 'stream'},
     ['backrooms-hum'] = {'sounds/backrooms_hum.ogg', 'stream'},
+    ['till'] = {'sounds/till.wav', 'static'},
     ['plant'] = {'sounds/plant.wav', 'static'},
+    ['water'] = {'sounds/water.wav', 'static'},
     ['harvest'] = {'sounds/harvest.wav', 'static'},
     ['sell'] = {'sounds/sell.wav', 'static'},
     ['deny'] = {'sounds/deny.wav', 'static'},

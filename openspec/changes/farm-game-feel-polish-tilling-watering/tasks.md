@@ -2,10 +2,10 @@
 
 ## 1. Display names and plot-care rules
 
-- [ ] 1.1 Add `SEED_DISPLAY_NAMES` and `SeedName()` and route every player-visible seed name in `FarmState` and `BackroomsState` through it; verify a test that no farm hint, popup, villager line or shop hint contains "vine" and that internal keys, allotments and carry-over are unchanged.
-- [ ] 1.2 Add `tilled`/`watered` plot state, `Farm.till`, `Farm.water`, a tilled requirement in `Farm.plant`, and `Farm.advance(plot, dt)` replacing the per-plot Timer (rate 1 watered, `FARM_UNWATERED_RATE` otherwise, progress kept when watering mid-growth); verify headless tests for till-then-plant, replant keeps tilled, water lost on harvest, watered timing 12 s, unwatered 24 s, and mid-growth watering.
-- [ ] 1.3 Make `FarmState:interact` and the hint text use one `plotAction` helper (till, plant, water, harvest, growing) and have `update` advance growth; verify hints and actions agree for every plot state and that the break still freezes growth and input and is unaffected by tilling or watering after a sale.
-- [ ] 1.4 Update `tests/run.lua` and `tests/autotest.lua` for the new first-use flow (till, plant, water), and the README and RELEASE.md growth and controls text; verify `sh tests/check_all.sh` passes and the first plant, harvest and sell cycle still finishes well under 3 minutes with and without watering.
+- [x] 1.1 Add `SEED_DISPLAY_NAMES` and `SeedName()` and route every player-visible seed name in `FarmState` and `BackroomsState` through it; verify a test that no farm hint, popup, villager line or shop hint contains "vine" and that internal keys, allotments and carry-over are unchanged.
+- [x] 1.2 Add `tilled`/`watered` plot state, `Farm.till`, `Farm.water`, a tilled requirement in `Farm.plant`, and `Farm.advance(plot, dt)` replacing the per-plot Timer (rate 1 watered, `FARM_UNWATERED_RATE` otherwise, progress kept when watering mid-growth); verify headless tests for till-then-plant, replant keeps tilled, water lost on harvest, watered timing 12 s, unwatered 24 s, and mid-growth watering.
+- [x] 1.3 Make `FarmState:interact` and the hint text use one `plotAction` helper (till, plant, water, harvest, growing) and have `update` advance growth; verify hints and actions agree for every plot state and that the break still freezes growth and input and is unaffected by tilling or watering after a sale.
+- [x] 1.4 Update `tests/run.lua` and `tests/autotest.lua` for the new first-use flow (till, plant, water), and the README and RELEASE.md growth and controls text; verify `sh tests/check_all.sh` passes and the first plant, harvest and sell cycle still finishes well under 3 minutes with and without watering.
 
 ## 2. Effects module and game feel
 

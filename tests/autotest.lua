@@ -205,12 +205,18 @@ local function script()
         check(debugTextOnScreen() ~= nil, 'debug: F1 marker on the farm HUD')
     end
 
-    -- plant on the plot above the start tile (3,5), wait, harvest
+    -- till, plant and water the plot above the start tile (3,5), wait, harvest
     local seedsBefore = Farm.totalSeeds(farm.gameData)
+    local firstPlot = farm:plotAt(3, 5)
+    check(farm:hintText() == '[E] till the soil (shovel)', 'farm: first hint is till (%s)', farm:hintText())
+    press('e')
+    check(firstPlot.tilled and Farm.totalSeeds(farm.gameData) == seedsBefore, 'farm: first use tills, no seed used')
     press('e')
     check(Farm.totalSeeds(farm.gameData) == seedsBefore - 1, 'farm: planting used one seed (%d -> %d)',
         seedsBefore, Farm.totalSeeds(farm.gameData))
-    wait(FARM_STAGE_TIME * (FARM_GROWTH_STAGES - 1) + 0.5)
+    press('e')
+    check(firstPlot.watered, 'farm: third use waters the crop')
+    wait(Farm.growthTime(true) + 0.5)
     shot('03-farm-grown')
     press('e')
     check(Farm.totalCrops(farm.gameData) == 1, 'farm: harvest adds one crop')
@@ -254,7 +260,8 @@ local function script()
     press('up'); wait(0.05)
     press('left')                                -- plot (4,5) blocks: turns to face it
     local seedsNow = farm.gameData.seeds.beanstalk
-    press('e')
+    press('e')                                   -- till
+    press('e')                                   -- plant
     check(farm.gameData.seeds.beanstalk == seedsNow - 1 and farm:plotAt(4, 5).state == PLOT_GROWING,
         'farm: planted the bought beanstalk seed on (4,5)')
     -- back to the villager
@@ -284,7 +291,7 @@ local function script()
     -- and vines carried over, and no coins
     local hudText = table.concat(lastFrameTexts, ' | ')
     check(hudText:find('beanstalk x', 1, true) ~= nil and not hudText:find('pumpkin', 1, true)
-        and not hudText:find('vine', 1, true) and not hudText:find('%dc%f[%W]'),
+        and not hudText:find('vine', 1, true) and not hudText:find('corn', 1, true) and not hudText:find('%dc%f[%W]'),
         'room 1 HUD lists beanstalk only and no coins (seeds held: %s; HUD: %s)', seeds(), hudText)
     if not debugFlag then
         press('f1')
@@ -336,8 +343,8 @@ local function script()
     wait(0.3)
     shot('09-room2-arrival', {290, 380, 120, 80, 5}) -- billboard sprite edges
     hudText = table.concat(lastFrameTexts, ' | ')
-    check(hudText:find('pumpkin x', 1, true) and hudText:find('vine x', 1, true) and not hudText:find('beanstalk', 1, true),
-        'room 2 HUD lists pumpkin and vine only (%s)', hudText)
+    check(hudText:find('pumpkin x', 1, true) and hudText:find('corn x', 1, true) and not hudText:find('beanstalk', 1, true)
+        and not hudText:find('vine', 1, true), 'room 2 HUD lists pumpkin and vine (as corn) only (%s)', hudText)
 
     -- Room 2: wrong type in the pit, then reset, then the right solution
     p = back.player
@@ -371,7 +378,7 @@ local function script()
     wait(0.3)
     shot('12-room3-arrival', {0, 0, 450, 70, 3})
     hudText = table.concat(lastFrameTexts, ' | ')
-    check(hudText:find('beanstalk x', 1, true) and hudText:find('pumpkin x', 1, true) and hudText:find('vine x', 1, true),
+    check(hudText:find('beanstalk x', 1, true) and hudText:find('pumpkin x', 1, true) and hudText:find('corn x', 1, true),
         'room 3 HUD lists all three types (%s)', hudText)
 
     -- Room 3: pumpkin, beanstalk, vine
