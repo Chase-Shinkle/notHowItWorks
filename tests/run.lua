@@ -3950,5 +3950,121 @@ test('look 2.2/2.3: with the look on, gameplay objects get the readability floor
     eq(floors[#floors], 0, 'floor reset after the gameplay objects')
 end)
 
+-- dressing (openspec backrooms-visual-atmosphere, section 5) ------------------
+local function propsOf(data)
+    local out = {}
+    for _, b in ipairs(data.billboards) do if b.dressing then out[#out + 1] = b end end
+    return out
+end
+
+test('dressing 5.1: catalogue is tagged and a hall and a filler room draw from different props', function()
+    loadGame()
+    local hall, filler = Dressing.propsFor('hall'), Dressing.propsFor('filler')
+    assert(#hall > 0 and #filler > 0, 'both room types have props')
+    eq(table.concat(hall, ','), table.concat(Dressing.propsFor('hall'), ','), 'selection is stable')
+    assert(table.concat(hall, ',') ~= table.concat(filler, ','), 'hall and filler selections differ')
+    for name, p in pairs(PROP_CATALOGUE) do
+        assert(p.texture and p.height and #p.tags > 0, name .. ' fully described')
+        assert(not p.solid, name .. ' is a billboard')
+    end
+    -- placed props respect the tags of the cell they stand in
+    for seed = 1, 20 do
+        local d = gen(seed, 2)
+        local byKey = {}
+        for _, c in ipairs(d.meta.cells) do byKey[c.cx .. ',' .. c.cy] = c end
+        for _, b in ipairs(propsOf(d)) do
+            local c = byKey[math.floor(b.pos[1] / 6) .. ',' .. math.floor((b.pos[2] + 3) / 6)]
+            assert(c and c.kind ~= 'module', 'prop in a non-module cell')
+        end
+    end
+end)
+
+test('dressing 5.2: over many seeds no prop touches an exclusion zone, doorway or module', function()
+    loadGame()
+    local total = 0
+    for d = 1, #LEVELGEN_DIFFICULTY do
+        for seed = 1, 60 do
+            local data = gen(seed, d)
+            local zones = {}
+            for _, p in ipairs(data.pickups) do zones[#zones + 1] = {p.pos[1], p.pos[2], 1.3} end
+            for _, p in ipairs(data.plots) do zones[#zones + 1] = {p.pos[1], p.pos[2], 3} end
+            zones[#zones + 1] = {data.exit.pos[1], data.exit.pos[2], 1.8}
+            zones[#zones + 1] = {data.spawn[1], data.spawn[2], 2.2}
+            local cells = {}
+            for _, c in ipairs(data.meta.cells) do cells[c.cx .. ',' .. c.cy] = c end
+            for _, b in ipairs(propsOf(data)) do
+                total = total + 1
+                for _, z in ipairs(zones) do
+                    assert((b.pos[1] - z[1]) ^ 2 + (b.pos[2] - z[2]) ^ 2 >= z[3] ^ 2,
+                        'prop in exclusion zone seed ' .. seed)
+                end
+                local cx, cy = math.floor(b.pos[1] / 6), math.floor((b.pos[2] + 3) / 6)
+                assert(cells[cx .. ',' .. cy].kind ~= 'module', 'prop in a module footprint')
+                -- doorway: no prop within the door span plus margin
+                for e, t in pairs(data.meta.edges) do
+                    if t == 'door' then
+                        local ax, ay, bx, by = e:match('^(-?%d+),(-?%d+)|(-?%d+),(-?%d+)$')
+                        ax, ay, bx, by = tonumber(ax), tonumber(ay), tonumber(bx), tonumber(by)
+                        local dx, dy
+                        if ax == bx then dx, dy = ax * 6 + 3, math.max(ay, by) * 6 - 3
+                        else dx, dy = math.max(ax, bx) * 6, ay * 6 end
+                        assert((b.pos[1] - dx) ^ 2 + (b.pos[2] - dy) ^ 2 >= (1.2 + 1.0) ^ 2, 'prop in a doorway')
+                    end
+                end
+            end
+        end
+    end
+    assert(total > 200, 'props were placed: ' .. total)
+end)
+
+test('dressing 5.3: groupings exist; concealing props are nook-only and nook doorways stay clear', function()
+    loadGame()
+    local any = false
+    for seed = 1, 20 do
+        local data = gen(seed, 2)
+        assert(data.meta.dressing.groups >= 1, 'grouping in seed ' .. seed)
+        any = any or data.meta.dressing.groups > 0
+        -- the only props near a doorway belong to nooks (the pre-existing sacks)
+        local nookDoors = 0
+        for _, b in ipairs(data.billboards) do
+            if not b.dressing then nookDoors = nookDoors + 1 end
+        end
+        eq(nookDoors, data.meta.nooks, 'concealing props = secret nooks only')
+        assert(LevelGen.check(data))
+    end
+    assert(any)
+end)
+
+test('dressing 5.4: equal seeds give equal props; adding dressing leaves the layout unchanged', function()
+    loadGame()
+    local function sig(data)
+        local t = {}
+        for _, b in ipairs(data.billboards) do
+            t[#t + 1] = string.format('%s %.3f %.3f %.3f', b.texture, b.pos[1], b.pos[2], b.pos[3])
+        end
+        return table.concat(t, ';')
+    end
+    local function layout(data)
+        local t = {}
+        for _, b in ipairs(data.boxes) do t[#t + 1] = table.concat(b.pos, ',') .. table.concat(b.size, ',') end
+        for _, p in ipairs(data.pickups) do t[#t + 1] = table.concat(p.pos, ',') .. p.seed end
+        for _, p in ipairs(data.plots) do t[#t + 1] = table.concat(p.pos, ',') end
+        t[#t + 1] = table.concat(data.exit.pos, ',')
+        return table.concat(t, '|')
+    end
+    for seed = 1, 15 do
+        eq(sig(gen(seed, 2)), sig(gen(seed, 2)), 'same seed, same props')
+    end
+    assert(sig(gen(1, 2)) ~= sig(gen(2, 2)), 'different seeds differ')
+    local real = Dressing.apply
+    for seed = 1, 15 do
+        local with = layout(gen(seed, 3))
+        Dressing.apply = function(data) return data end
+        local without = layout(gen(seed, 3))
+        Dressing.apply = real
+        eq(with, without, 'layout identical without dressing, seed ' .. seed)
+    end
+end)
+
 realPrint(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)

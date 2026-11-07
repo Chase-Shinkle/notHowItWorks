@@ -298,7 +298,7 @@ function LevelGen.build(seed, difficulty)
     end
     local edges = {}
     for k2, v in pairs(conn) do edges[k2] = v end
-    return {
+    local data = {
         id = 'gen-' .. seed,
         name = 'Generated level',
         spawn = {CELL / 4, 0, 0, 0},
@@ -314,6 +314,7 @@ function LevelGen.build(seed, difficulty)
         meta = {seed = seed, obstacles = n, chain = chain, cells = metaCells, edges = edges, nooks = #nooks,
             exitCell = {last.cx, 0}},
     }
+    return Dressing.apply(data, seed)
 end
 
 -- Self-check ---------------------------------------------------------------------
