@@ -55,8 +55,21 @@ requests a 24-bit depth buffer for the window.
   sprites (`src/Billboard.lua`). Walking into the glowing exit loads the next
   room; the last exit shows the ending.
 - Seeds: Room 1 keeps the farm seeds (topped up to its allotment); later rooms
-  give exactly their own allotment. The current rooms are section 4 fixtures
-  with walkable exits; the seed puzzles come in section 5.
+  give exactly their own allotment.
+- Seed puzzles: E / Enter / left click plants the selected seed on the
+  nearest soil plot in range (there is no planting anywhere else). 1-3 select a
+  type, Q / Tab cycles; the HUD shows every type's count. R resets the room
+  (crops removed, seeds restored to what you had on entering it).
+- Crops (`src/Crop.lua`) grow over 2-2.5 s and do nothing until fully grown:
+  a beanstalk is a 3 m climb volume (press forward while standing in it to
+  climb; back climbs down; walk off sideways at the top), a pumpkin is a
+  2.6 x 2.6 x 1 m solid block (walkable when it fills a 1 m pit, since there
+  is no jump or step-up), and a vine is a 6 m flat bridge growing from its
+  plot in the plot's direction.
+- Room 1: finish the half-grown beanstalk with one seed and climb to the exit.
+  Room 2: pumpkin in the pit, then vine over the gap. Room 3: pumpkin, then
+  beanstalk up the ledge, then vine over the gap. Falling into a pit or gap
+  respawns you at the room start with your crops and seeds kept.
 
 ## Debug / testing
 
@@ -69,6 +82,9 @@ requests a 24-bit depth buffer for the window.
   flat-color / silent fallback, simulating empty asset folders.
 - `lua tests/run.lua` (or `luajit tests/run.lua`) runs headless tests against
   mocked LÖVE/g3d. Run it from the repo root.
+- `lua tests/reachability.lua` searches every seed-to-plot assignment in
+  every room with the real controller code and fails if anything but the
+  intended combination reaches an exit (slower; `tests/reach.lua`).
 - `rg --files -g "*.lua" -0 | xargs -0 python3 -I tests/tools/lua_structure_check.py` is a
   structural check (block/bracket balance, non-Lua operators) for machines
   without Lua. It does not run any code and cannot replace the test run.

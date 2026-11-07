@@ -14,11 +14,17 @@
 --                        collide = false (optional, decorative only)}
 --   exit               {pos = {x,y,z}, size = {sx,sy,sz}}: trigger volume; drawn as a
 --                        glowing marker, never collides
---   plots              list of {id, pos = {x,y,z}} (optional): fixed planting plots,
---                        drawn as soil pads on the floor (planting is task 5.2)
+--   plots              list of {id, pos = {x,y,z}, dir = '+x'|'-x'|'+y'|'-y'} (optional):
+--                        fixed planting plots, drawn as soil pads; `pos` is the
+--                        surface the crop grows from, `dir` (default '+x') is the
+--                        way a vine grows (src/Crop.lua)
 --   allotment          {beanstalk = n, pumpkin = n, vine = n}: the room's seeds
 --   billboards         list of Billboard defs (optional)
---   demoCrops          optional, kept as data for the tutorial room (task 5.4)
+--   demoCrops          optional list of {plot = <plot id>, seed = <type>, progress = 0..1}:
+--                        crops already part-grown when the room is (re)built. A
+--                        demo crop is frozen and not usable until a seed of its
+--                        type is planted on its plot, which finishes its growth
+--                        (the tutorial room)
 --   killZ              optional, default BACKROOMS_KILL_Z
 --
 -- Boxes are always axis-aligned: g3d.collisions ignores model rotation.
@@ -112,8 +118,25 @@ function Room.validate(data)
         if not known then return fail('unknown seed type ' .. tostring(seedType)) end
         if type(n) ~= 'number' or n < 0 or n % 1 ~= 0 then return fail('allotment ' .. seedType .. ' must be a whole number >= 0') end
     end
+    local plotIds = {}
     for i, p in ipairs(data.plots or {}) do
         if not isVec3(p.pos) then return fail('plot ' .. i .. ' needs pos') end
+        if p.dir ~= nil and not CROP_DIRECTIONS[p.dir] then
+            return fail('plot ' .. i .. ' unknown dir ' .. tostring(p.dir))
+        end
+        local pid = p.id or ('plot' .. i)
+        if plotIds[pid] then return fail('duplicate plot id ' .. tostring(pid)) end
+        plotIds[pid] = true
+    end
+    local demoPlots = {}
+    for i, d in ipairs(data.demoCrops or {}) do
+        if not plotIds[d.plot] then return fail('demo crop ' .. i .. ' unknown plot ' .. tostring(d.plot)) end
+        if demoPlots[d.plot] then return fail('demo crop ' .. i .. ' plot ' .. tostring(d.plot) .. ' used twice') end
+        demoPlots[d.plot] = true
+        if not CROP_DEFS[d.seed] then return fail('demo crop ' .. i .. ' unknown seed ' .. tostring(d.seed)) end
+        if type(d.progress) ~= 'number' or d.progress < 0 or d.progress >= 1 then
+            return fail('demo crop ' .. i .. ' progress must be in [0, 1)')
+        end
     end
     for i, b in ipairs(data.billboards or {}) do
         if not isVec3(b.pos) or not b.texture then return fail('billboard ' .. i .. ' needs pos and texture') end
@@ -173,7 +196,10 @@ function Room:init(data)
         local size = p.size or ROOM_PLOT_SIZE
         local model = g3d.newModel(NewBoxVerts(size, size, 0.02, {1, 1, 1, 1}), gTextures['plot'],
             {p.pos[1], p.pos[2], p.pos[3] + 0.011})
-        self.plots[#self.plots + 1] = {id = p.id or ('plot' .. i), pos = {p.pos[1], p.pos[2], p.pos[3]}, model = model}
+        self.plots[#self.plots + 1] = {
+            id = p.id or ('plot' .. i), pos = {p.pos[1], p.pos[2], p.pos[3]}, dir = p.dir or '+x',
+            model = model, crop = nil,
+        }
     end
 
     self.billboards = {}
@@ -181,7 +207,98 @@ function Room:init(data)
         self.billboards[#self.billboards + 1] = Billboard(def)
     end
 
+    -- crops: demo crops are rebuilt from data every time the room is built,
+    -- so a reset returns them to their starting state
     self.demoCrops = data.demoCrops
+    self.crops = {}
+    for _, d in ipairs(data.demoCrops or {}) do
+        local plot = self:plotById(d.plot)
+        local crop = Crop(d.seed, plot, {progress = d.progress})
+        crop.demo = true
+        plot.crop = crop
+        self.crops[#self.crops + 1] = crop
+    end
+end
+
+function Room:plotById(id)
+    for _, plot in ipairs(self.plots) do
+        if plot.id == id then return plot end
+    end
+    return nil
+end
+
+-- The plot the player at feet position (x, y, z) can plant on: the nearest
+-- plot within BACKROOMS_PLANT_RANGE horizontally and BACKROOMS_PLANT_HEIGHT
+-- vertically, or nil. Fixed plots only: there is no planting anywhere else.
+function Room:nearestPlot(x, y, z)
+    local best, bestD
+    for _, plot in ipairs(self.plots) do
+        local dx, dy = plot.pos[1] - x, plot.pos[2] - y
+        local d = math.sqrt(dx * dx + dy * dy)
+        if d <= BACKROOMS_PLANT_RANGE and math.abs(plot.pos[3] - z) <= BACKROOMS_PLANT_HEIGHT
+            and (not bestD or d < bestD) then
+            best, bestD = plot, d
+        end
+    end
+    return best
+end
+
+-- Can `seedType` be planted on `plot` with `seeds`? Returns true, or false and
+-- a reason: 'no-plot' | 'no-seeds' | 'occupied' | 'growing' | 'wrong-seed'.
+-- A plot holding a frozen demo crop takes one seed of the demo's type, which
+-- finishes the demo (the tutorial); any other plot must be empty.
+function Room:canPlant(plot, seedType, seeds)
+    if not plot then return false, 'no-plot' end
+    if not CROP_DEFS[seedType] then return false, 'no-seeds' end
+    local crop = plot.crop
+    if crop then
+        if not crop.demo then return false, 'occupied' end
+        if crop.timer or crop.grown then return false, 'growing' end
+        if crop.type ~= seedType then return false, 'wrong-seed' end
+    end
+    if ((seeds or {})[seedType] or 0) < 1 then return false, 'no-seeds' end
+    return true
+end
+
+-- Plants one `seedType` seed (taken from `seeds`) on `plot`, growing in Timer
+-- group `group`. Returns ok, crop or false, reason (see canPlant); nothing is
+-- consumed on failure.
+function Room:plant(plot, seedType, seeds, group)
+    local ok, reason = self:canPlant(plot, seedType, seeds)
+    if not ok then return false, reason end
+    seeds[seedType] = seeds[seedType] - 1
+    local crop = plot.crop
+    if not crop then
+        crop = Crop(seedType, plot)
+        plot.crop = crop
+        self.crops[#self.crops + 1] = crop
+    end
+    crop:grow(group)
+    return true, crop
+end
+
+-- Per-frame crop bookkeeping with the player's bounds (see Crop:update).
+function Room:updateCrops(pmin, pmax)
+    for _, crop in ipairs(self.crops) do crop:update(pmin, pmax) end
+end
+
+-- Solid colliders this frame: the room boxes plus every active solid crop.
+function Room:solidColliders()
+    local list = {}
+    for i, c in ipairs(self.colliders) do list[i] = c end
+    for _, crop in ipairs(self.crops) do
+        if crop.active and crop.collider then list[#list + 1] = crop.collider end
+    end
+    return list
+end
+
+-- Climbable volumes this frame: every active beanstalk.
+function Room:climbVolumes()
+    local list = {}
+    for _, crop in ipairs(self.crops) do
+        if crop.active and crop.climbVolume then list[#list + 1] = crop.climbVolume end
+    end
+    return list
 end
 
 -- Is a box (min, max) touching the exit trigger?
@@ -189,12 +306,13 @@ function Room:overlapsExit(min, max)
     return PlayerController.boxesOverlap(min, max, self.exit.min, self.exit.max)
 end
 
--- Opaque geometry first, then plots and the exit marker, then billboards
+-- Opaque geometry first, then plots, crops and the exit marker, then billboards
 -- sorted far to near (camera at cx, cy).
 function Room:draw(cx, cy)
     love.graphics.setColor(1, 1, 1, 1)
     for _, model in ipairs(self.models) do model:draw() end
     for _, plot in ipairs(self.plots) do plot.model:draw() end
+    for _, crop in ipairs(self.crops) do crop:draw() end
     self.exitModel:draw()
     Billboard.drawAll(self.billboards, cx, cy)
     love.graphics.setColor(1, 1, 1, 1)

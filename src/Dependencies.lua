@@ -13,6 +13,7 @@ require 'src/GameData'
 require 'src/Farm'
 require 'src/PlayerController'
 require 'src/Billboard'
+require 'src/Crop'
 require 'src/Room'
 require 'src/rooms'
 
@@ -80,6 +81,9 @@ for seedType, art in pairs(CROP_ART) do
     end
 end
 Assets.loadAll(gTextures, cropManifest, function(path, color, size) return Assets.loadImage(path, color, size) end)
+
+-- Plain white texture for vertex-coloured 3D crops (src/Crop.lua).
+gTextures['white'] = Assets.newPlaceholderImage({1, 1, 1, 1}, 4)
 
 -- 3D models: g3d only reads .obj; build procedural boxes in code for now.
 -- Example: gModels['crate'] = g3d.newModel('models/crate.obj', gTextures['crate'], {0,0,0})

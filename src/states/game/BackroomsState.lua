@@ -4,6 +4,12 @@
 --
 -- The player walks through BACKROOMS_ROOMS in order. Reaching a room's exit
 -- loads the next room; the last exit changes to the ending state.
+--
+-- Seed puzzles: E / Enter / left click plants the selected seed on the
+-- nearest fixed plot in range (Room:nearestPlot); Q / Tab or 1-3 select the
+-- seed type; R resets the room. Crops grow on this state's own knife Timer
+-- group, which is cleared whenever a room is loaded or reset, so nothing from
+-- an earlier attempt keeps growing.
 BackroomsState = Class{__includes = BaseState}
 
 BackroomsState.usesPush = false
@@ -27,6 +33,8 @@ end
 function BackroomsState:enter(gameData, rooms)
     self.gameData = gameData or CarryOverGameData(NewGameData())
     self.rooms = rooms or BACKROOMS_ROOMS
+    self.timers = {}                     -- knife Timer group for crop growth
+    self.message = nil                   -- {text, time left}
     print('[backrooms] seeds received: ' .. FormatSeeds(self.gameData.seeds))
 
     g3d.camera.resize(love.graphics.getDimensions())
@@ -36,6 +44,7 @@ function BackroomsState:enter(gameData, rooms)
 end
 
 function BackroomsState:exit()
+    Timer.clear(self.timers)
     self:setMouseCaptured(false)
 end
 
@@ -51,11 +60,13 @@ end
 function BackroomsState:loadRoom(index)
     local data = self.rooms[index]
     assert(data, 'no backrooms room ' .. tostring(index))
+    Timer.clear(self.timers)
     self.roomIndex = index
     self.room = Room(data)
     self.gameData.seeds = RoomStartingSeeds(data, index, self.gameData.seeds)
     self.roomStartSeeds = CopySeeds(self.gameData.seeds)
     self.advancing = false
+    self:selectSeed(self.selectedSeed)
     self:spawnPlayer()
     print(string.format('[backrooms] entered room %d/%d (%s), seeds: %s',
         index, #self.rooms, tostring(self.room.id), FormatSeeds(self.gameData.seeds)))
@@ -76,12 +87,86 @@ end
 
 -- Rebuilds the current room and restores the seeds recorded on entering it.
 -- For Room 1 that is the topped-up farm seeds; for later rooms the fixed
--- allotment. Crops/plots are added in section 5 (task 5.5 binds a key).
+-- allotment. Every crop is removed, pending growth is cancelled, demo crops
+-- are rebuilt at their starting growth and the player returns to the spawn.
+-- Bound to BACKROOMS_KEYS.reset.
 function BackroomsState:resetRoom()
+    Timer.clear(self.timers)
     self.room = Room(self.rooms[self.roomIndex])
     self.gameData.seeds = CopySeeds(self.roomStartSeeds)
     self.advancing = false
+    self:selectSeed(self.selectedSeed)
     self:spawnPlayer()
+    self:say('Room reset')
+end
+
+-- Seed selection --------------------------------------------------------------
+
+-- Selects `seedType` if the player has one; otherwise the first type in
+-- SEED_TYPES order that they do have; otherwise keeps `seedType` (or the
+-- first type) so the HUD still shows a selection.
+function BackroomsState:selectSeed(seedType)
+    local seeds = self.gameData.seeds
+    if seedType and (seeds[seedType] or 0) > 0 then
+        self.selectedSeed = seedType
+        return
+    end
+    for _, t in ipairs(SEED_TYPES) do
+        if (seeds[t] or 0) > 0 then self.selectedSeed = t; return end
+    end
+    self.selectedSeed = seedType or SEED_TYPES[1]
+end
+
+-- Next type (in SEED_TYPES order, wrapping) that the player holds.
+function BackroomsState:cycleSeed()
+    local start = 1
+    for i, t in ipairs(SEED_TYPES) do if t == self.selectedSeed then start = i end end
+    for k = 1, #SEED_TYPES do
+        local t = SEED_TYPES[(start + k - 1) % #SEED_TYPES + 1]
+        if (self.gameData.seeds[t] or 0) > 0 then self.selectedSeed = t; return end
+    end
+end
+
+function BackroomsState:say(text)
+    self.message = {text = text, time = 2.5}
+end
+
+-- Planting --------------------------------------------------------------------
+
+-- The plot the player could plant on right now, or nil.
+function BackroomsState:targetPlot()
+    return self.room:nearestPlot(self.player.x, self.player.y, self.player.z)
+end
+
+local PLANT_MESSAGES = {
+    ['no-plot'] = 'Seeds only take on the soil plots',
+    ['no-seeds'] = 'No %s seeds left',
+    ['occupied'] = 'Something is already growing here',
+    ['growing'] = 'Something is already growing here',
+    ['wrong-seed'] = 'This %s needs a %s seed',
+}
+
+-- Plants the selected seed on the nearest plot. Returns ok, crop-or-reason.
+function BackroomsState:plant()
+    local plot = self:targetPlot()
+    local seedType = self.selectedSeed
+    local ok, result = self.room:plant(plot, seedType, self.gameData.seeds, self.timers)
+    if ok then
+        gSounds['plant']:play()
+        self:say(result.demo and ('The ' .. seedType .. ' keeps growing...') or ('Planted a ' .. seedType))
+        print(string.format('[backrooms] planted %s on plot %s, seeds: %s',
+            seedType, plot.id, FormatSeeds(self.gameData.seeds)))
+        if (self.gameData.seeds[seedType] or 0) == 0 then self:selectSeed(seedType) end
+    else
+        gSounds['deny']:play()
+        local fmt = PLANT_MESSAGES[result] or result
+        if result == 'wrong-seed' then
+            self:say(string.format(fmt, plot.crop.type, plot.crop.type))
+        else
+            self:say(string.format(fmt, seedType))
+        end
+    end
+    return ok, result
 end
 
 -- The current room is done: load the next one, or show the ending.
@@ -117,14 +202,38 @@ function BackroomsState:update(dt)
         return
     end
 
+    local clickPlants = false
     if self.mouseCaptured and anyPressed(BACKROOMS_KEYS.releaseMouse) then
         self:setMouseCaptured(false)
     elseif not self.mouseCaptured and love.mouse.wasPressed(1) then
         self:setMouseCaptured(true)
+    elseif self.mouseCaptured and love.mouse.wasPressed(1) then
+        clickPlants = true
     end
 
+    if anyPressed(BACKROOMS_KEYS.reset) then
+        self:resetRoom()
+        return
+    end
+    for i, key in ipairs(BACKROOMS_KEYS.seedSlots) do
+        if love.keyboard.wasPressed(key) and SEED_TYPES[i] then self.selectedSeed = SEED_TYPES[i] end
+    end
+    if anyPressed(BACKROOMS_KEYS.nextSeed) then self:cycleSeed() end
+    if clickPlants or anyPressed(BACKROOMS_KEYS.plant) then self:plant() end
+
+    if self.message then
+        self.message.time = self.message.time - dt
+        if self.message.time <= 0 then self.message = nil end
+    end
+
+    -- growth, then crops that finished growing take effect (once the player
+    -- is clear of them), then the player moves against this frame's world
+    Timer.update(dt, self.timers)
+    local bmin, bmax = self.player:bounds()
+    self.room:updateCrops(bmin, bmax)
+
     local direction = g3d.camera.getDirectionPitch()
-    self.player:update(dt, self:movementInput(), direction, self.room.colliders)
+    self.player:update(dt, self:movementInput(), direction, self.room:solidColliders(), self.room:climbVolumes())
 
     if self.player.z < self.room.killZ then
         self:spawnPlayer()
@@ -148,13 +257,41 @@ function BackroomsState:renderHUD()
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.setFont(gFonts['default'])
     love.graphics.print(string.format('%s  (%d/%d)', self.room.name, self.roomIndex, #self.rooms), 10, 10)
-    love.graphics.print('seeds: ' .. FormatSeeds(self.gameData.seeds), 10, 32)
+
+    -- per-type seed counts; the selected type is bracketed and bright
+    local x = 10
+    for i, t in ipairs(SEED_TYPES) do
+        local selected = t == self.selectedSeed
+        local n = self.gameData.seeds[t] or 0
+        local label = string.format(selected and '[%d %s x%d]' or ' %d %s x%d ', i, t, n)
+        if selected then love.graphics.setColor(1, 1, 0.4, 1)
+        elseif n == 0 then love.graphics.setColor(0.6, 0.6, 0.6, 1)
+        else love.graphics.setColor(1, 1, 1, 1) end
+        love.graphics.print(label, x, 32)
+        x = x + gFonts['default']:getWidth(label) + 12
+    end
+    love.graphics.setColor(1, 1, 1, 1)
+
+    local plot = self:targetPlot()
+    if plot then
+        local ok, reason = self.room:canPlant(plot, self.selectedSeed, self.gameData.seeds)
+        local prompt
+        if ok then prompt = 'E / click: plant ' .. self.selectedSeed
+        elseif reason == 'wrong-seed' then prompt = 'This ' .. plot.crop.type .. ' needs a ' .. plot.crop.type .. ' seed'
+        elseif reason == 'no-seeds' then prompt = 'No ' .. self.selectedSeed .. ' seeds (Q: switch)'
+        else prompt = 'Plot in use' end
+        love.graphics.printf(prompt, 0, h / 2 + 24, w, 'center')
+    end
+    if self.message then
+        love.graphics.printf(self.message.text, 0, h / 2 + 48, w, 'center')
+    end
 
     -- crosshair
     love.graphics.line(w / 2 - 6, h / 2, w / 2 + 6, h / 2)
     love.graphics.line(w / 2, h / 2 - 6, w / 2, h / 2 + 6)
 
-    local hint = self.mouseCaptured and 'WASD / arrows: move   mouse: look   Esc: free mouse'
+    local hint = self.mouseCaptured
+        and 'WASD: move   mouse: look   E: plant   Q / 1-3: seed   R: reset room   Esc: free mouse'
         or 'Click to capture the mouse'
     love.graphics.printf(hint, 0, h - 52, w, 'center')
     if DEBUG_MODE then

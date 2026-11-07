@@ -13,6 +13,15 @@
 -- translation (and optional scale)>, min = {x,y,z}, max = {x,y,z}}, as built by
 -- Room. g3d's collision functions ignore model rotation, so colliders must be
 -- axis-aligned (Room only builds axis-aligned boxes).
+--
+-- Climbing (beanstalks): `climbables` is a list of volumes {min, max}. The
+-- player starts climbing by pressing forward inside one while standing on
+-- something (a falling player is not caught, and standing or strafing at the
+-- base does not latch on), and keeps climbing while still inside it.
+-- While climbing there is no gravity: forward input moves up at
+-- BACKROOMS_CLIMB_SPEED, back input moves down, and otherwise the player
+-- holds on. The feet never rise above the volume's top, so the player hangs
+-- there and leaves by walking off sideways, e.g. onto a ledge.
 PlayerController = Class{}
 
 -- math.atan2 is LuaJIT/5.1; Lua 5.3+ only has the two-argument math.atan
@@ -32,6 +41,7 @@ function PlayerController:setPosition(x, y, z)
     self.x, self.y, self.z = x, y, z
     self.vz = 0
     self.grounded = false
+    self.climbing = nil
 end
 
 function PlayerController:eyePosition()
@@ -103,12 +113,38 @@ function PlayerController:resolve(colliders)
     return contacts
 end
 
+-- The climbable volume the capsule is inside, or nil. Inside means the
+-- capsule's bounding box overlaps the volume horizontally and the feet are
+-- between its bottom and top.
+function PlayerController:climbableAt(climbables)
+    local pmin, pmax = self:bounds()
+    for _, v in ipairs(climbables or {}) do
+        if pmax[1] > v.min[1] and pmin[1] < v.max[1] and pmax[2] > v.min[2] and pmin[2] < v.max[2]
+            and self.z >= v.min[3] - BACKROOMS_CLIMB_MARGIN and self.z <= v.max[3] + BACKROOMS_CLIMB_MARGIN then
+            return v
+        end
+    end
+    return nil
+end
+
 -- Advance the controller by dt. `input` is {forward, strafe}; `direction` is
--- the camera yaw from g3d.camera.getDirectionPitch(); `colliders` as above.
-function PlayerController:update(dt, input, direction, colliders)
+-- the camera yaw from g3d.camera.getDirectionPitch(); `colliders` as above;
+-- `climbables` (optional) as described at the top.
+function PlayerController:update(dt, input, direction, colliders, climbables)
     dt = math.min(dt, BACKROOMS_MAX_DT)
-    local vx, vy = self:walkVelocity(input or {}, direction or 0)
-    self.vz = math.max(self.vz - self.gravity * dt, -BACKROOMS_TERMINAL_SPEED)
+    input = input or {}
+    local vx, vy = self:walkVelocity(input, direction or 0)
+
+    -- climbing: continues while inside; starts only from standing + forward
+    local volume = self:climbableAt(climbables)
+    if volume and not (self.climbing or (self.grounded and (input.forward or 0) > 0)) then volume = nil end
+    self.climbing = volume
+    if volume then
+        local f = input.forward or 0
+        self.vz = (f > 0 and BACKROOMS_CLIMB_SPEED) or (f < 0 and -BACKROOMS_CLIMB_SPEED) or 0
+    else
+        self.vz = math.max(self.vz - self.gravity * dt, -BACKROOMS_TERMINAL_SPEED)
+    end
 
     local longest = math.max(math.abs(vx), math.abs(vy), math.abs(self.vz)) * dt
     local steps = math.max(1, math.ceil(longest / BACKROOMS_MAX_STEP))
@@ -120,6 +156,10 @@ function PlayerController:update(dt, input, direction, colliders)
         self.x = self.x + vx * h
         self.y = self.y + vy * h
         self.z = self.z + self.vz * h
+        if volume and self.z > volume.max[3] then
+            self.z = volume.max[3]              -- hang at the top
+            if self.vz > 0 then self.vz = 0 end
+        end
         self:resolve(colliders or {})
     end
 end

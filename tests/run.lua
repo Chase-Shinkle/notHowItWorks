@@ -60,8 +60,9 @@ test('backrooms opts out of push and draws g3d with depth then HUD without', fun
     love.draw()
     eq(mock.count('push.apply'), 0, 'push bypassed')
     local room = gStateMachine.current.room
-    eq(mock.count('model.draw'), #room.models + #room.plots + 1 + #room.billboards,
-        'room boxes, plots, exit marker and billboards drawn')
+    eq(mock.count('model.draw'), #room.models + #room.plots + #room.crops + 1 + #room.billboards,
+        'room boxes, plots, crops, exit marker and billboards drawn')
+    assert(#room.crops >= 1, 'room 1 draws its demo crop')
     local first = mock.calls[1]
     eq(first.name, 'setDepthMode'); eq(first.args[1], 'lequal'); eq(first.args[2], true)
     -- the depth reset must come after every model draw (HUD drawn last)
@@ -815,6 +816,33 @@ end
 
 local R = BACKROOMS_PLAYER_RADIUS
 
+-- The section 4 fixture rooms (exits reachable on foot), kept for the
+-- progression tests now that BACKROOMS_ROOMS holds the real puzzle rooms.
+local function fixtureRooms()
+    local H = 3
+    return {
+        {
+            id = 'fixture-box', name = 'fixture: plain box room',
+            spawn = {-3.5, 0, 0, 0},
+            boxes = Room.shellBoxes(10, 10, H),
+            exit = {pos = {4.6, 0, 1.1}, size = {0.6, 1.4, 2.2}},
+            plots = {{id = 'a', pos = {0, -2, 0}}, {id = 'b', pos = {0, 2, 0}}},
+            allotment = CopySeeds(FIRST_ROOM_MIN_SEEDS),
+        },
+        {
+            id = 'fixture-ledge', name = 'fixture: ledge and pillar',
+            spawn = {-4, 0, 1, 0},
+            boxes = Room.joinBoxes(Room.shellBoxes(12, 8, H), {
+                {kind = 'solid', pos = {-4.5, 0, 0.5}, size = {3, 8, 1}},
+                {kind = 'solid', pos = {1, 0, H / 2}, size = {1, 1, H}},
+            }),
+            exit = {pos = {5.6, 0, 1.1}, size = {0.6, 1.4, 2.2}},
+            plots = {{id = 'a', pos = {2.5, 2, 0}}},
+            allotment = {beanstalk = 1, pumpkin = 1},
+        },
+    }
+end
+
 -- 4.1 first-person look and move ----------------------------------------------
 test('backrooms: entering captures the mouse; Esc frees it, a click recaptures, leaving releases', function()
     local back = toBackrooms()
@@ -1184,15 +1212,20 @@ end)
 
 -- 4.5 exits, progression, ending -----------------------------------------------------
 test('progression: walking into the exit loads the next room with its own allotment', function()
-    local back = toBackrooms({beanstalk = 4, pumpkin = 0, vine = 2})
+    -- section 4 fixture rooms (their exits are reachable on foot)
+    loadGame()
+    local rooms = fixtureRooms()
+    local back = BackroomsState()
+    gStateMachine.current = back
+    back:enter(CarryOverGameData(NewGameData({seeds = {beanstalk = 4, pumpkin = 0, vine = 2}})), rooms)
     eq(FormatSeeds(back.gameData.seeds), 'beanstalk=4 pumpkin=0 vine=2', 'room 1 keeps the farm seeds')
     mock.hold('w')                                   -- room 1 spawn faces its exit
     local frames = 0
     while back.roomIndex == 1 and frames < 6 * 60 do step(); frames = frames + 1 end
     mock.release('w')
     eq(back.roomIndex, 2, 'reached the room 1 exit on foot')
-    eq(back.room.id, BACKROOMS_ROOMS[2].id)
-    eq(FormatSeeds(back.gameData.seeds), FormatSeeds(CopySeeds(BACKROOMS_ROOMS[2].allotment)),
+    eq(back.room.id, rooms[2].id)
+    eq(FormatSeeds(back.gameData.seeds), FormatSeeds(CopySeeds(rooms[2].allotment)),
         'room 2 seeds are exactly its allotment')
     local s = back.room.spawn
     near(back.player.x, s[1], 1e-6, 'placed at the new spawn'); near(back.player.y, s[2], 1e-6)
@@ -1304,13 +1337,705 @@ test('seeds: resetting a later room restores its fixed allotment', function()
     eq(back.roomIndex, 2, 'reset stays in the same room')
 end)
 
-test('backrooms: every fixture room renders with all assets as placeholders', function()
+test('backrooms: every room renders with all assets as placeholders', function()
     local back = toBackrooms(nil, {'.', '--placeholder-assets'})
     for i = 1, #BACKROOMS_ROOMS do
         eq(back.roomIndex, i)
         mock.reset(); love.draw()
         assert(mock.count('model.draw') > 0, 'room ' .. i .. ' drew')
         if i < #BACKROOMS_ROOMS then back:advance() end
+    end
+end)
+
+-- 5. seed puzzles ------------------------------------------------------------------
+local Reach = dofile('tests/reach.lua')
+
+-- Enters the backrooms and skips to room `index` with `seeds` carried over.
+local function toRoom(index, seeds)
+    local back = toBackrooms(seeds)
+    while back.roomIndex < index do back:advance() end
+    eq(back.roomIndex, index)
+    return back
+end
+
+-- Holds `key` until cond() is true or `seconds` pass. Returns cond().
+local function holdUntil(key, cond, seconds)
+    mock.hold(key)
+    local frames = 0
+    while not cond() and frames < seconds * 60 do step(); frames = frames + 1 end
+    mock.release(key)
+    return cond()
+end
+
+-- Steps a bare controller with the room's current solid colliders and climb
+-- volumes (crops included) for `seconds` at 60 fps.
+local function simulateCrops(player, room, seconds, input, direction)
+    for _ = 1, math.floor(seconds * 60 + 0.5) do
+        player:update(1 / 60, input or {}, direction or 0, room:solidColliders(), room:climbVolumes())
+    end
+end
+
+-- A closed room w x d x h (interior centred on the origin, floor top z = 0)
+-- plus `extra` boxes, with one plot at `plotPos` (dir `dir`).
+local function plotRoom(w, d, h, extra, plotPos, dir)
+    return Room({
+        id = 'plot-test', spawn = {0, 0, 0, 0},
+        boxes = Room.joinBoxes(Room.shellBoxes(w, d, h), extra or {}),
+        exit = {pos = {0, 0, -50}, size = {1, 1, 1}},
+        plots = {{id = 'p', pos = plotPos or {0, 0, 0}, dir = dir}},
+        allotment = {},
+    })
+end
+
+-- Grows the crop on plot `id` of `room` to full size and puts it in effect
+-- (no player in the way).
+local function growNow(room, id, seedType)
+    local plot = room:plotById(id)
+    local group = {}
+    local ok, crop = room:plant(plot, seedType, {[seedType] = 1}, group)
+    assert(ok, 'planted ' .. seedType .. ': ' .. tostring(crop))
+    Timer.update(CROP_DEFS[seedType].growTime + 0.01, group)
+    room:updateCrops({1000, 1000, 1000}, {1001, 1001, 1001})
+    assert(crop.grown and crop.active, seedType .. ' grown and active')
+    return crop
+end
+
+local function printedTexts()
+    local out = {}
+    for _, c in ipairs(mock.calls) do
+        if (c.name == 'print' or c.name == 'printf') and type(c.args[1]) == 'string' then out[#out + 1] = c.args[1] end
+    end
+    return out
+end
+
+-- Everything a reset must restore, as one comparable string (the selected
+-- seed is a UI preference and is deliberately left out).
+local function roomSignature(back)
+    local p = back.player
+    local dir = g3d.camera.getDirectionPitch()
+    local parts = {back.room.id, FormatSeeds(back.gameData.seeds),
+        string.format('%.4f,%.4f,%.4f,%.4f,%s,%.3f', p.x, p.y, p.z, p.vz, tostring(p.climbing), dir),
+        'crops=' .. #back.room.crops, 'timers=' .. #back.timers}
+    for _, plot in ipairs(back.room.plots) do
+        local c = plot.crop
+        parts[#parts + 1] = plot.id .. ':' .. (c and string.format('%s,%.4f,%s,%s,%s', c.type, c.progress,
+            tostring(c.grown), tostring(c.active), tostring(c.timer ~= nil)) or 'empty')
+    end
+    return table.concat(parts, ' | ')
+end
+
+-- 5.1 seed definitions and growth ---------------------------------------------------
+test('seeds: beanstalk, pumpkin and vine grow into distinct shapes', function()
+    loadGame()
+    local plot = {pos = {1, 2, 0.5}, dir = '+x'}
+    local function dims(t)
+        local min, max = Crop.fullBounds(t, plot)
+        return max[1] - min[1], max[2] - min[2], max[3] - min[3], min, max
+    end
+    local bx, by, bz, bmin = dims('beanstalk')
+    local px, py, pz, pmin = dims('pumpkin')
+    local vx, vy, vz, vmin, vmax = dims('vine')
+    assert(bz >= 2.6 and bz > 3 * bx and bz > 3 * by, 'beanstalk tall and thin')
+    near(bmin[3], 0.5, 1e-12, 'beanstalk grows up from the plot')
+    assert(px >= 2.5 and py >= 2.5 and pz <= 1.0 and px > 2 * pz, 'pumpkin wide and low')
+    near(pmin[3], 0.5, 1e-12, 'pumpkin sits on the plot')
+    assert(vx >= 5 and vx > 3 * vy and vz <= 0.3 + 1e-9, 'vine long, narrow, flat along +x')
+    near(vmax[3], 0.5, 1e-12, 'vine top level with the plot surface')
+    near(vmin[1], 1 - CROP_DEFS.vine.back, 1e-12, 'vine starts just behind the plot')
+    -- tallest / widest / longest each belong to one type
+    assert(bz > pz and bz > vz, 'only the beanstalk is tall')
+    assert(px * py > bx * by and py > vy, 'only the pumpkin is wide in both directions')
+    assert(vx > px and vx > bx, 'only the vine is long')
+    -- a vine follows its plot direction
+    for dir, d in pairs(CROP_DIRECTIONS) do
+        local min, max = Crop.fullBounds('vine', {pos = {0, 0, 0}, dir = dir})
+        local farX = d[1] ~= 0 and (d[1] > 0 and max[1] or -min[1]) or 0
+        local farY = d[2] ~= 0 and (d[2] > 0 and max[2] or -min[2]) or 0
+        near(farX + farY, CROP_DEFS.vine.length - CROP_DEFS.vine.back, 1e-12, 'vine grows along ' .. dir)
+    end
+    for _, t in ipairs(SEED_TYPES) do
+        assert(CROP_DEFS[t], t .. ' has a growth definition')
+        assert(CROP_DEFS[t].growTime >= 1 and CROP_DEFS[t].growTime <= 3, t .. ' grows in a few seconds')
+    end
+end)
+
+test('growth: a planted crop tweens its scale along its own axes and is unusable until grown', function()
+    loadGame()
+    local expectAxes = {beanstalk = {false, false, true}, pumpkin = {true, true, true}, vine = {false, true, false}}
+    for _, t in ipairs(SEED_TYPES) do
+        local room = plotRoom(8, 8, 6, nil, {0, 0, 0}, '+y')
+        local group = {}
+        local seeds = {[t] = 2}
+        local ok, crop = room:plant(room:plotById('p'), t, seeds, group)
+        assert(ok, t .. ' planted'); eq(seeds[t], 1, t .. ' consumed one seed')
+        eq(crop.progress, 0, t .. ' starts ungrown')
+        local half = CROP_DEFS[t].growTime / 2
+        Timer.update(half, group)
+        room:updateCrops({100, 100, 100}, {101, 101, 101})
+        near(crop.progress, 0.5, 1e-9, t .. ' half way')
+        local s = {crop:scale()}
+        for axis = 1, 3 do
+            if expectAxes[t][axis] then near(s[axis], CROP_MIN_SCALE + (1 - CROP_MIN_SCALE) * 0.5, 1e-9, t .. ' axis ' .. axis .. ' grows')
+            else eq(s[axis], 1, t .. ' axis ' .. axis .. ' fixed') end
+        end
+        eq(crop.model.scale[1], s[1]); eq(crop.model.scale[3], s[3])
+        eq(crop.grown, false); eq(crop.active, false)
+        eq(#room:solidColliders(), #room.colliders, t .. ' not solid while growing')
+        eq(#room:climbVolumes(), 0, t .. ' not climbable while growing')
+        Timer.update(half + 0.001, group)
+        room:updateCrops({100, 100, 100}, {101, 101, 101})
+        eq(crop.progress, 1); eq(crop.grown, true); eq(crop.active, true)
+        eq(#group, 0, t .. ' tween finished and removed')
+        local sx, sy, sz = crop:scale()
+        eq(sx, 1); eq(sy, 1); eq(sz, 1)
+        if CROP_DEFS[t].solid then
+            eq(#room:solidColliders(), #room.colliders + 1, t .. ' solid when grown')
+            eq(#room:climbVolumes(), 0)
+        else
+            eq(#room:solidColliders(), #room.colliders, t .. ' is not solid')
+            eq(#room:climbVolumes(), 1, t .. ' climbable when grown')
+        end
+    end
+end)
+
+test('growth: crop colliders are full size with no scale, so g3d normals stay correct', function()
+    loadGame()
+    local room = plotRoom(8, 8, 6, nil, {0, 0, 0})
+    local group = {}
+    local _, crop = room:plant(room:plotById('p'), 'pumpkin', {pumpkin = 1}, group)
+    Timer.update(0.5, group)                      -- mid growth: draw model is non-uniformly scaled
+    local sx, _, sz = crop:scale()
+    assert(sx < 1 and sz < 1, 'draw model scaled while growing')
+    local c = crop.collider
+    eq(c.transform.scale, nil, 'collision transform has no scale')
+    assert(c.transform ~= crop.model, 'the scaled draw model is never used for collision')
+    local minX, maxX, maxZ = math.huge, -math.huge, -math.huge
+    for _, v in ipairs(c.verts) do
+        minX = math.min(minX, v[1] + c.transform.translation[1]); maxX = math.max(maxX, v[1] + c.transform.translation[1])
+        maxZ = math.max(maxZ, v[3] + c.transform.translation[3])
+    end
+    near(maxX - minX, CROP_DEFS.pumpkin.size[1], 1e-9, 'collider verts at full grown width')
+    near(maxZ, CROP_DEFS.pumpkin.size[3], 1e-9, 'collider top at full grown height')
+    -- a capsule resting on the top gets a straight-up normal from g3d
+    local len, _, _, _, nx, ny, nz = g3d.collisions.capsuleIntersection(c.verts, c.transform,
+        0.4, 0.2, 1.0 + 1.7 - 0.05, 0.4, 0.2, 1.0 - 0.05, R)
+    assert(len and len < R, 'touching the top')
+    near(nz, 1, 1e-9, 'up normal'); near(nx, 0, 1e-9); near(ny, 0, 1e-9)
+end)
+
+test('growth: a grown pumpkin waits until the player is clear before it turns solid', function()
+    loadGame()
+    local room = plotRoom(10, 6, 3, nil, {0, 0, 0})
+    local p = PlayerController(0, 0, 0)          -- standing on the plot
+    simulateCrops(p, room, 0.3)
+    local group = {}
+    local _, crop = room:plant(room:plotById('p'), 'pumpkin', {pumpkin = 1}, group)
+    -- a pumpkin growing around the player does not push them anywhere
+    for _ = 1, 60 do
+        Timer.update(1 / 60, group)
+        local bmin, bmax = p:bounds(); room:updateCrops(bmin, bmax)
+        p:update(1 / 60, {}, 0, room:solidColliders(), room:climbVolumes())
+    end
+    eq(crop.active, false, 'still growing')
+    Timer.update(CROP_DEFS.pumpkin.growTime, group)
+    local bmin, bmax = p:bounds(); room:updateCrops(bmin, bmax)
+    eq(crop.grown, true); eq(crop.active, false, 'grown but the player is inside it')
+    near(p.z, 0, 0.01, 'player not shoved by a crop that grew around them')
+    -- walk out (-x), then it becomes solid and blocks the way back
+    for _ = 1, 60 do
+        local a, b = p:bounds(); room:updateCrops(a, b)
+        p:update(1 / 60, {forward = 1}, math.pi, room:solidColliders(), room:climbVolumes())
+    end
+    eq(crop.active, true, 'solid once the player left')
+    simulateCrops(p, room, 1.5, {forward = 1}, 0)
+    assert(p.x <= -CROP_DEFS.pumpkin.size[1] / 2 - R + 0.02, 'blocked by the grown pumpkin, x=' .. p.x)
+    near(p.z, 0, 0.02, 'cannot step up a 1 m pumpkin')
+end)
+
+-- 5.2 plot planting, selection and HUD --------------------------------------------
+test('planting: the nearest plot within range is chosen; nothing elsewhere', function()
+    loadGame()
+    local room = Room({
+        id = 'plots', spawn = {0, 0, 0}, allotment = {},
+        boxes = Room.shellBoxes(10, 10, 6),
+        exit = {pos = {0, 0, -50}, size = {1, 1, 1}},
+        plots = {{id = 'a', pos = {0, -2, 0}}, {id = 'b', pos = {0, 2, 0}}, {id = 'high', pos = {4, 0, 2.6}}},
+    })
+    eq(room:nearestPlot(0, -1.5, 0).id, 'a')
+    eq(room:nearestPlot(0.5, 1.1, 0).id, 'b')
+    eq(room:nearestPlot(0, 0.1, 0).id, 'a', 'nearest of two in range')
+    eq(room:nearestPlot(0, -2 + BACKROOMS_PLANT_RANGE - 0.01, 0).id, 'a', 'just inside the range')
+    eq(room:nearestPlot(3, -2, 0), nil, 'out of horizontal range')
+    eq(room:nearestPlot(4, 0, 0), nil, 'a plot 2.6 m above is out of reach')
+    eq(room:nearestPlot(4, 0, 2.6).id, 'high', 'reachable from its own level')
+    eq(room:nearestPlot(-4, -4, 0), nil)
+    local seeds = {beanstalk = 1, pumpkin = 1, vine = 1}
+    local ok, reason = room:plant(nil, 'pumpkin', seeds, {})
+    eq(ok, false); eq(reason, 'no-plot'); eq(seeds.pumpkin, 1, 'nothing consumed without a plot')
+    eq(#room.crops, 0)
+end)
+
+test('planting: E plants the selected seed on the plot in range and only that count drops', function()
+    local back = toRoom(2)
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=0 pumpkin=2 vine=2')
+    eq(back.selectedSeed, 'pumpkin', 'first held type selected')
+    back.player:setPosition(-4.4, 0, 0); run(0.2)    -- on the rim of the pit
+    eq(back:targetPlot().id, 'pit')
+    mock.reset(); love.draw()
+    local texts = table.concat(printedTexts(), '\n')
+    assert(texts:find('[2 pumpkin x2]', 1, true), 'HUD shows the selected type and its count')
+    assert(texts:find(' 3 vine x2 ', 1, true), 'HUD shows the other counts')
+    assert(texts:find('E / click: plant pumpkin', 1, true), 'planting prompt near a plot')
+    press('e')
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=0 pumpkin=1 vine=2', 'one pumpkin consumed')
+    local crop = back.room:plotById('pit').crop
+    assert(crop and crop.type == 'pumpkin' and not crop.grown, 'pumpkin growing on the pit plot')
+    eq(#back.timers, 1, 'growth runs on the state timer group')
+    mock.reset(); love.draw()
+    assert(table.concat(printedTexts(), '\n'):find('[2 pumpkin x1]', 1, true), 'HUD count updated')
+    assert(find(mock.printed, '[backrooms] planted pumpkin on plot pit'), 'planting logged')
+    -- growth is driven once per frame (the state group is not also the default group)
+    run(CROP_DEFS.pumpkin.growTime * 0.75)
+    eq(crop.grown, false, 'not grown early')
+    run(CROP_DEFS.pumpkin.growTime * 0.25 + 0.1)
+    eq(crop.grown, true); eq(crop.active, true)
+end)
+
+test('planting: away from plots nothing is planted and no seed is used', function()
+    local back = toRoom(2)
+    run(0.2)
+    eq(back:targetPlot(), nil, 'spawn is not near a plot')
+    press('e')
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=0 pumpkin=2 vine=2')
+    eq(#back.room.crops, 0)
+    eq(back.message.text, 'Seeds only take on the soil plots')
+    mock.click(1); step()                           -- a click while captured also tries to plant
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=0 pumpkin=2 vine=2')
+end)
+
+test('planting: occupied plots and empty seed types refuse without using seeds', function()
+    local back = toRoom(2)
+    back.player:setPosition(-4.4, 0, 0); run(0.2)
+    press('e')
+    eq(back.gameData.seeds.pumpkin, 1)
+    press('e')
+    eq(back.gameData.seeds.pumpkin, 1, 'second plant on the same plot refused')
+    press('3')
+    eq(back.selectedSeed, 'vine')
+    press('e')
+    eq(back.gameData.seeds.vine, 2, 'occupied plot refuses another type')
+    eq(back.message.text, 'Something is already growing here')
+    press('1')
+    eq(back.selectedSeed, 'beanstalk', 'a type can be selected even with none held')
+    back.player:setPosition(0.8, 0, 0); run(0.2)
+    eq(back:targetPlot().id, 'edge')
+    press('e')
+    eq(back.gameData.seeds.beanstalk, 0); eq(back.room:plotById('edge').crop, nil, 'no beanstalk seeds: nothing planted')
+    eq(back.message.text, 'No beanstalk seeds left')
+end)
+
+test('planting: 1-3 select, Q / Tab cycle through held types, a click plants', function()
+    local back = toRoom(3)
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=2 pumpkin=2 vine=2')
+    eq(back.selectedSeed, 'beanstalk')
+    press('2'); eq(back.selectedSeed, 'pumpkin')
+    press('q'); eq(back.selectedSeed, 'vine')
+    press('tab'); eq(back.selectedSeed, 'beanstalk', 'cycling wraps')
+    back.player:setPosition(-2.4, 0, 0); run(0.2)
+    eq(back:targetPlot().id, 'foot')
+    mock.click(1); step()
+    eq(back.gameData.seeds.beanstalk, 1, 'left click planted the selected seed')
+    eq(back.room:plotById('foot').crop.type, 'beanstalk')
+    -- cycling skips types the player has none of
+    local two = toRoom(2)
+    eq(two.selectedSeed, 'pumpkin')
+    press('q'); eq(two.selectedSeed, 'vine')
+    press('q'); eq(two.selectedSeed, 'pumpkin', 'beanstalk (none held) skipped')
+end)
+
+test('planting: using the last seed of a type selects the next type held', function()
+    local back = toRoom(2)
+    back.gameData.seeds.pumpkin = 1
+    back.player:setPosition(-4.4, 0, 0); run(0.2)
+    press('e')
+    eq(back.gameData.seeds.pumpkin, 0)
+    eq(back.selectedSeed, 'vine')
+end)
+
+-- 5.3 climbing beanstalks, standing on pumpkins and vines ---------------------------
+-- 8 x 6 x 6 room with a 2.6 m ledge x in [1, 4]; beanstalk plot 0.8 m before its face
+local function ledgeRoom()
+    return plotRoom(8, 6, 6, {{kind = 'solid', pos = {2.5, 0, 1.3}, size = {3, 6, 2.6}}}, {0.2, 0, 0})
+end
+
+test('climbing: walking into a grown beanstalk climbs it and steps off onto the ledge', function()
+    loadGame()
+    local room = ledgeRoom()
+    local p = PlayerController(-2.5, 0, 0)
+    simulateCrops(p, room, 3, {forward = 1}, 0)
+    assert(p.x < 1 - R + 0.02, 'no beanstalk: stopped by the ledge face, x=' .. p.x)
+    near(p.z, 0, 0.02, 'no beanstalk: still on the floor')
+    growNow(room, 'p', 'beanstalk')
+    p:setPosition(-2.5, 0, 0)
+    local sawClimb, maxZ = false, 0
+    for _ = 1, 4 * 60 do
+        p:update(1 / 60, {forward = 1}, 0, room:solidColliders(), room:climbVolumes())
+        if p.climbing then sawClimb = true end
+        maxZ = math.max(maxZ, p.z)
+    end
+    assert(sawClimb, 'climbed')
+    assert(maxZ <= CROP_DEFS.beanstalk.size[3] + 1e-9, 'never above the beanstalk top, maxZ=' .. maxZ)
+    assert(p.x > 1.5, 'walked onto the ledge, x=' .. p.x)
+    near(p.z, 2.6, 0.02, 'standing on the ledge'); eq(p.grounded, true); eq(p.climbing, nil)
+end)
+
+test('climbing: hold on with no input, climb down with back, and the top caps the climb', function()
+    loadGame()
+    local room = plotRoom(8, 6, 6, nil, {0, 0, 0})
+    growNow(room, 'p', 'beanstalk')
+    local top = CROP_DEFS.beanstalk.size[3]
+    local p = PlayerController(0, 0, 0, {speed = 0})   -- climb in place
+    simulateCrops(p, room, 0.3)
+    eq(p.grounded, true)
+    simulateCrops(p, room, 0.4, {forward = 1})
+    near(p.z, BACKROOMS_CLIMB_SPEED * 0.4, 0.06, 'climbing at the climb speed')
+    assert(p.climbing, 'climbing')
+    local z = p.z
+    simulateCrops(p, room, 1)
+    near(p.z, z, 1e-9, 'holds on with no input (no gravity while climbing)')
+    simulateCrops(p, room, 3, {forward = 1})
+    near(p.z, top, 1e-9, 'hangs at the top')
+    simulateCrops(p, room, 3, {forward = -1})
+    near(p.z, 0, 0.01, 'climbed back down'); eq(p.grounded, true)
+    -- leaving the volume sideways at the top: falls (it is not a floor)
+    simulateCrops(p, room, 3, {forward = 1})
+    local q = PlayerController(p.x, p.y, p.z)
+    q.climbing = p.climbing
+    simulateCrops(q, room, 1.5, {forward = 1}, 0)
+    near(q.z, 0, 0.01, 'walked off the top and fell to the floor')
+end)
+
+test('climbing: a beanstalk does not catch a falling player, and an ungrown one is not climbable', function()
+    loadGame()
+    local room = plotRoom(8, 6, 6, nil, {0, 0, 0})
+    growNow(room, 'p', 'beanstalk')
+    local p = PlayerController(0, 0, 2, {speed = 0})   -- mid-air inside the stalk
+    local frames = 0
+    while not p.grounded and frames < 120 do
+        p:update(1 / 60, {forward = 1}, 0, room:solidColliders(), room:climbVolumes())
+        eq(p.climbing, nil, 'not caught while falling (frame ' .. frames .. ')')
+        frames = frames + 1
+    end
+    near(p.z, 0, 0.01, 'fell through the volume to the floor'); eq(p.grounded, true)
+    -- standing (or strafing) at the base does not latch on; forward climbs
+    simulateCrops(p, room, 0.5)
+    simulateCrops(p, room, 0.5, {strafe = 1})
+    near(p.z, 0, 0.01, 'standing / strafing at the base stays on the floor'); eq(p.climbing, nil)
+    simulateCrops(p, room, 0.4, {forward = 1})
+    assert(p.z > 0.5 and p.climbing, 'climbs after landing, z=' .. p.z)
+
+    local growing = plotRoom(8, 6, 6, nil, {0, 0, 0})
+    local group = {}
+    growing:plant(growing:plotById('p'), 'beanstalk', {beanstalk = 1}, group)
+    Timer.update(CROP_DEFS.beanstalk.growTime * 0.9, group)
+    local g = PlayerController(0, 0, 0, {speed = 0})
+    simulateCrops(g, growing, 1, {forward = 1})
+    near(g.z, 0, 0.01, 'a growing beanstalk cannot be climbed')
+end)
+
+test('standing: a pumpkin grown in a pit is walked over level with the floor', function()
+    loadGame()
+    local room = Reach.roomWith(BACKROOMS_ROOMS[2], {pit = 'pumpkin'})
+    local s = room.spawn
+    local p = PlayerController(s[1], s[2], s[3])
+    local minZ = math.huge
+    for _ = 1, 3 * 60 do
+        p:update(1 / 60, {forward = 1}, 0, room:solidColliders(), room:climbVolumes())
+        if p.x > -4 and p.x < -1.4 then minZ = math.min(minZ, p.z) end
+        if p.x > -0.5 then break end                 -- on B, before the gap
+    end
+    assert(p.x > -1, 'crossed the pit, x=' .. p.x)
+    assert(minZ > -0.02 and minZ < 0.05, 'stood on the pumpkin top over the pit, minZ=' .. minZ)
+    eq(p.grounded, true)
+    -- without it the same walk falls into the pit
+    local bare = Room(BACKROOMS_ROOMS[2])
+    local q = PlayerController(s[1], s[2], s[3])
+    simulateCrops(q, bare, 3, {forward = 1}, 0)
+    assert(q.z < bare.killZ, 'fell into the pit without the pumpkin, z=' .. q.z)
+end)
+
+test('standing: a grown vine bridges a gap and is walked across', function()
+    loadGame()
+    local room = Reach.roomWith(BACKROOMS_ROOMS[2], {pit = 'pumpkin', edge = 'vine'})
+    local p = PlayerController(0.8, 0, 0)
+    local minZ, reached = math.huge, false
+    for _ = 1, 3 * 60 do
+        p:update(1 / 60, {forward = 1}, 0, room:solidColliders(), room:climbVolumes())
+        if p.x > 2 and p.x < 6 then minZ = math.min(minZ, p.z) end
+        local a, b = p:bounds()
+        if room:overlapsExit(a, b) then reached = true break end
+    end
+    assert(reached, 'walked across the vine to the exit')
+    assert(minZ > -0.02 and minZ < 0.05, 'stayed on the vine over the gap, minZ=' .. minZ)
+    local bare = Reach.roomWith(BACKROOMS_ROOMS[2], {pit = 'pumpkin'})
+    local q = PlayerController(0.8, 0, 0)
+    simulateCrops(q, bare, 3, {forward = 1}, 0)
+    assert(q.z < bare.killZ, 'fell into the gap without the vine')
+end)
+
+-- 5.4 tutorial room -------------------------------------------------------------------
+-- Is the straight line from (ax, ay, az) to (bx, by, bz) clear of every collider?
+local function lineClear(room, ax, ay, az, bx, by, bz)
+    local dx, dy, dz = bx - ax, by - ay, bz - az
+    local dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+    dx, dy, dz = dx / dist, dy / dist, dz / dist
+    for _, c in ipairs(room:solidColliders()) do
+        local len = g3d.collisions.rayIntersection(c.verts, c.transform, ax, ay, az, dx, dy, dz)
+        if len and len < dist - 1e-6 then return false end
+    end
+    return true
+end
+
+test('tutorial: room 1 starts with a frozen half-grown beanstalk and a visible, unreachable exit', function()
+    local back = toBackrooms()
+    local room = back.room
+    eq(room.id, 'tutorial')
+    eq(#room.plots, 1, 'one plot only')
+    local demo = room:plotById('demo').crop
+    assert(demo and demo.demo and demo.type == 'beanstalk', 'demo beanstalk on the plot')
+    eq(demo.progress, 0.5)
+    local _, _, sz = demo:scale()
+    near(sz * CROP_DEFS.beanstalk.size[3], (CROP_MIN_SCALE + (1 - CROP_MIN_SCALE) * 0.5) * 3, 1e-9, 'drawn half height')
+    -- it points at the exit: the plot is at the foot of the exit ledge
+    assert(room.exit.pos[3] > CROP_DEFS.beanstalk.size[3] * 0.5 + 1.7, 'exit above the half-grown crop')
+    run(10)
+    eq(demo.progress, 0.5, 'demo frozen until a seed is planted'); eq(demo.active, false)
+    eq(#room:climbVolumes(), 0, 'half-grown demo cannot be climbed')
+    -- visible from the spawn: lines of sight to the exit marker and the demo top
+    local s = room.spawn
+    local ex, ey, ez = s[1], s[2], s[3] + BACKROOMS_EYE_HEIGHT
+    assert(lineClear(room, ex, ey, ez, room.exit.pos[1], room.exit.pos[2], room.exit.max[3] - 0.2), 'exit marker visible')
+    assert(lineClear(room, ex, ey, ez, 1.2, 0, 1.4), 'demo crop visible')
+    -- unreachable: walking at it does nothing, and a search finds no way
+    back.player:setPosition(s[1], s[2], s[3])
+    eq(holdUntil('w', function() return back.roomIndex ~= 1 end, 5), false, 'walking forward does not reach the exit')
+    local reached, info = Reach.search(Room(BACKROOMS_ROOMS[1]))
+    eq(reached, false, 'no explored path reaches the exit (' .. info.cells .. ' cells)')
+    eq(FormatSeeds(FIRST_ROOM_MIN_SEEDS), FormatSeeds(BACKROOMS_ROOMS[1].allotment))
+    eq(FormatSeeds(FIRST_ROOM_MIN_SEEDS), 'beanstalk=1 pumpkin=0 vine=0', 'exactly one seed needed')
+end)
+
+test('tutorial: the demo plot refuses other types, so carried surplus seeds cannot help', function()
+    local back = toBackrooms({beanstalk = 3, pumpkin = 5, vine = 4})
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=3 pumpkin=5 vine=4', 'farm seeds carried into room 1')
+    back.player:setPosition(0.4, 0, 0); run(0.2)
+    eq(back:targetPlot().id, 'demo')
+    for _, t in ipairs({'pumpkin', 'vine'}) do
+        back.selectedSeed = t
+        press('e')
+        eq(back.gameData.seeds[t], t == 'pumpkin' and 5 or 4, t .. ' refused at the demo plot')
+        eq(back.message.text, 'This beanstalk needs a beanstalk seed')
+    end
+    eq(#back.room.crops, 1); eq(back.room:plotById('demo').crop.progress, 0.5)
+    -- room 1's only plot is the demo plot, so no other seed has anywhere to go
+    for _, p in ipairs({{-4, 0}, {-2, 2}, {0, -2.5}, {-5, -2.5}}) do
+        eq(back.room:nearestPlot(p[1], p[2], 0), nil)
+    end
+end)
+
+test('tutorial: one beanstalk seed finishes the demo and the climb reaches the exit', function()
+    local back = toBackrooms({beanstalk = 0, pumpkin = 0, vine = 0})
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=1 pumpkin=0 vine=0', 'topped up to the one seed needed')
+    run(0.3)
+    assert(holdUntil('w', function() return back.player.x >= 0.3 end, 3), 'walked to the demo plot')
+    eq(back:targetPlot().id, 'demo')
+    press('e')
+    eq(back.gameData.seeds.beanstalk, 0, 'the seed was used')
+    local demo = back.room:plotById('demo').crop
+    assert(demo.timer, 'demo growing again')
+    run(0.3)
+    assert(demo.progress > 0.5 and demo.progress < 1, 'grows from half, progress=' .. demo.progress)
+    run(CROP_DEFS.beanstalk.growTime / 2)
+    eq(demo.grown, true); eq(demo.active, true)
+    eq(#back.room:climbVolumes(), 1)
+    assert(holdUntil('w', function() return back.roomIndex == 2 end, 6), 'climbed and reached the exit')
+    eq(back.room.id, BACKROOMS_ROOMS[2].id)
+end)
+
+-- 5.5 room reset ----------------------------------------------------------------------
+test('reset: R after wasting seeds returns room 2 to its initial state', function()
+    local back = toRoom(2)
+    run(0.5)
+    local fresh = roomSignature(back)
+    -- waste: a vine in the pit, a pumpkin at the edge (half grown)
+    back.player:setPosition(-4.4, 0, 0); run(0.2)
+    press('3'); press('e')
+    back.player:setPosition(0.8, 0, 0); run(0.2)
+    press('2'); press('e')
+    run(1)
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=0 pumpkin=1 vine=1')
+    eq(#back.room.crops, 2); assert(#back.timers >= 1, 'something still growing')
+    local oldRoom = back.room
+    press('r')
+    assert(back.room ~= oldRoom, 'rebuilt')
+    eq(#back.room.crops, 0, 'all crops removed')
+    for _, plot in ipairs(back.room.plots) do eq(plot.crop, nil, 'plot ' .. plot.id .. ' empty') end
+    eq(#back.timers, 0, 'pending growth cancelled')
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=0 pumpkin=2 vine=2', 'allotment restored')
+    eq(back.roomIndex, 2)
+    eq(back.message.text, 'Room reset')
+    run(0.5)
+    eq(roomSignature(back), fresh, 'identical to entering the room')
+    run(5)
+    eq(#back.room.crops, 0, 'nothing grows back after the reset')
+end)
+
+test('reset: room 1 reset returns the demo crop to its half-grown start', function()
+    local back = toBackrooms({beanstalk = 2, pumpkin = 1, vine = 0})
+    run(0.5)
+    local fresh = roomSignature(back)
+    back.player:setPosition(0.4, 0, 0); run(0.2)
+    press('e')
+    run(CROP_DEFS.beanstalk.growTime)             -- the demo needs only half of this
+    local demo = back.room:plotById('demo').crop
+    eq(demo.grown, true)
+    eq(back.gameData.seeds.beanstalk, 1)
+    press('r')
+    local again = back.room:plotById('demo').crop
+    assert(again ~= demo, 'demo crop rebuilt')
+    eq(again.progress, 0.5); eq(again.grown, false); eq(again.active, false); eq(again.timer, nil)
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=2 pumpkin=1 vine=0', 'recorded room 1 start restored')
+    run(0.5)
+    eq(roomSignature(back), fresh)
+    eq(again.progress, 0.5, 'still frozen after the reset')
+end)
+
+test('reset: is deterministic whatever happened before it', function()
+    local histories = {
+        function() end,
+        function(back)
+            back.player:setPosition(-6.4, 0, 0); run(0.2); press('2'); press('e'); run(3)
+            back.player:setPosition(-2.4, 0, 0); run(0.2); press('1'); press('e'); run(0.5)
+        end,
+        function(back)
+            back.player:setPosition(-2.4, 0, 0); run(0.2); press('3'); press('e')
+            mock.hold('w'); run(1.5); mock.release('w')
+            love.mousemoved(0, 0, 200, -50)
+        end,
+    }
+    local sigs = {}
+    for i, history in ipairs(histories) do
+        local back = toRoom(3)
+        history(back)
+        press('r'); run(0.5)
+        sigs[i] = roomSignature(back)
+        press('r'); run(0.5)
+        eq(roomSignature(back), sigs[i], 'history ' .. i .. ': reset twice gives the same room')
+    end
+    eq(sigs[2], sigs[1]); eq(sigs[3], sigs[1])
+end)
+
+-- 5.6 / 5.7 combination rooms -----------------------------------------------------------
+test('room 2: pumpkin in the pit then vine at the edge, played through the state, reaches room 3', function()
+    local back = toRoom(2, {beanstalk = 9, pumpkin = 9, vine = 9})
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=0 pumpkin=2 vine=2', 'fixed allotment, no farm surplus, no beanstalks')
+    run(0.3)
+    assert(holdUntil('w', function() return back.player.x >= -4.4 end, 3), 'to the pit rim')
+    eq(back:targetPlot().id, 'pit'); eq(back.selectedSeed, 'pumpkin')
+    press('e')
+    run(CROP_DEFS.pumpkin.growTime + 0.2)
+    assert(back.room:plotById('pit').crop.active, 'pumpkin grown')
+    assert(holdUntil('w', function() return back.player.x >= 0.8 end, 3), 'over the pumpkin to the far side')
+    near(back.player.z, 0, 0.02)
+    eq(back:targetPlot().id, 'edge')
+    press('3'); press('e')
+    run(CROP_DEFS.vine.growTime + 0.2)
+    assert(holdUntil('w', function() return back.roomIndex == 3 end, 4), 'across the vine to the exit')
+    eq(back.room.id, BACKROOMS_ROOMS[3].id)
+end)
+
+test('room 2: one seed type alone never reaches the exit', function()
+    loadGame()
+    local data = BACKROOMS_ROOMS[2]
+    for _, t in ipairs(SEED_TYPES) do
+        local reached, info = Reach.search(Reach.roomWith(data, {pit = t, edge = t}))
+        eq(reached, false, 'only ' .. t .. ' on every plot (' .. info.cells .. ' cells)')
+        for _, plot in ipairs({'pit', 'edge'}) do
+            local r1 = Reach.search(Reach.roomWith(data, {[plot] = t}))
+            eq(r1, false, 'only ' .. t .. ' on ' .. plot)
+        end
+    end
+    eq((data.allotment.beanstalk or 0), 0, 'no beanstalk seeds in room 2')
+    -- played through the state with pumpkins only: walking on over the gap falls and respawns
+    local back = toRoom(2)
+    back.player:setPosition(-4.4, 0, 0); run(0.2); press('e'); run(2.5)
+    back.player:setPosition(0.8, 0, 0); run(0.2); press('e'); run(2.5)
+    eq(back.gameData.seeds.pumpkin, 0, 'both pumpkins planted')
+    for _, y in ipairs({-2.5, -1.5, -0.5, 0.5, 1.5, 2.5}) do
+        back.player:setPosition(-0.5, y, 0); run(0.1)
+        holdUntil('w', function() return back.player.x < -6 end, 4)   -- until respawned at the spawn
+        eq(back.roomIndex, 2, 'pumpkins only: still in room 2 (lane y=' .. y .. ')')
+    end
+end)
+
+test('room 2: the correct combination is the only one that reaches the exit', function()
+    loadGame()
+    local data = BACKROOMS_ROOMS[2]
+    local reached = Reach.search(Reach.roomWith(data, {pit = 'pumpkin', edge = 'vine'}))
+    eq(reached, true, 'pumpkin + vine solves room 2')
+    eq(Reach.search(Reach.roomWith(data, {pit = 'vine', edge = 'pumpkin'})), false, 'swapped plots')
+    eq(Reach.search(Reach.roomWith(data, {pit = 'pumpkin', edge = 'beanstalk'})), false, 'beanstalk is no bridge')
+end)
+
+test('room 3: pumpkin, beanstalk and vine, played through the state, reach the ending', function()
+    local back = toRoom(3, {beanstalk = 9, pumpkin = 9, vine = 9})
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=2 pumpkin=2 vine=2', 'fixed allotment')
+    local changes = countChanges()
+    run(0.3)
+    assert(holdUntil('w', function() return back.player.x >= -6.4 end, 3), 'to the pit rim')
+    eq(back:targetPlot().id, 'pit')
+    press('2'); press('e')
+    run(CROP_DEFS.pumpkin.growTime + 0.2)
+    assert(holdUntil('w', function() return back.player.x >= -2.5 end, 3), 'over the pumpkin')
+    eq(back:targetPlot().id, 'foot')
+    press('1'); press('e')
+    run(CROP_DEFS.beanstalk.growTime + 0.2)
+    assert(holdUntil('w', function() return back.player.x >= 0.6 and back.player.z > 2.5 end, 5), 'climbed onto the ledge')
+    eq(back:targetPlot().id, 'lip')
+    press('3'); press('e')
+    run(CROP_DEFS.vine.growTime + 0.2)
+    assert(holdUntil('w', function() return isState(gStateMachine.current, EndingState) end, 4), 'across the vine to the final exit')
+    eq(#changes, 1); eq(changes[1], 'ending', 'room 3 is the last room: its exit shows the ending')
+    eq(FormatSeeds(gStateMachine.current.gameData.seeds), 'beanstalk=1 pumpkin=1 vine=1', 'spares left')
+end)
+
+test('room 3: single types and every combination missing a type fail; all three succeed', function()
+    loadGame()
+    local data = BACKROOMS_ROOMS[3]
+    for _, t in ipairs(SEED_TYPES) do
+        local reached, info = Reach.search(Reach.roomWith(data, {pit = t, foot = t, lip = t}))
+        eq(reached, false, 'only ' .. t .. ' (' .. info.cells .. ' cells)')
+    end
+    local missing = {
+        {foot = 'beanstalk', lip = 'vine'},                       -- no pumpkin
+        {pit = 'pumpkin', lip = 'vine'},                          -- no beanstalk
+        {pit = 'pumpkin', foot = 'beanstalk'},                    -- no vine
+        {pit = 'pumpkin', foot = 'beanstalk', lip = 'beanstalk'}, -- spare beanstalk instead of the vine
+        {pit = 'pumpkin', foot = 'beanstalk', lip = 'pumpkin'},   -- spare pumpkin instead of the vine
+    }
+    for _, crops in ipairs(missing) do
+        local reached, info = Reach.search(Reach.roomWith(data, crops))
+        eq(reached, false, Reach.describe(crops) .. ' (' .. info.cells .. ' cells, maxX ' .. string.format('%.2f', info.maxX) .. ')')
+    end
+    local reached = Reach.search(Reach.roomWith(data, {pit = 'pumpkin', foot = 'beanstalk', lip = 'vine'}))
+    eq(reached, true, 'all three solve room 3')
+end)
+
+test('rooms: every exit is out of reach on entry', function()
+    loadGame()
+    for i, data in ipairs(BACKROOMS_ROOMS) do
+        local reached, info = Reach.search(Room(data))
+        eq(reached, false, 'room ' .. i .. ' exit reachable without crops (' .. info.cells .. ' cells)')
     end
 end)
 

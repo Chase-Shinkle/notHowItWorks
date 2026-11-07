@@ -2,7 +2,7 @@
 
 > A checked box means the code is written. Runtime and manual verification
 > status lives in `verification.md`; no Lua runtime was available, so those
-> checks are still pending for 1.1-4.5.
+> checks are still pending for 1.1-5.7 (none of the Lua tests has been run).
 
 ## 1. Foundation and render path
 
@@ -34,13 +34,13 @@
 
 ## 5. Seed puzzles (seed-types, plot-planting, room-puzzles, tutorial-room, room-reset)
 
-- [ ] 5.1 Implement seed definitions (beanstalk, pumpkin, vine) with final scale and growth axis and a tweened growth on a g3d model; verify each grows to its distinct shape and becomes collidable.
-- [ ] 5.2 Implement nearest-plot planting, seed selection, and per-type seed HUD; verify planting only works at plots and counts decrease.
-- [ ] 5.3 Implement beanstalk climbing (move up while inside the volume) and standing on pumpkin/vine tops; verify the player can climb and cross each structure.
-- [ ] 5.4 Build Room 1 (tutorial) with a half-grown demo crop and a visible unreachable exit; verify one seed completes it and the exit is reachable.
-- [ ] 5.5 Implement room reset restoring plots and seed allotment; verify reset after wasting seeds returns the room to its initial state.
-- [ ] 5.6 Build Room 2 requiring two seed types; verify it is solvable only with the correct combination and unsolvable with one type.
-- [ ] 5.7 Build Room 3 requiring all three seed types (cut first if behind schedule); verify solvability and add the ending hook.
+- [x] 5.1 Implement seed definitions (beanstalk, pumpkin, vine) with final scale and growth axis and a tweened growth on a g3d model; verify each grows to its distinct shape and becomes collidable.
+- [x] 5.2 Implement nearest-plot planting, seed selection, and per-type seed HUD; verify planting only works at plots and counts decrease.
+- [x] 5.3 Implement beanstalk climbing (move up while inside the volume) and standing on pumpkin/vine tops; verify the player can climb and cross each structure.
+- [x] 5.4 Build Room 1 (tutorial) with a half-grown demo crop and a visible unreachable exit; verify one seed completes it and the exit is reachable.
+- [x] 5.5 Implement room reset restoring plots and seed allotment; verify reset after wasting seeds returns the room to its initial state.
+- [x] 5.6 Build Room 2 requiring two seed types; verify it is solvable only with the correct combination and unsolvable with one type.
+- [x] 5.7 Build Room 3 requiring all three seed types (cut first if behind schedule); verify solvability and add the ending hook.
 
 ## 6. Integration
 

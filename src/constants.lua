@@ -92,8 +92,8 @@ FARM_BREAK_SHAKE = 6                -- peak screen-shake offset, virtual px
 FARM_BREAK_CORRUPTION_BLOCKS = 28   -- corrupted blocks drawn at full glitch
 
 -- Seeds the player is topped up to (per type) on arriving in the backrooms.
--- Room 1 (tutorial) is finished with a single beanstalk seed; keep this in
--- sync with Room 1's data when it is built (task 5.4).
+-- Room 1 (tutorial) is finished with a single beanstalk seed on its demo
+-- crop; this must equal Room 1's allotment in src/rooms.lua (a test checks).
 FIRST_ROOM_MIN_SEEDS = {
     beanstalk = 1,
 }
@@ -121,6 +121,16 @@ BACKROOMS_SKIN = 0.001              -- extra push-out so contacts don't re-trigg
 -- Falling below a room's killZ (default) respawns the player at its spawn.
 BACKROOMS_KILL_Z = -10
 
+-- Climbing a grown beanstalk (see PlayerController): vertical speed, and how
+-- far beyond a climb volume's bottom/top the feet still count as inside it.
+BACKROOMS_CLIMB_SPEED = 2.5         -- m/s
+BACKROOMS_CLIMB_MARGIN = 0.05
+
+-- Planting in the backrooms: the nearest fixed plot within this horizontal
+-- distance of the player's feet, and within this height difference.
+BACKROOMS_PLANT_RANGE = 1.8
+BACKROOMS_PLANT_HEIGHT = 1.6
+
 -- Key bindings (any key in a list works). Mouse look uses love.mousemoved.
 BACKROOMS_KEYS = {
     forward = {'w', 'up'},
@@ -128,4 +138,8 @@ BACKROOMS_KEYS = {
     left = {'a', 'left'},
     right = {'d', 'right'},
     releaseMouse = {'escape'},
+    plant = {'e', 'return'},          -- a left click plants too (mouse captured)
+    nextSeed = {'q', 'tab'},
+    seedSlots = {'1', '2', '3'},      -- select SEED_TYPES[i] directly
+    reset = {'r'},
 }
