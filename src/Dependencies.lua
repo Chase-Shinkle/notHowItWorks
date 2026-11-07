@@ -14,6 +14,7 @@ require 'src/Farm'
 require 'src/Fx'
 require 'src/FarmShader'
 require 'src/BackroomsLook'
+require 'src/BackroomsAudio'
 require 'src/PlayerController'
 require 'src/Billboard'
 require 'src/Crop'
@@ -191,7 +192,12 @@ gTextures['white'] = Assets.newPlaceholderImage({1, 1, 1, 1}, 4)
 -- Sounds: {path, source type}
 Assets.loadAll(gSounds, {
     ['farm-music'] = {'sounds/farm_music.ogg', 'stream'},
-    ['backrooms-hum'] = {'sounds/backrooms_hum.ogg', 'stream'},
+    ['backrooms-hum'] = {BACKROOMS_HUM_FILE, 'stream'},   -- 43 MB mp3: streamed, never static
+    ['footstep-1'] = {BACKROOMS_FOOTSTEP_FILES[1], 'static'},
+    ['footstep-2'] = {BACKROOMS_FOOTSTEP_FILES[2], 'static'},
+    ['footstep-3'] = {BACKROOMS_FOOTSTEP_FILES[3], 'static'},
+    ['footstep-4'] = {BACKROOMS_FOOTSTEP_FILES[4], 'static'},
+    ['footstep-5'] = {BACKROOMS_FOOTSTEP_FILES[5], 'static'},
     ['till'] = {'sounds/till.wav', 'static'},
     ['plant'] = {'sounds/plant.wav', 'static'},
     ['water'] = {'sounds/water.wav', 'static'},

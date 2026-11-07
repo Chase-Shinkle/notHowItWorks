@@ -45,9 +45,9 @@ function BackroomsState:enter(gameData, rooms)
     self.message = nil                   -- {text, time left}
     print('[backrooms] seeds received: ' .. FormatSeeds(self.gameData.seeds))
 
-    -- looping ambience (silent placeholder until sounds/backrooms_hum.ogg exists)
-    local hum = gSounds['backrooms-hum']
-    if hum then hum:setLooping(true); hum:play() end
+    -- hum + footsteps live only while this state is active (see BackroomsAudio)
+    if self.audio then self.audio:dispose() end
+    self.audio = BackroomsAudio.new()
 
     g3d.camera.resize(love.graphics.getDimensions())
     self:setMouseCaptured(true)
@@ -57,8 +57,7 @@ end
 
 function BackroomsState:exit()
     Timer.clear(self.timers)
-    local hum = gSounds['backrooms-hum']
-    if hum then hum:stop() end
+    if self.audio then self.audio:dispose(); self.audio = nil end
     self:setMouseCaptured(false)
 end
 
@@ -105,6 +104,7 @@ function BackroomsState:loadRoom(index)
     self:selectSeed(self.selectedSeed)
     self:spawnPlayer()
     self:resetCheckpoint()
+    if self.audio then self.audio:reset() end
     print(string.format('[backrooms] entered room %d/%d (%s), seeds: %s',
         index, self:levelCount(), tostring(self.room.id), FormatSeeds(self.gameData.seeds)))
 end
@@ -129,6 +129,7 @@ function BackroomsState:respawnAtCheckpoint()
     local cp = self.room.checkpoints[(self.checkpointRegion or 0) + 1]
     if not cp then return self:spawnPlayer() end
     self.player:setPosition(cp[1], cp[2], cp[3])
+    if self.audio then self.audio:reset() end
     local ex, ey, ez = self.player:eyePosition()
     g3d.camera.lookInDirection(ex, ey, ez, cp[4] or 0, 0)
 end
@@ -374,6 +375,8 @@ function BackroomsState:update(dt)
 
     local direction = g3d.camera.getDirectionPitch()
     self.player:update(dt, self:movementInput(), direction, self.room:solidColliders(), self.room:climbVolumes())
+
+    if self.audio then self.audio:update(dt, self.player) end
 
     if self.player.z < self.room.killZ then
         self:respawnAtCheckpoint()
