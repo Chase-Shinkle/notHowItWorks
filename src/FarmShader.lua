@@ -11,7 +11,9 @@
 -- multi-pass chain over downsampled canvases:
 --   scene 320 -> blur H 160 -> blur V 160 (nearTex, soft)
 --             -> blur H 80  -> blur V 80  (farTex, softer)
---   nearTex   -> thresholded blur H 80 -> blur V 80 (bloomTex)
+--   (far and bloom each get a second H/V round for a wide, smooth falloff;
+--    the composite also upsamples them with a 4-tap bilinear kernel)
+--   nearTex   -> thresholded blur H 80 -> blur V 80 x2 (bloomTex)
 --   composite: scene + nearTex/farTex/bloomTex through farm.glsl.
 -- Six 160/80 px passes plus one 320 px composite per frame.
 --
@@ -124,8 +126,12 @@ function FarmShader.present(values)
     blurStep(scene, b[2], 'h')            -- 320 -> 160
     blurStep(b[2], b[1], 'v')             -- nearTex
     blurStep(b[1], b[4], 'h')             -- 160 -> 80
+    blurStep(b[4], b[3], 'v')
+    blurStep(b[3], b[4], 'h')             -- second Gaussian round: wider, no blocks
     blurStep(b[4], b[3], 'v')             -- farTex
     blurStep(b[1], b[6], 'h', values.bloomThreshold)
+    blurStep(b[6], b[5], 'v')
+    blurStep(b[5], b[6], 'h')
     blurStep(b[6], b[5], 'v')             -- bloomTex
     love.graphics.pop()
 

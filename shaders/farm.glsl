@@ -40,6 +40,12 @@ uniform Image bloomTex;         // quarter-res thresholded blur
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 
+// 4-tap bilinear upsample of a low-res blur; `px` = its texel size in uv
+vec3 soft(Image t, vec2 uv, vec2 px) {
+    vec2 o = px * 0.5, p = vec2(o.x, -o.y);
+    return (Texel(t, uv + o) + Texel(t, uv - o) + Texel(t, uv + p) + Texel(t, uv - p)).rgb * 0.25;
+}
+
 vec4 effect(vec4 color, Image tex, vec2 uv, vec2 screen_coords) {
     vec4 base = Texel(tex, uv);
     vec3 c = base.rgb;
@@ -48,14 +54,15 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 screen_coords) {
     // and below it soften over the ramp; the foreground a little sooner
     float dy = uv.y - focusY;
     float reach = dy < 0.0 ? focusRamp : focusRamp * 0.85;
-    float k = smoothstep(focusHalf, focusHalf + reach, abs(dy)) * tiltStrength;
-    vec3 nearC = Texel(nearTex, uv).rgb;
-    vec3 farC = Texel(farTex, uv).rgb;
-    c = mix(c, nearC, clamp(k * 2.0, 0.0, 1.0));
-    c = mix(c, farC, clamp(k * 2.0 - 1.0, 0.0, 1.0));
+    float t = clamp((abs(dy) - focusHalf) / reach, 0.0, 1.0);
+    float k = t * t * t * (t * (t * 6.0 - 15.0) + 10.0) * tiltStrength;   // smootherstep
+    vec3 nearC = soft(nearTex, uv, texel * 2.0);
+    vec3 farC = soft(farTex, uv, texel * 4.0);
+    c = mix(c, nearC, smoothstep(0.0, 0.6, k));
+    c = mix(c, farC, smoothstep(0.35, 1.0, k));
 
     // 2. bloom
-    c += Texel(bloomTex, uv).rgb * bloomStrength;
+    c += soft(bloomTex, uv, texel * 4.0) * bloomStrength;
 
     // 3. golden sun
     c *= mix(vec3(1.0), sunColor, sunStrength * daylight);
