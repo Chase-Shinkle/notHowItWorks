@@ -104,8 +104,33 @@ function BackroomsState:loadRoom(index)
     self.advancing = false
     self:selectSeed(self.selectedSeed)
     self:spawnPlayer()
+    self:resetCheckpoint()
     print(string.format('[backrooms] entered room %d/%d (%s), seeds: %s',
         index, self:levelCount(), tostring(self.room.id), FormatSeeds(self.gameData.seeds)))
+end
+
+-- Checkpoints: current = region index of the latest checkpoint (0 = spawn).
+function BackroomsState:resetCheckpoint()
+    self.checkpointRegion, self.visitedRegions = 0, {[0] = true}
+end
+
+-- Called each frame: entering a region not yet visited makes its checkpoint current.
+function BackroomsState:updateCheckpoint()
+    local r = self.room:regionAt(self.player.x, self.player.y)
+    if r and not self.visitedRegions[r] and self.room.checkpoints[r + 1] then
+        self.visitedRegions[r] = true
+        self.checkpointRegion = r
+    end
+end
+
+-- Moves the player to the current checkpoint (the spawn when none); crops,
+-- seeds and pickups are untouched.
+function BackroomsState:respawnAtCheckpoint()
+    local cp = self.room.checkpoints[(self.checkpointRegion or 0) + 1]
+    if not cp then return self:spawnPlayer() end
+    self.player:setPosition(cp[1], cp[2], cp[3])
+    local ex, ey, ez = self.player:eyePosition()
+    g3d.camera.lookInDirection(ex, ey, ez, cp[4] or 0, 0)
 end
 
 function BackroomsState:spawnPlayer()
@@ -134,6 +159,7 @@ function BackroomsState:resetRoom()
     self.advancing = false
     self:selectSeed(self.selectedSeed)
     self:spawnPlayer()
+    self:resetCheckpoint()
     self:say('Room reset')
 end
 
@@ -346,8 +372,9 @@ function BackroomsState:update(dt)
     self.player:update(dt, self:movementInput(), direction, self.room:solidColliders(), self.room:climbVolumes())
 
     if self.player.z < self.room.killZ then
-        self:spawnPlayer()
+        self:respawnAtCheckpoint()
     end
+    self:updateCheckpoint()
 
     local ex, ey, ez = self.player:eyePosition()
     g3d.camera.lookInDirection(ex, ey, ez)
