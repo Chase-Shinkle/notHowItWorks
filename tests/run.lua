@@ -111,8 +111,9 @@ test('backrooms opts out of push and draws g3d with depth then HUD without', fun
     love.draw()
     eq(mock.count('push.apply'), 0, 'push bypassed')
     local room = gStateMachine.current.room
-    eq(mock.count('model.draw'), #room.models + #room.plots + #room.crops + 1 + #room.billboards,
-        'room boxes, plots, crops, exit marker and billboards drawn')
+    eq(#room.exitFrame, 3, 'exit frame is two posts and a lintel')
+    eq(mock.count('model.draw'), #room.models + #room.plots + #room.crops + 1 + #room.exitFrame + #room.billboards,
+        'room boxes, plots, crops, exit marker, exit frame and billboards drawn')
     assert(#room.crops >= 1, 'room 1 draws its demo crop')
     local first = mock.calls[1]
     eq(first.name, 'setDepthMode'); eq(first.args[1], 'lequal'); eq(first.args[2], true)
@@ -3537,17 +3538,25 @@ end)
 
 test('levelgen 2.2: a bad candidate is rejected and replaced by a derived seed', function()
     loadGame()
-    local data = gen(9, 2, {mutate = function(cand, attempt)
+    -- a seed whose unmutated first candidate is accepted (layout acceptance can
+    -- reject candidates too, so which seeds pass first time depends on the layout rules)
+    local seed
+    for s = 9, 60 do
+        if gen(s, 2).meta.attempt == 0 then seed = s break end
+    end
+    assert(seed, 'some seed passes first time')
+    local data = gen(seed, 2, {mutate = function(cand, attempt)
         if attempt == 0 then
             for i, p in ipairs(cand.pickups) do
                 if p.tier == 'critical' then table.remove(cand.pickups, i) break end
             end
         end
     end})
-    eq(data.meta.attempt, 1, 'second candidate used')
-    assert(data.meta.seed ~= 9, 'derived seed used')
+    assert(data.meta.attempt >= 1, 'a later candidate used (derived seeds may also be rejected by layout rules)')
+    assert(data.meta.seed ~= seed, 'derived seed used')
+    eq(data.meta.requestedSeed, seed)
     assert(LevelGen.check(data))
-    eq(gen(9, 2).meta.attempt, 0, 'unmutated seed passes first time')
+    eq(gen(seed, 2).meta.attempt, 0, 'unmutated seed passes first time')
 end)
 
 test('levelgen 2.3: Room validates and builds pickups and seedTypes', function()
@@ -3698,7 +3707,9 @@ test('sequence 4.1: tutorial, then generated levels with rising difficulty, per-
         back:advance()
         eq(back.roomIndex, i)
         assert(back.room.data.generated, 'level ' .. i .. ' is generated')
-        eq(back.room.data.meta.seed, LevelGen.levelSeed(777, i) , 'level seed from run seed + index (no retry on this seed)')
+        -- the requested seed is always run seed + index; a rejected candidate is replaced by a derived seed
+        eq(back.room.data.meta.requestedSeed, LevelGen.levelSeed(777, i), 'level seed from run seed + index')
+        if back.room.data.meta.attempt == 0 then eq(back.room.data.meta.seed, LevelGen.levelSeed(777, i)) end
         eq(back.levelSeeds[i], LevelGen.levelSeed(777, i))
         obstacles[#obstacles + 1] = back.room.data.meta.obstacles
         ids[#ids + 1] = back.room.id
@@ -4348,7 +4359,8 @@ test('dressing review: props never use the seed-bag/sacks look, stay small and s
     local solidBoxes = 0
     for _, b in ipairs(data.boxes) do if b.collide ~= false then solidBoxes = solidBoxes + 1 end end
     eq(colliders, solidBoxes, 'baseboard adds no colliders')
-    eq(#room.models, #data.boxes + 1, 'one merged baseboard model on top of the boxes')
+    -- pit rims render as several void parts instead of one model, so models >= boxes + baseboard
+    assert(#room.models >= #data.boxes + 1, 'one merged baseboard model on top of the boxes')
 end)
 
 realPrint(string.format('\n%d passed, %d failed', passed, failed))

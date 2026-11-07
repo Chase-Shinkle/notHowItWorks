@@ -124,8 +124,31 @@ local function pathScene(pred)
         end
     end
 end
+-- stand 2 m before a path junction's centre and look half-way between the path
+-- and the side opening, so the branch mouth is in frame (not just a corridor)
+local function junctionScene(room)
+    local meta = room.data.meta
+    if not meta then return end
+    for i = 2, #meta.path - 1 do
+        local a, c, b = meta.path[i - 1], meta.path[i], meta.path[i + 1]
+        local cell
+        for _, x in ipairs(meta.cells) do if x.cx == c[1] and x.cy == c[2] then cell = x end end
+        if cell and cell.kind ~= 'module' and (cell.degree or 0) >= 3 then
+            for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
+                local n = {c[1] + d[1], c[2] + d[2]}
+                local isPath = (n[1] == a[1] and n[2] == a[2]) or (n[1] == b[1] and n[2] == b[2])
+                if not isPath and meta.edges[LevelGen.edgeKey({cx = c[1], cy = c[2]}, {cx = n[1], cy = n[2]})] then
+                    local fx, fy = c[1] - a[1], c[2] - a[2]          -- incoming travel direction
+                    local mx, my = c[1] * CELL + CELL / 2, c[2] * CELL
+                    local lx, ly = fx * 1.0 + d[1] * 1.3, fy * 1.0 + d[2] * 1.3
+                    return mx - fx * 2.0, my - fy * 2.0, cell.elev or 0, math.atan2(ly, lx), -0.05
+                end
+            end
+        end
+    end
+end
 local SCENES = {
-    ['junction'] = pathScene(function(a, c, b, cell) return (cell.degree or 0) >= 3 end),
+    ['junction'] = junctionScene,
     ['turn'] = pathScene(function(a, c, b) return (c[1] - a[1]) ~= (b[1] - c[1]) or (c[2] - a[2]) ~= (b[2] - c[2]) end),
     ['plot-crop'] = plotScene,
     ['pickup'] = function(room)
@@ -133,8 +156,14 @@ local SCENES = {
         if p then return aimAt(p.pos[1], p.pos[2], p.pos[3], 2.2) end
     end,
     ['exit'] = function(room)
+        -- approach along the real last step of the critical path, looking at the void
         local e = room.exit.pos
-        return e[1] - 4.5, e[2], e[3] - 1.1, 0, -0.05
+        local meta, dx, dy = room.data.meta, 1, 0
+        if meta and #meta.path >= 2 then
+            local p, q = meta.path[#meta.path - 1], meta.path[#meta.path]
+            dx, dy = q[1] - p[1], q[2] - p[2]
+        end
+        return e[1] - dx * 4.5, e[2] - dy * 4.5, e[3] - 1.1, math.atan2(dy, dx), -0.05
     end,
     ['pit'] = moduleScene('pit'), ['ledge'] = moduleScene('ledge'), ['gap'] = moduleScene('gap'),
     ['prop'] = function(room)

@@ -335,6 +335,8 @@ LEVELGEN_LOOP_CHANCE = 0.4           -- chance per candidate same-region cell pa
 LEVELGEN_GRID = 6                    -- default grid is LEVELGEN_GRID x LEVELGEN_GRID cells
 LEVELGEN_MIN_PATH = 14               -- critical path length in cells, start and exit included
 LEVELGEN_MIN_TURNS = 3               -- turns on the critical path
+LEVELGEN_CARVE_MIX = 0.5             -- chance per carve step to extend a random active cell instead of the newest (shorter path, more side branches)
+LEVELGEN_MAX_PATH_FRAC = 0.6         -- critical path may use at most this share of the grid cells (rows may override with maxPathFrac)
 LEVELGEN_CARVE_TRIES = 12            -- carve retries (derived seeds) before the fallback template
 LEVELGEN_ROOM_CHANCE = 0.5           -- per candidate 2x2 block to merge into a large room
 LEVELGEN_MAX_ROOMS = 4
@@ -350,7 +352,7 @@ LEVELGEN_DIFFICULTY = {
     -- Rows never shrink in grid area, minPath or branches. minPath >= 21 cells so the
     -- centre-to-centre walk (minPath - 1) * LEVELGEN_CELL / BACKROOMS_WALK_SPEED is >= 30 s
     -- (level-length spec: 'pure walking time at least 30 seconds'; 14 cells is only 19.5 s).
-    {obstacles = 2, types = {'pit', 'gap'},           grid = 6, minPath = 21, minTurns = 3, branches = 2},
+    {obstacles = 2, types = {'pit', 'gap'},           grid = 6, minPath = 21, minTurns = 3, branches = 2, maxPathFrac = 0.7},
     {obstacles = 3, types = {'pit', 'gap', 'ledge'},  grid = 8, minPath = 27, minTurns = 4, branches = 3},
     {obstacles = 4, types = {'pit', 'gap', 'ledge'},  grid = 9, minPath = 33, minTurns = 5, branches = 4},
 }

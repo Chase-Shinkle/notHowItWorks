@@ -163,15 +163,19 @@ local function carveTree(rng, cells, list, W, H)
     local start = list[rng:int(1, #list)]
     visited[key(start.cx, start.cy)] = true
     local stack = {start}
+    local mix = LEVELGEN_CARVE_MIX or 0
     while #stack > 0 do
-        local c = stack[#stack]
+        -- growing tree: mostly extend the newest cell (long corridors), sometimes
+        -- branch from a random active cell (side branches, a shorter longest path)
+        local ci = (mix > 0 and #stack > 1 and rng:chance(mix)) and rng:int(1, #stack) or #stack
+        local c = stack[ci]
         local opts = {}
         for _, d in ipairs(SIDES) do
             local n = cells[key(c.cx + d[1], c.cy + d[2])]
             if n and not visited[key(n.cx, n.cy)] then opts[#opts + 1] = n end
         end
         if #opts == 0 then
-            stack[#stack] = nil
+            table.remove(stack, ci)
         else
             local n = rng:pick(opts)
             visited[key(n.cx, n.cy)] = true
@@ -294,6 +298,8 @@ function LevelGen.build(seed, difficulty)
     local rng = LevelGen.rng(seed)
     local function accept(tree, p)
         if #p < minPath or countTurns(p) < minTurns then return nil end
+        -- the critical path must not swallow the grid: side branches need room
+        if #p > (spec.maxPathFrac or LEVELGEN_MAX_PATH_FRAC) * W * H then return nil end
         local junction = false
         for _, c in ipairs(list) do if #treeNeighbors(cells, tree, c) >= 3 then junction = true end end
         if not junction then return nil end

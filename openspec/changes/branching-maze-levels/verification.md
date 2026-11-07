@@ -42,3 +42,14 @@ Completed steps:
 - `exit` scene in tests/backrooms_shots.lua assumes the exit lies along +x; in maze levels the shot faces a wall. Needs a path-direction-aware exit scene.
 - Post-pass black void was only viewed on the pit shots, not an exit-specific one.
 - Everything beyond the 4 unit failures above is unverified. Chase tests himself.
+
+## Final fix pass (nothing below was re-tested; suite NOT rerun, NOT green)
+
+Changed:
+- `src/LevelGen.lua` / `src/constants.lua`: the carve is now a growing tree (`LEVELGEN_CARVE_MIX = 0.5`: half of carve steps extend a random active cell instead of the newest), and a candidate is rejected when the critical path exceeds `LEVELGEN_MAX_PATH_FRAC` (0.6) of the grid cells (difficulty-1 row overrides to 0.7 because its 21-cell minimum is 58% of 36). Grid sizes (6/8/9), minPath and gate counts are unchanged; required critical gates are not pruned.
+- Measured by generation only (`tests/maze_layout.lua`, seeds 1-6, diffs 1-3): d2 path 27-34 of 64 cells (42-53%), d3 34-46 of 81 (42-57%), d1 21-25 of 36 (58-69%); loops 4-11 at d2/d3; 3-5 optional gates per level incl. a shortcut at d2/d3; every path still meets minPath (>= 30 s walk). These layouts changed from the earlier ones, so seed-specific expectations elsewhere may break.
+- Stale test assertions, each checked against code: `tests/run.lua` draw count now includes the 3-part exit frame (Room.exitFrame, render-only); levelgen 2.2 picks a seed that passes first time and expects a later (>=1) derived attempt (layout rules can also reject candidates); sequence 4.1 checks `meta.requestedSeed == levelSeed(run, i)` (and `meta.seed` equal when attempt 0) because retries replace `meta.seed`; baseboard test expects `#models >= #boxes + 1` because pit rims render as several void parts. These edits were not run.
+- `tests/backrooms_shots.lua`: `exit` scene approaches along the real last path step; `junction` scene stands 2 m before a path junction and looks between the path and the side opening.
+- Re-rendered `/workspace/qa/maze/final/` (layout maps d1-d3 x seeds 1-3; L2/L3 pit, exit, junction, turn shots at run seed 1). Images not evaluated by me.
+
+Still unverified: full `tests/check_all.sh` (incomplete since the earlier 10-minute timeout), the four edited assertions, other tests that may depend on old seeds/layouts (maze_*, sweeps, autotest, packaging), whether the new junction/exit shots read well, and whether path fraction at d1 (up to 69%) is acceptable.
