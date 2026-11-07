@@ -51,6 +51,24 @@ ROOM_BOX_STYLES = {
     solid = {texture = 'wall', color = {0.78, 0.72, 0.42, 1}, textured = {0.9, 0.88, 0.8, 1}},
 }
 ROOM_EXIT_COLOR = {0.55, 1, 0.6, 0.85}
+
+-- Material themes: a consistent wall/floor/ceiling set. Texture values are
+-- gTextures keys; `tint` multiplies a loaded texture, `fallbackColor` is the
+-- flat colour used when a texture is missing or a placeholder. A box takes its
+-- theme from `box.theme`, else `data.theme`; no theme keeps ROOM_BOX_STYLES.
+MATERIAL_THEMES = {
+    level0 = {wall = 'wall-chevron', floor = 'floor-carpet', ceiling = 'ceiling-grid',
+        tint = {1, 1, 1, 1}, fallbackColor = {0.84, 0.78, 0.38, 1}},
+    stripe = {wall = 'wall-stripe', floor = 'floor-damp', ceiling = 'ceiling-grid',
+        tint = {0.95, 0.95, 0.9, 1}, fallbackColor = {0.8, 0.74, 0.44, 1}},
+    classic = {wall = 'wall', floor = 'floor', ceiling = 'ceiling',
+        tint = {1, 1, 1, 1}, fallbackColor = {0.86, 0.8, 0.46, 1}},
+}
+MATERIAL_THEME_NAMES = {'level0', 'stripe', 'classic'}
+-- Obstacle modules (pit/gap/ledge surfaces) and plots use fixed high-contrast
+-- tints on a plain texture, independent of the theme (cool slate vs. yellow rooms).
+ROOM_OBSTACLE_COLORS = {floor = {0.3, 0.42, 0.62, 1}, solid = {0.78, 0.36, 0.2, 1}}
+ROOM_PLOT_TINT = {1.15, 0.8, 0.6, 1}
 ROOM_PLOT_SIZE = 1.2
 ROOM_TEXTURE_TILE = 2      -- metres per texture repeat on box faces
 
@@ -119,6 +137,7 @@ function Room.validate(data)
             if b.size[k] <= 0 then return fail('box ' .. i .. ' size must be positive') end
         end
         if b.kind and not ROOM_BOX_STYLES[b.kind] then return fail('box ' .. i .. ' unknown kind ' .. tostring(b.kind)) end
+        if b.theme and not MATERIAL_THEMES[b.theme] then return fail('box ' .. i .. ' unknown theme ' .. tostring(b.theme)) end
     end
     if type(data.exit) ~= 'table' or not isVec3(data.exit.pos) or not isVec3(data.exit.size) then
         return fail('exit {pos, size} required')
@@ -211,11 +230,29 @@ function Room:init(data)
     self.models = {}       -- {model, color} drawn opaque
     self.colliders = {}
     for _, b in ipairs(data.boxes) do
-        local style = ROOM_BOX_STYLES[b.kind or 'solid']
-        local tex = texture(b.texture, style.texture)
-        if not tex and style.fallbackTexture then tex = texture(nil, style.fallbackTexture) end
-        local color = b.color
-            or ((style.textured and tex and not Assets.isPlaceholder(tex)) and style.textured or style.color)
+        local kind = b.kind or 'solid'
+        local style = ROOM_BOX_STYLES[kind]
+        local theme = MATERIAL_THEMES[b.theme or data.theme or '']
+        local tex, color
+        if b.obstacle and ROOM_OBSTACLE_COLORS[kind] then
+            tex, color = gTextures['white'] or texture(nil, style.texture), ROOM_OBSTACLE_COLORS[kind]
+        elseif theme and not b.texture and not b.color then
+            -- solid blocks use the wall texture
+            local key = theme[kind == 'solid' and 'wall' or kind]
+            tex = gTextures[key]
+            if tex and not Assets.isPlaceholder(tex) then
+                texture(key)
+                local shade = style.textured
+                color = {theme.tint[1] * shade[1], theme.tint[2] * shade[2], theme.tint[3] * shade[3], 1}
+            else
+                tex, color = texture(nil, style.texture), theme.fallbackColor
+            end
+        else
+            tex = texture(b.texture, style.texture)
+            if not tex and style.fallbackTexture then tex = texture(nil, style.fallbackTexture) end
+            color = b.color
+                or ((style.textured and tex and not Assets.isPlaceholder(tex)) and style.textured or style.color)
+        end
         local verts = NewRoomBoxVerts(b.size[1], b.size[2], b.size[3], color)
         local model = g3d.newModel(verts, tex, {b.pos[1], b.pos[2], b.pos[3]})
         self.models[#self.models + 1] = model
@@ -238,7 +275,7 @@ function Room:init(data)
     self.plots = {}
     for i, p in ipairs(data.plots or {}) do
         local size = p.size or ROOM_PLOT_SIZE
-        local model = g3d.newModel(NewBoxVerts(size, size, 0.02, {1, 1, 1, 1}), gTextures['plot'],
+        local model = g3d.newModel(NewBoxVerts(size, size, 0.02, ROOM_PLOT_TINT), gTextures['plot'],
             {p.pos[1], p.pos[2], p.pos[3] + 0.011})
         self.plots[#self.plots + 1] = {
             id = p.id or ('plot' .. i), pos = {p.pos[1], p.pos[2], p.pos[3]}, dir = p.dir or '+x',

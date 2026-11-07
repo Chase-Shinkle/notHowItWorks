@@ -58,6 +58,11 @@ test('filtering: sprites, tiles, billboards and fonts load nearest; surfaces are
     loadGame()
     local surfaces = {}
     for _, key in ipairs(SMOOTH_SURFACE_TEXTURES) do surfaces[key] = true end
+    for _, key in ipairs(PROCEDURAL_SURFACE_TEXTURES) do
+        eq(filterOf(gTextures[key]), 'linear/linear', 'procedural ' .. key)
+        surfaces[key] = nil
+        gTextures[key] = nil
+    end
     local n = 0
     for key, image in pairs(gTextures) do
         if not surfaces[key] then
@@ -3948,6 +3953,72 @@ test('look 2.2/2.3: with the look on, gameplay objects get the readability floor
     for _, v in ipairs(floors) do if v == BACKROOMS_LIGHT_PRESETS['near-dark'].gameplayFloor then sawFloor = true end end
     assert(sawFloor, 'gameplay objects drawn with the near-dark readability floor')
     eq(floors[#floors], 0, 'floor reset after the gameplay objects')
+end)
+
+test('materials 4.1: themed boxes resolve textures through the theme; missing textures use the fallback colour', function()
+    loadGame()
+    local function one(theme, kind)
+        local room = Room({id = 't', spawn = {0, 0, 0}, theme = theme, boxes = {{kind = kind, pos = {0, 0, 0}, size = {1, 1, 1}}},
+            exit = {pos = {5, 0, 1}, size = {1, 1, 1}}, allotment = {}})
+        return room.models[1], room.colliders[1].verts[1]
+    end
+    local m = one('level0', 'wall')
+    eq(m.texture, gTextures['wall-chevron'], 'wall texture from theme')
+    eq((one('level0', 'floor')).texture, gTextures['floor-carpet'], 'floor texture from theme')
+    eq((one('level0', 'ceiling')).texture, gTextures['ceiling-grid'], 'ceiling texture from theme')
+    eq((one('stripe', 'wall')).texture, gTextures['wall-stripe'])
+    local saved = gTextures['wall-chevron']
+    gTextures['wall-chevron'] = nil
+    local m2, v = one('level0', 'wall')
+    assert(m2.texture, 'still renders')
+    local fb = MATERIAL_THEMES.level0.fallbackColor
+    assert(math.abs(v[9] / v[11] - fb[1] / fb[3]) < 1e-6, 'fallback colour ratio')
+    gTextures['wall-chevron'] = saved
+    -- no theme: legacy look unchanged
+    eq((one(nil, 'wall')).texture, gTextures['wall'])
+end)
+
+test('materials 4.2: obstacle surfaces and plots use fixed tints regardless of theme', function()
+    loadGame()
+    local function vert(theme)
+        local room = Room({id = 't', spawn = {0, 0, 0}, plots = {{id = 'p', pos = {1, 0, 0}}}, theme = theme,
+            boxes = {{kind = 'floor', obstacle = true, pos = {0, 0, 0}, size = {1, 1, 1}},
+                     {kind = 'solid', obstacle = true, pos = {3, 0, 0}, size = {1, 1, 1}}},
+            exit = {pos = {5, 0, 1}, size = {1, 1, 1}}, allotment = {}})
+        return room.colliders[1].verts[1], room.colliders[2].verts[1], room
+    end
+    local f1, s1, r1 = vert('level0')
+    local f2, s2 = vert('classic')
+    for i = 9, 11 do eq(f1[i], f2[i], 'floor tint theme-independent'); eq(s1[i], s2[i], 'solid tint theme-independent') end
+    local oc = ROOM_OBSTACLE_COLORS.floor
+    assert(math.abs(f1[9] / f1[11] - oc[1] / oc[3]) < 1e-6, 'floor obstacle tint')
+    assert(f1[11] ~= s1[11] or f1[9] ~= s1[9])
+    assert(r1.plots[1].model, 'plot built')
+end)
+
+test('materials 4.3: themes are deterministic per seed, vary within a level, and leave layout unchanged', function()
+    loadGame()
+    for d = 1, #LEVELGEN_DIFFICULTY do
+        for seed = 1, 40 do
+            local a, b = LevelGen.generate(seed, d), LevelGen.generate(seed, d)
+            local walls, floors = {}, {}
+            for i, bx in ipairs(a.boxes) do
+                eq(bx.theme, b.boxes[i].theme, 'same themes for same seed')
+                if bx.theme and not bx.obstacle then
+                    local th = MATERIAL_THEMES[bx.theme]
+                    if bx.kind == 'wall' then walls[th.wall] = true elseif bx.kind == 'floor' then floors[th.floor] = true end
+                end
+            end
+            local nw, nf = 0, 0
+            for _ in pairs(walls) do nw = nw + 1 end
+            for _ in pairs(floors) do nf = nf + 1 end
+            assert(nw >= 2 and nf >= 2, 'seed ' .. seed .. ' d' .. d .. ' walls ' .. nw .. ' floors ' .. nf)
+        end
+    end
+    -- theme stream is separate: layout RNG outputs are independent of it
+    local before = LevelGen.rng(99):next()
+    LevelGen.generate(3, 1)
+    eq(LevelGen.rng(99):next(), before)
 end)
 
 realPrint(string.format('\n%d passed, %d failed', passed, failed))

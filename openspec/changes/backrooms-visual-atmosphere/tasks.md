@@ -21,9 +21,9 @@
 
 ## 4. Materials
 
-- [ ] 4.1 Add `MATERIAL_THEMES` with more wall, floor and ceiling textures (placeholders allowed) and resolve box textures through the room theme in `Room:init`; test the missing-texture colour fallback.
-- [ ] 4.2 Give obstacle modules, plots and the exit a fixed high-contrast tint; screenshot each theme's pit, ledge and gap.
-- [ ] 4.3 Assign themes per room from the level seed in the generator; test the same seed gives the same themes and a level uses at least two walls and two floors.
+- [x] 4.1 Add `MATERIAL_THEMES` with more wall, floor and ceiling textures (placeholders allowed) and resolve box textures through the room theme in `Room:init`; test the missing-texture colour fallback.
+- [x] 4.2 Give obstacle modules, plots and the exit a fixed high-contrast tint; screenshot each theme's pit, ledge and gap.
+- [x] 4.3 Assign themes per room from the level seed in the generator; test the same seed gives the same themes and a level uses at least two walls and two floors.
 
 ## 5. Dressing
 
@@ -36,3 +36,9 @@
 
 - [ ] 6.1 Add a backrooms screenshot script (modelled on `tests/farm_shots.lua`) and review lighting presets, fog, themes and dressing across several seeds; record findings and tuned defaults.
 - [ ] 6.2 Add the new tests to `tests/check_all.sh` and run it green on the real LÖVE runtime, including a full autotest run with the look enabled.
+
+### Section 4 verification (branch wip/atmos-4)
+- 4.1: `MATERIAL_THEMES` (level0, stripe, classic) in src/Room.lua; procedural wall/floor/ceiling textures in src/Dependencies.lua (flat placeholders under `--placeholder-assets`); `Room:init` resolves via box/room `theme`, falling back to `fallbackColor`. Test "materials 4.1" (incl. missing-texture fallback).
+- 4.2: obstacle-module floors/solids (`obstacle = true`) use fixed slate/orange tints, plots a fixed tint, exit keeps `ROOM_EXIT_COLOR`; test "materials 4.2". Captures (pit/gap in levels 2-4): /workspace/qa/atmos/section4. Not captured per theme in isolation (tints are theme-independent by construction).
+- 4.3: per-cell themes from a separate RNG stream in `LevelGen.build`; test "materials 4.3" (determinism, >=2 walls and floors over 120 levels); generated layout/pickups byte-identical to HEAD for seeds 1-30 x 3 difficulties.
+- tests/run.lua: 187 passed, 0 failed (full suite not run).
