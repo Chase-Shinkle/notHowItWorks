@@ -50,7 +50,9 @@ ROOM_BOX_STYLES = {
     ceiling = {texture = 'ceiling', fallbackTexture = 'wall', color = {0.93, 0.9, 0.72, 1}, textured = {1, 1, 0.92, 1}},
     solid = {texture = 'wall', color = {0.78, 0.72, 0.42, 1}, textured = {0.9, 0.88, 0.8, 1}},
 }
-ROOM_EXIT_COLOR = {0.45, 1, 0.55, 0.9}
+ROOM_EXIT_COLOR = {0, 0, 0, 1}      -- solid black void (shader draws it unlit)
+ROOM_EXIT_FRAME_COLOR = {0.95, 0.9, 0.7, 1}
+ROOM_EXIT_FRAME = 0.09
 ROOM_BASEBOARD_HEIGHT, ROOM_BASEBOARD_DEPTH = 0.14, 0.03
 ROOM_BASEBOARD_COLOR = {0.78, 0.7, 0.5, 1}
 
@@ -298,6 +300,19 @@ function Room:init(data)
     self.exit = {pos = {e.pos[1], e.pos[2], e.pos[3]}, size = {e.size[1], e.size[2], e.size[3]}, min = emin, max = emax}
     self.exitModel = g3d.newModel(NewRoomBoxVerts(e.size[1], e.size[2], e.size[3], ROOM_EXIT_COLOR),
         gTextures['white'] or texture(nil, 'floor'), {e.pos[1], e.pos[2], e.pos[3]})
+    -- render-only pale frame (two posts + lintel) so the black void is findable
+    self.exitFrame = {}
+    do
+        local fw, sx, sy, sz = ROOM_EXIT_FRAME, e.size[1] + 0.04, e.size[2], e.size[3]
+        local wt = gTextures['white'] or texture(nil, 'floor')
+        local function part(dx, dz, w, h)
+            self.exitFrame[#self.exitFrame + 1] = g3d.newModel(
+                NewRoomBoxVerts(sx, w, h, ROOM_EXIT_FRAME_COLOR), wt, {e.pos[1], e.pos[2] + dx, e.pos[3] + dz})
+        end
+        part(-(sy / 2 + fw / 2), 0, fw, sz + fw)
+        part(sy / 2 + fw / 2, 0, fw, sz + fw)
+        part(0, sz / 2 + fw / 2, sy, fw)
+    end
 
     -- fixed plots: flat soil pads just above the surface they sit on
     self.plots = {}
@@ -564,7 +579,10 @@ function Room:draw(cx, cy)
     end
     for _, plot in ipairs(self.plots) do plot.model:draw(look) end
     for _, crop in ipairs(self.crops) do crop:draw(look) end
+    if look then BackroomsLook.set('unlit', 1) end
     self.exitModel:draw(look)
+    if look then BackroomsLook.set('unlit', 0) end
+    for _, m in ipairs(self.exitFrame) do m:draw(look) end
     if look then self:drawShadows(); BackroomsLook.drawShafts(self, cx, cy) end
     Billboard.drawAll(self.billboards, cx, cy, look)
     -- pickups bob gently; the billboard is lifted, not the pickup position
