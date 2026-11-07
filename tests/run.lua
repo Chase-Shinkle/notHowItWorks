@@ -3573,5 +3573,79 @@ test('levelgen 2.5: visibleSeedTypes uses seedTypes when present', function()
     eq(#back:visibleSeedTypes(), 2, 'allotment fallback unchanged')
 end)
 
+-- 3. uproot ----------------------------------------------------------------------
+test('uproot 3.1: freeing a plot lets it take a new seed; the seed count is unchanged', function()
+    local back = toBackrooms()
+    back.rooms = {BACKROOMS_ROOMS[2]}
+    back:loadRoom(1)
+    back.gameData.seeds = {beanstalk = 0, pumpkin = 2, vine = 1}
+    back.player:setPosition(-4.6, 0, 0)       -- on the floor at the pit rim, plot 'pit' in reach
+    back.selectedSeed = 'pumpkin'
+    local ok, crop = back:plant()
+    assert(ok, 'planted wrong crop: ' .. tostring(crop))
+    eq(back.gameData.seeds.pumpkin, 1)
+    local plot = back.room:plotById('pit')
+    eq(back:uproot() and true, true, 'uprooted while growing')
+    eq(plot.crop, nil, 'plot free'); eq(#back.room.crops, 0)
+    eq(back.gameData.seeds.pumpkin, 1, 'no refund')
+    assert(back.message.text:find('Uprooted', 1, true), 'message')
+    -- the cancelled growth never completes
+    Timer.update(10, back.timers)
+    eq(crop.grown, false); eq(crop.removed, true)
+    -- a grown crop: uproot removes the collider too, plot accepts a new seed
+    local ok2, crop2 = back:plant(); assert(ok2)
+    Timer.update(CROP_DEFS.pumpkin.growTime + 0.01, back.timers)
+    back.player:setPosition(-4.6, 0, 0)
+    back.room:updateCrops({1000, 1000, 1000}, {1001, 1001, 1001})
+    eq(crop2.active, true)
+    local solids = #back.room:solidColliders()
+    local ok3 = back:uproot()
+    eq(ok3, true, 'uprooted when grown')
+    eq(#back.room:solidColliders(), solids - 1, 'structure no longer collides')
+    back.gameData.seeds.vine = 1
+    back.selectedSeed = 'vine'
+    local ok4 = back:plant()
+    eq(ok4, true, 'plot accepts a new seed')
+    eq(back.gameData.seeds.vine, 0)
+    eq(back.gameData.seeds.pumpkin, 0, 'pumpkin count only went down by planting')
+    -- the X key drives it
+    press('x')
+    eq(plot.crop, nil, 'X uproots')
+    local out = back:uproot()
+    eq(out, false, 'nothing left to uproot')
+end)
+
+test('uproot 3.2: refused for the demo crop and while standing on or in the crop', function()
+    local back = toBackrooms()
+    local demo = back.room:plotById('demo')
+    assert(demo.crop and demo.crop.demo, 'tutorial demo crop')
+    back.player:setPosition(0, 0, 0)
+    local before = #back.room.crops
+    local ok, reason = back:uproot()
+    eq(ok, false); eq(reason, 'demo')
+    eq(#back.room.crops, before); assert(demo.crop, 'demo crop kept')
+    assert(back.message.text:find('lesson', 1, true), 'on-screen message')
+    -- standing on a grown pumpkin
+    back.rooms = {BACKROOMS_ROOMS[2]}
+    back:loadRoom(1)
+    back.gameData.seeds = {beanstalk = 0, pumpkin = 1, vine = 0}
+    back.selectedSeed = 'pumpkin'
+    back.player:setPosition(-4.6, 0, 0)
+    assert(back:plant())
+    Timer.update(CROP_DEFS.pumpkin.growTime + 0.01, back.timers)
+    back.room:updateCrops({1000, 1000, 1000}, {1001, 1001, 1001})
+    local crop = back.room:plotById('pit').crop
+    eq(crop.active, true)
+    back.player:setPosition(-2.7, 0, crop.max[3])      -- on top (pumpkin top at z = 0)
+    local ok2, reason2 = back:uproot()
+    eq(ok2, false); eq(reason2, 'standing')
+    assert(back.room:plotById('pit').crop == crop, 'not removed')
+    assert(back.message.text:find('Step off', 1, true), 'message says why')
+    back.player:setPosition(-2.7, 0, crop.min[3] + 0.3)   -- inside it
+    eq(back:uproot(), false)
+    back.player:setPosition(-4.6, 0, 0)
+    eq(back:uproot(), true, 'removable once clear (at the rim)')
+end)
+
 realPrint(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)

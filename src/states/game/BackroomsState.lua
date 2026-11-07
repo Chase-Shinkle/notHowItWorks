@@ -222,6 +222,30 @@ function BackroomsState:plant()
     return ok, result
 end
 
+local UPROOT_MESSAGES = {
+    ['no-plot'] = 'Nothing to uproot here',
+    ['empty'] = 'Nothing to uproot here',
+    ['demo'] = "This one is part of the lesson. It can't be uprooted",
+    ['standing'] = 'Step off it first. You are on or in the crop',
+}
+
+-- Uproots the crop on the nearest plot with one. The seed is not refunded.
+-- Returns ok, crop-or-reason.
+function BackroomsState:uproot()
+    local plot = self.room:nearestCropPlot(self.player.x, self.player.y, self.player.z)
+    local pmin, pmax = self.player:bounds()
+    local ok, result = self.room:uproot(plot, pmin, pmax)
+    if ok then
+        if gSounds['harvest'] then gSounds['harvest']:play() end
+        self:say('Uprooted the ' .. SeedName(result.type))
+        print(string.format('[backrooms] uprooted %s on plot %s', result.type, plot.id))
+    else
+        if gSounds['deny'] then gSounds['deny']:play() end
+        self:say(UPROOT_MESSAGES[result] or result)
+    end
+    return ok, result
+end
+
 -- The current room is done: load the next one, or show the ending.
 function BackroomsState:advance()
     if self.advancing or self.finished then return end
@@ -275,6 +299,7 @@ function BackroomsState:update(dt)
     end
     if anyPressed(BACKROOMS_KEYS.nextSeed) then self:cycleSeed() end
     if clickPlants or anyPressed(BACKROOMS_KEYS.plant) then self:plant() end
+    if anyPressed(BACKROOMS_KEYS.uproot) then self:uproot() end
 
     if self.message then
         self.message.time = self.message.time - dt
@@ -363,7 +388,7 @@ function BackroomsState:renderHUD()
     -- (e.g. a 640 px wide window), instead of letting printf wrap mid-phrase
     local font = gFonts['default']
     local hints = self.mouseCaptured
-        and {'WASD: move   mouse: look   E: plant   Q / 1-3: seed', 'R: reset room   Esc: free mouse'}
+        and {'WASD: move   mouse: look   E: plant   X: uproot   Q / 1-3: seed', 'R: reset room   Esc: free mouse'}
         or {'Click to capture the mouse'}
     local joined = table.concat(hints, '   ')
     if font:getWidth(joined) <= w - 20 then hints = {joined} end

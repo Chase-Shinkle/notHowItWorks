@@ -17,8 +17,8 @@
 
 ## 3. Uproot
 
-- [ ] 3.1 Add crop removal in `Crop.lua`/`Room.lua` and the uproot key and action in `BackroomsState`; test the plot accepts a new seed after uprooting and the seed count is unchanged.
-- [ ] 3.2 Refuse uprooting the demo crop and while the player stands on or inside the crop; tests for both with the on-screen message.
+- [x] 3.1 Add crop removal in `Crop.lua`/`Room.lua` and the uproot key and action in `BackroomsState`; test the plot accepts a new seed after uprooting and the seed count is unchanged.
+- [x] 3.2 Refuse uprooting the demo crop and while the player stands on or inside the crop; tests for both with the on-screen message.
 
 ## 4. Sequence and reset
 

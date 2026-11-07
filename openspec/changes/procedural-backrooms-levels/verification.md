@@ -1,6 +1,6 @@
 # Verification: procedural-backrooms-levels
 
-Scope of this run: sections 1-2 only. Sections 3-5 (uproot, sequence/reset, solvability sweep) are untouched.
+Scope: sections 1-4 (sections 1-2 first run, 3 and 4 below). Section 5 (solvability sweep, check_all, playtest) is untouched.
 No `check_all.sh`, no package build. `openspec` CLI is not installed in this environment, so tasks were read from and checked in `tasks.md` by hand.
 
 ## Section 1: Generator foundation
@@ -31,6 +31,17 @@ Run: `love tests/love_runner tests/run.lua` -> 170 passed, 0 failed (full headle
 Targeted physical spot check (not the section 5 sweep): `love tests/love_runner qa/levels/spot_reach.lua`
 (script kept in /workspace/qa/levels/spot_reach.lua), 7 seeds over difficulties 1-3 using `tests/reach.lua`:
 exit unreachable with no crops, reachable with the intended crops, 7/7 ok.
+
+## Section 3: Uproot
+
+Run: `love tests/love_runner tests/run.lua` -> 172 passed, 0 failed.
+
+| Task | Status | Evidence |
+|------|--------|----------|
+| 3.1 uproot key (X) + `Room:uproot`/`Crop:remove` | done | `uproot 3.1`: wrong pumpkin planted on pit plot, uprooted while growing (growth cancelled, never completes) and when grown (collider gone); plot takes a vine afterwards; pumpkin count unchanged by uprooting; X key drives it |
+| 3.2 refusals | done | `uproot 3.2`: tutorial demo crop refused (message "part of the lesson"); standing on top of / inside a grown pumpkin refused with "Step off it first" and crop kept; allowed once clear at the rim |
+
+Standing check: player box vs the crop's full volume grown by `BACKROOMS_UPROOT_MARGIN` (0.12 m) on all sides.
 
 ## Not done / pending
 

@@ -334,6 +334,47 @@ function Room:plant(plot, seedType, seeds, group)
     return true, crop
 end
 
+-- The nearest plot in reach (as nearestPlot) that holds a crop, or nil.
+function Room:nearestCropPlot(x, y, z)
+    local best, bestD
+    for _, plot in ipairs(self.plots) do
+        if plot.crop then
+            local dx, dy = plot.pos[1] - x, plot.pos[2] - y
+            local d = math.sqrt(dx * dx + dy * dy)
+            if d <= plot.reach and math.abs(plot.pos[3] - z) <= BACKROOMS_PLANT_HEIGHT
+                and (not bestD or d < bestD) then
+                best, bestD = plot, d
+            end
+        end
+    end
+    return best
+end
+
+-- Is the player box (pmin, pmax) on top of, inside or touching `crop`'s full
+-- volume? A little slack above (standing on it) and around (climbing).
+function Room.playerOnCrop(crop, pmin, pmax)
+    local lo = {crop.min[1] - BACKROOMS_UPROOT_MARGIN, crop.min[2] - BACKROOMS_UPROOT_MARGIN, crop.min[3] - BACKROOMS_UPROOT_MARGIN}
+    local hi = {crop.max[1] + BACKROOMS_UPROOT_MARGIN, crop.max[2] + BACKROOMS_UPROOT_MARGIN, crop.max[3] + BACKROOMS_UPROOT_MARGIN}
+    return PlayerController.boxesOverlap(pmin, pmax, lo, hi)
+end
+
+-- Removes the crop on `plot`, freeing it (the seed is not refunded). The
+-- player box (pmin, pmax) must be clear of it. Returns true, or false and a
+-- reason: 'no-plot' | 'empty' | 'demo' | 'standing'. Nothing changes on failure.
+function Room:uproot(plot, pmin, pmax)
+    if not plot then return false, 'no-plot' end
+    local crop = plot.crop
+    if not crop then return false, 'empty' end
+    if crop.demo then return false, 'demo' end
+    if pmin and Room.playerOnCrop(crop, pmin, pmax) then return false, 'standing' end
+    crop:remove()
+    plot.crop = nil
+    for i, c in ipairs(self.crops) do
+        if c == crop then table.remove(self.crops, i); break end
+    end
+    return true, crop
+end
+
 -- Per-frame crop bookkeeping with the player's bounds (see Crop:update).
 function Room:updateCrops(pmin, pmax)
     for _, crop in ipairs(self.crops) do crop:update(pmin, pmax) end

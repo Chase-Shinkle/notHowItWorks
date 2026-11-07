@@ -237,6 +237,14 @@ function Crop:update(pmin, pmax)
     end
 end
 
+-- Cancels pending growth. The caller drops the crop from its room and plot;
+-- a removed crop is never solid or climbable again.
+function Crop:remove()
+    if self.timer then self.timer:remove(); self.timer = nil end
+    self.active = false
+    self.removed = true
+end
+
 function Crop:draw()
     self.model:draw()
 end
