@@ -47,5 +47,8 @@
 ## 7. Verification and review
 
 - [ ] 7.1 Extend `tests/reach.lua` and `tests/reachability.lua` with the abstract-graph exhaustive check, the intended-solution physics run and per-optional-module runs; run them over hundreds of seeds per level and fix generator failures found.
-- [ ] 7.2 Add a layout dump (ASCII map per seed) for review, then playtest several seeds per level, tune the size caps, loop counts and decoy ratio, and record findings.
-- [ ] 7.3 Add the new tests to `tests/check_all.sh` and run it green on the real LÖVE runtime.
+  - NOT done. Only adapted: `tests/levels_sweep.lua` already reads `meta.chain` (module, seed, plot) and pickups, which the maze still provides, so it is unchanged; it does not yet solve optional modules (section 3 additions will make "every pickup reachable with all crops" need those solved). `tests/autotest.lua` now walks rotated modules (`chain.cell = {cx, cy}`, `chain.dir`) and teleports to the exit cell before the final walk. Nothing run.
+- [~] 7.2 Add a layout dump (ASCII map per seed) for review, then playtest several seeds per level, tune the size caps, loop counts and decoy ratio, and record findings.
+  - Layout dump DONE: `tests/maze_layout.lua` (`love tests/love_runner tests/maze_layout.lua`, env MAZE_SEEDS / MAZE_DIFFS / MAZE_OUT) writes `layouts.txt` (ASCII) and one top-down PNG with legend per level; sample output in `/workspace/qa/maze/`. `tests/backrooms_shots.lua` module scenes now follow module rotation. Playtests, tuning and findings NOT done.
+- [~] 7.3 Add the new tests to `tests/check_all.sh` and run it green on the real LÖVE runtime.
+  - Wiring DONE (layout dump step; `tests/maze_{branches,refund,checkpoints,scaling}.lua` run when present). `check_all.sh` has NOT been run, so nothing is claimed green.

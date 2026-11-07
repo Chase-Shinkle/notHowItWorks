@@ -377,6 +377,13 @@ local function script()
     -- the player is teleported to pickups and to the foot of each obstacle
     -- (the 200+ seed physical search is tests/reachability.lua), but planting,
     -- growth, climbing, crossing, collision and the exit are all real.
+    -- turn the camera to world yaw `target` (radians) with scripted mouse motion
+    local function turnTo(target)
+        local cur = g3d.camera.getDirectionPitch()
+        local turn = (cur - target + math.pi) % (2 * math.pi) - math.pi
+        love.mousemoved(400, 400, turn * 300, 0); coroutine.yield()
+        wait(0.1)
+    end
     local function faceAndShot(name, pickup, dist)
         local px, py, pz = pickup.pos[1], pickup.pos[2], pickup.pos[3]
         local cellX0 = math.floor(px / LEVELGEN_CELL) * LEVELGEN_CELL
@@ -422,7 +429,9 @@ local function script()
             end
             local plot = back.room:plotById(link.plot)
             local pit = link.module == 'pit'
-            back.player:setPosition(plot.pos[1] - (pit and 2.0 or 0.6), plot.pos[2], plot.pos[3] + (pit and 1.0 or 0))
+            local dx, dy = link.dir[1], link.dir[2]
+            local back_ = pit and 2.0 or 0.6
+            back.player:setPosition(plot.pos[1] - dx * back_, plot.pos[2] - dy * back_, plot.pos[3] + (pit and 1.0 or 0))
             wait(0.4)
             local slot
             for i, t in ipairs(SEED_TYPES) do if t == link.seed then slot = i end end
@@ -433,12 +442,28 @@ local function script()
             check(plot.crop ~= nil, 'level %d obstacle %d: %s planted', idx, k, link.seed)
             wait(CROP_DEFS[link.seed].growTime + 0.4)
             if k == 1 then shot(string.format('18-level%d-first-crop', idx)) end
-            local endX = (link.cell + 1) * LEVELGEN_CELL + 0.4
-            local crossed = holdUntil('w', function() return back.player.x > endX end, 10)
-            check(crossed, 'level %d obstacle %d (%s) crossed (x=%.2f z=%.2f)', idx, k, link.module, back.player.x, back.player.z)
+            -- the maze rotates modules: face the travel direction, walk until past the cell's far edge
+            local mx, my = LevelGen.cellCenter(link.cell[1], link.cell[2])
+            turnTo(math.atan2(dy, dx))
+            local function along() return (back.player.x - mx) * dx + (back.player.y - my) * dy end
+            local crossed = holdUntil('w', function() return along() > LEVELGEN_CELL / 2 + 0.4 end, 10)
+            check(crossed, 'level %d obstacle %d (%s) crossed (x=%.2f y=%.2f z=%.2f)', idx, k, link.module, back.player.x, back.player.y, back.player.z)
             if not crossed then return false end
         end
         local expect = idx + 1
+        -- the winding maze has no straight walk to the exit: stand in the exit cell, face it, walk in
+        local m = data.meta
+        local ex, ey = LevelGen.cellCenter(m.exitCell[1], m.exitCell[2])
+        local prev = m.path[#m.path - 1]
+        local px, py = LevelGen.cellCenter(prev[1], prev[2])
+        local ux, uy = ex - px, ey - py
+        local ul = math.sqrt(ux * ux + uy * uy)
+        ux, uy = ux / ul, uy / ul
+        local exitElev = 0
+        for _, c in ipairs(m.cells) do if c.exit then exitElev = c.elev or 0 end end
+        back.player:setPosition(ex - ux * 2.5, ey - uy * 2.5, exitElev + 0.05)
+        wait(0.3)
+        turnTo(math.atan2(uy, ux))
         return holdUntil('w', function() return back.roomIndex == expect or is(EndingState) end, 15)
     end
     local ok = true
