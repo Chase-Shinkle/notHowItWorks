@@ -8,6 +8,7 @@ require 'src/Util'
 require 'src/constants'
 require 'src/Entity'
 require 'src/Assets'
+require 'src/UI'
 require 'src/Geometry'
 require 'src/GameData'
 require 'src/Farm'
@@ -62,6 +63,9 @@ gModels = {}
 Assets.loadAll(gFonts, {
     ['default'] = {nil, 16},
     ['small'] = {nil, 8},
+    -- display font (title, buttons, ending headline); falls back to built-in
+    ['title-32'] = {UI_FONT_FILE, 32},
+    ['title-48'] = {UI_FONT_FILE, 48},
 }, function(path, size) return Assets.loadFont(path, size) end)
 
 -- Textures: {path, flat fallback color}. Everything loads with the nearest

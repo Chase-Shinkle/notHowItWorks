@@ -431,3 +431,13 @@ BACKROOMS_HUM_VOLUME = 0.5
 BACKROOMS_FOOTSTEP_AIR_GRACE = 0.2    -- s of !grounded tolerated (contact flicker) before the stride bank resets
 BACKROOMS_FOOTSTEP_VOLUME = 0.35
 BACKROOMS_HUM_FADE = 1.0               -- s
+-- UI (src/UI.lua; openspec title-hotbar-ending-ui)
+UI_FONT_FILE = 'fonts/SaH1Outline.ttf'  -- display font; licence UNCONFIRMED (THIRD_PARTY_NOTICES.md)
+UI_FONT_MIN_SIZE = 6
+UI_FONT_MAX_SIZE = 256
+UI_BUTTON_PAD = 0.12                    -- fraction of button width kept free on each side of the label
+UI_BUTTON_FRAME = {0.95, 0.9, 0.7, 1}
+UI_BUTTON_FILL = {0.1, 0.08, 0.05, 0.6}
+UI_BUTTON_FILL_HI = {0.9, 0.75, 0.3, 0.85}
+UI_BUTTON_TEXT = {1, 1, 1, 1}
+UI_BUTTON_TEXT_HI = {0.15, 0.1, 0.05, 1}

@@ -3,8 +3,8 @@
 ## 1. Fonts and shared UI
 
 - [ ] 1.1 Confirm the licence and source of `fonts/SaH1Outline.ttf` with the author and add its entry to `THIRD_PARTY_NOTICES.md`; verify the notice names font, author and licence.
-- [ ] 1.2 Register the font in `src/Dependencies.lua` (title sizes) and add a cached, window-height-scaled `UI.font(size)` helper that falls back to the built-in font; unit test the fallback with the font path missing (no error, usable font).
-- [ ] 1.3 Add `src/UI.lua` with the `Menu`: button layout, one highlighted button (first by default), Up/Down/W/S navigation, Enter/Space activate, mouse hover and left-click hit-testing via a coordinate mapper; unit tests for hit-testing, navigation wrap, click-outside no-op and activation callbacks.
+- [x] 1.2 Register the font in `src/Dependencies.lua` (title sizes) and add a cached, window-height-scaled `UI.font(size)` helper that falls back to the built-in font; unit test the fallback with the font path missing (no error, usable font).
+- [x] 1.3 Add `src/UI.lua` with the `Menu`: button layout, one highlighted button (first by default), Up/Down/W/S navigation, Enter/Space activate, mouse hover and left-click hit-testing via a coordinate mapper; unit tests for hit-testing, navigation wrap, click-outside no-op and activation callbacks.
 - [ ] 1.4 Add a placeholder-safe `UI` button draw (frame, highlight, label) that fits its label to the button; verify by screenshot with the TTF and with the fallback font.
 
 ## 2. Title screen
