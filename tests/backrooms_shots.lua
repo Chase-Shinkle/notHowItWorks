@@ -107,7 +107,26 @@ local function plotScene(room, state)
     local p = plot.pos
     return p[1] - 2.6, p[2], p[3], 0, -0.1
 end
+-- stand 1.5 cells before path cell `c` (on the path, towards the start), looking at it
+local function pathScene(pred)
+    return function(room)
+        local meta = room.data.meta
+        if not meta then return end
+        for i = 2, #meta.path - 1 do
+            local a, c, b = meta.path[i - 1], meta.path[i], meta.path[i + 1]
+            local cell
+            for _, x in ipairs(meta.cells) do if x.cx == c[1] and x.cy == c[2] then cell = x end end
+            if cell and cell.kind ~= 'module' and pred(a, c, b, cell) then
+                local dx, dy = c[1] - a[1], c[2] - a[2]
+                local mx, my = c[1] * CELL + CELL / 2, c[2] * CELL
+                return mx - dx * (CELL * 1.2), my - dy * (CELL * 1.2), cell.elev or 0, math.atan2(dy, dx), -0.05
+            end
+        end
+    end
+end
 local SCENES = {
+    ['junction'] = pathScene(function(a, c, b, cell) return (cell.degree or 0) >= 3 end),
+    ['turn'] = pathScene(function(a, c, b) return (c[1] - a[1]) ~= (b[1] - c[1]) or (c[2] - a[2]) ~= (b[2] - c[2]) end),
     ['plot-crop'] = plotScene,
     ['pickup'] = function(room)
         local p = room.pickups[1]
