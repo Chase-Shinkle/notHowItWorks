@@ -2,7 +2,7 @@
 
 > A checked box means the code is written. Runtime and manual verification
 > status lives in `verification.md`; no Lua runtime was available, so those
-> checks are still pending for 1.1-2.3.
+> checks are still pending for 1.1-3.4.
 
 ## 1. Foundation and render path
 
@@ -19,10 +19,10 @@
 
 ## 3. The break (oversell-break, fall-transition, seed-carryover)
 
-- [ ] 3.1 Make the villager keep requesting crops after stock is gone and detect an over-sell only after `hasSold`; verify no break on first attempt before any sale and break after a sale.
-- [ ] 3.2 Implement the glitch sequence (shake, corruption, fall) that blocks input, then changes to the backrooms; verify the sequence plays once and ends in the backrooms.
-- [ ] 3.3 Carry seeds (not coins/crops) into the backrooms and top up to the first room's minimum; verify with a low-seed and a high-seed run.
-- [ ] 3.4 Add a fallback break trigger for idle players; verify it fires after the configured delay.
+- [x] 3.1 Make the villager keep requesting crops after stock is gone and detect an over-sell only after `hasSold`; verify no break on first attempt before any sale and break after a sale.
+- [x] 3.2 Implement the glitch sequence (shake, corruption, fall) that blocks input, then changes to the backrooms; verify the sequence plays once and ends in the backrooms.
+- [x] 3.3 Carry seeds (not coins/crops) into the backrooms and top up to the first room's minimum; verify with a low-seed and a high-seed run.
+- [x] 3.4 Add a fallback break trigger for idle players; verify it fires after the configured delay.
 
 ## 4. Backrooms world (first-person-controls, backrooms-collision, room-progression, billboard-assets)
 

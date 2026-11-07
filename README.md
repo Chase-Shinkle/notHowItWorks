@@ -30,10 +30,23 @@ requests a 24-bit depth buffer for the window.
 - A crop grows through 5 stages, one every 3 s (`FARM_STAGE_TIME`), so a first
   plant -> harvest -> sell cycle takes about 20 s.
 
+## The break
+
+- After the first sale the villager keeps asking for crops. Trying to sell
+  with no crops left (an over-sell) starts the break. Before any sale, selling
+  empty-handed does nothing.
+- If the player goes `FARM_IDLE_BREAK_TIME` (45 s) after their latest sale
+  without over-selling, the break starts anyway.
+- The break is a ~3 s one-shot sequence (screen shake, corruption, the farmer
+  falls) that ignores all input, then the game changes to the backrooms.
+- Only seeds carry over (coins and crops are dropped), and each type is topped
+  up to `FIRST_ROOM_MIN_SEEDS`. Timing and values live in `src/constants.lua`.
+
 ## Debug / testing
 
 - `F1` (when `DEBUG_MODE` is on in `src/constants.lua`) advances
-  start -> farm -> backrooms -> start.
+  start -> farm -> backrooms -> start. From the farm this skips the break and
+  passes the farm's game data through unchanged.
 - `love . --placeholder-assets` forces every texture/sound/font to its
   flat-color / silent fallback, simulating empty asset folders.
 - `lua tests/run.lua` (or `luajit tests/run.lua`) runs headless tests against

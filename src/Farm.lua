@@ -100,7 +100,7 @@ end
 
 -- Sells one harvested crop to a villager for coins and marks hasSold.
 -- Returns ok, seedType, value -- or false, 'no-crops' with nothing changed.
--- (Over-selling with zero crops is the break trigger, added in section 3.)
+-- (Over-selling with zero crops is the break trigger; see Farm.isOverSell.)
 function Farm.sell(gameData, preferred)
     local seedType = Farm.pickCrop(gameData, preferred)
     if not seedType then return false, 'no-crops' end
@@ -110,4 +110,11 @@ function Farm.sell(gameData, preferred)
     gameData.coins = gameData.coins + value
     gameData.hasSold = true
     return true, seedType, value
+end
+
+-- True when a sale attempt right now would be an over-sell: the player has
+-- completed at least one sale and has no crops left. FarmState starts the
+-- break on this; before the first sale an empty-handed attempt is harmless.
+function Farm.isOverSell(gameData)
+    return gameData.hasSold == true and Farm.totalCrops(gameData) == 0
 end

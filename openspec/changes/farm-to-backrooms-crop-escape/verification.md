@@ -47,6 +47,37 @@ love . --placeholder-assets
 | 2.1 grid, avatar, input | movement, hold-repeat, highlight and mouse tests | farmer walks the field and is blocked by plots, villager and edges; yellow outline on the faced tile; white outline on hovered plot/villager; clicks work after a window resize (push letterbox) | not run |
 | 2.2 plant, grow, harvest | planting, no-seed, fallback, growth-stage, maturity-timing, immature and harvest tests | seed count drops, sprites visibly change over about 12 s, harvest adds to the top-bar crop count | not run |
 | 2.3 villager, coins, cycle | sell, sell-with-no-crops and timed first-cycle (<30 s simulated) tests | coins/crops in the top bar update; a fresh player finishes plant -> harvest -> sell in under about 3 minutes without reading instructions | not run |
+| 3.1 repeat requests, over-sell gate | no-break-before-sale (keyboard + idle), repeated-requests, over-sell-after-stock-exhaustion, over-sell-by-click tests | after the last sale the villager bubble keeps asking; selling empty-handed before any sale only says "Got any crops?"; after a sale it starts the break | not run |
+| 3.2 glitch sequence, input lock, one transition | input-lock (keys, held keys, clicks, seed slots, F1, growth frozen), shake/corruption/fall phases + exactly-one-transition, no-restart, already-broken and placeholder-render tests | shake, corruption blocks and the fall look right and readable (~3 s), glitch sound plays, the screen ends in the backrooms, nothing responds during the sequence | not run |
+| 3.3 seeds-only carry-over, top-up | low-seed (0 seeds -> beanstalk 1), high-seed (5/3/3 preserved exactly) and `CarryOverGameData` unit tests | console shows `[backrooms] seeds received: ...` matching the farm HUD at the break; backrooms HUD shows no coins/crops | not run |
+| 3.4 idle fallback | idle-fires-after-delay and new-sale-restarts-delay tests | after one sale, waiting `FARM_IDLE_BREAK_TIME` (45 s) without over-selling starts the break | not run |
+
+### Section 3 notes (2026-11-07)
+
+Same environment as above: no Lua runtime, so none of the section 3 tests in
+`tests/run.lua` (14 new, 45 in total) have been executed. They
+were desk-checked against `lib/knife/timer.lua` only. The structural checker
+passes 38/38 tracked `.lua` files after the change, and every new global
+(`FARM_BREAK_*`, `FARM_IDLE_BREAK_TIME`, `FARM_VILLAGER_*`,
+`FIRST_ROOM_MIN_SEEDS`, `CarryOverGameData`) is defined.
+
+Behaviour decisions that the tests encode (check they feel right in play):
+
+- The idle delay counts from the most recent successful sale; other input
+  does not reset it. Before any sale neither trigger can fire.
+- The break plays once per game (`gameData.hasBroken`); growth timers are
+  frozen while it plays.
+- The final sequence timer only sets a flag; `FarmState:update` performs the
+  state change, because changing state inside a knife Timer callback would
+  clear the group that `Timer.update` is iterating.
+- The F1 debug skip from the farm is still a raw pass-through of the farm's
+  game-data table (coins/crops included, no top-up). Only the real break uses
+  `CarryOverGameData`.
+- `FIRST_ROOM_MIN_SEEDS = {beanstalk = 1}` is a placeholder for Room 1's
+  requirement and must be matched to the Room 1 data in task 5.4. Note that
+  the room-puzzles spec ("seeds equal that room's allotment") will need to be
+  reconciled with seed-carryover ("holds the seeds they had at the break")
+  when rooms are built.
 
 ## Known risks to look at in the first real run
 
@@ -54,5 +85,7 @@ love . --placeholder-assets
   (e.g. font `getWidth`, `push:toGame` scale) can hide a real failure.
 - Pixel art is drawn at <= 2x inside push. Check that crop sprites of different
   sizes sit nicely on their plots.
+- The glitch draw uses `math.random` every frame; check the shake and
+  corruption are not too harsh (or too subtle) at the real window size.
 - The built-in 8 px font is small at 320x320. Check that the top bar and hint
   bar are readable at the default 800x800 window.

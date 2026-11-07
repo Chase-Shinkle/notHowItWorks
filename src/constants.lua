@@ -66,3 +66,34 @@ FARM_KEYS = {
     interact = {'e', 'space', 'return', 'kpenter'},
     nextSeed = {'tab', 'q'},
 }
+
+-- The break (over-sell -> glitch -> fall) ----------------------------------------
+-- After the first sale the villager keeps asking for crops. Trying to sell
+-- with zero crops (once hasSold is true) starts the break; so does going
+-- FARM_IDLE_BREAK_TIME seconds after the most recent sale without an
+-- over-sell attempt. Before any sale neither trigger can fire.
+FARM_IDLE_BREAK_TIME = 45
+
+-- Seconds between the villager's repeated requests once the player is out of
+-- crops after a sale.
+FARM_VILLAGER_NAG_INTERVAL = 4
+FARM_VILLAGER_REQUESTS = {
+    'More! Sell me more!',
+    "I'll take another!",
+    'Just one more crop?',
+    'Sell me one more!',
+}
+
+-- Glitch sequence timing (seconds): shake + corruption ramp up, then the
+-- farmer falls out of the farm, then the game changes to the backrooms.
+FARM_BREAK_GLITCH_TIME = 1.6
+FARM_BREAK_FALL_TIME = 1.4
+FARM_BREAK_SHAKE = 6                -- peak screen-shake offset, virtual px
+FARM_BREAK_CORRUPTION_BLOCKS = 28   -- corrupted blocks drawn at full glitch
+
+-- Seeds the player is topped up to (per type) on arriving in the backrooms.
+-- Room 1 (tutorial) is finished with a single beanstalk seed; keep this in
+-- sync with Room 1's data when it is built (task 5.4).
+FIRST_ROOM_MIN_SEEDS = {
+    beanstalk = 1,
+}

@@ -8,6 +8,13 @@
 --
 -- Rules live in src/Farm.lua; growth runs on a knife Timer group owned by this
 -- state, so it only advances while the farm is active.
+--
+-- The break: after the first sale the villager keeps asking for crops. Trying
+-- to sell with none left (an over-sell), or FARM_IDLE_BREAK_TIME seconds after
+-- the last sale without one, starts a one-shot glitch sequence (shake,
+-- corruption, fall) on its own Timer group. Input is ignored while it plays;
+-- when it ends the farm changes to the backrooms with seeds only
+-- (CarryOverGameData).
 FarmState = Class{__includes = BaseState}
 
 FarmState.usesPush = true
@@ -70,12 +77,24 @@ function FarmState:enter(gameData)
     self.popups = {}                      -- floating feedback text
     self.villagerLine = nil               -- {text, time left}
 
+    -- the break
+    self.idleTimer = 0                    -- seconds since the last sale
+    self.nagTimer = 0                     -- seconds until the next request
+    self.nagIndex = 0
+    self.breakTimers = {}                 -- knife Timer group for the sequence
+    self.breaking = false                 -- sequence playing; input locked
+    self.breakReason = nil                -- 'oversell' | 'idle'
+    self.breakDone = false                -- set by the last sequence timer
+    self.transitioned = false             -- the change to backrooms happened
+    self.fx = {shake = 0, corruption = 0, fall = 0}
+
     local music = gSounds['farm-music']
     if music then music:setLooping(true); music:play() end
 end
 
 function FarmState:exit()
     Timer.clear(self.timers)
+    Timer.clear(self.breakTimers)
     local music = gSounds['farm-music']
     if music then music:stop() end
 end
@@ -160,8 +179,10 @@ end
 
 -- Use a target (plot or villager). Returns the action taken:
 -- 'plant' | 'harvest' | 'sell' | 'growing' | 'no-seeds' | 'no-crops' | nil.
+-- 'oversell' means this attempt started the break. While the break plays
+-- nothing can be used (returns nil).
 function FarmState:interact(target)
-    if not target then return nil end
+    if not target or self.breaking then return nil end
     local data = self.gameData
 
     if target.kind == 'plot' then
@@ -187,11 +208,25 @@ function FarmState:interact(target)
             return 'growing'
         end
     elseif target.kind == 'villager' then
+        if Farm.isOverSell(data) and not data.hasBroken then
+            -- sold out after a real sale: the villager pays for a crop that
+            -- isn't there, and the farm breaks
+            self:popup('+?c', FARM_VILLAGER.col, FARM_VILLAGER.row, {1, 0.3, 0.9, 1})
+            self:say('Thanks! A nil!', FARM_BREAK_GLITCH_TIME + FARM_BREAK_FALL_TIME)
+            self:startBreak('oversell')
+            return 'oversell'
+        end
         local ok, seedType, value = Farm.sell(data)
         if ok then
             gSounds['sell']:play()
             self:popup('+' .. value .. 'c', FARM_VILLAGER.col, FARM_VILLAGER.row, {1, 0.9, 0.3, 1})
-            self:say('Thanks! A ' .. seedType .. '!')
+            if Farm.totalCrops(data) > 0 then
+                self:say('Thanks! A ' .. seedType .. '!')
+            else
+                self:say('Thanks! Got another?')
+            end
+            self.idleTimer = 0
+            self.nagTimer = FARM_VILLAGER_NAG_INTERVAL
             return 'sell'
         end
         gSounds['deny']:play()
@@ -201,7 +236,89 @@ function FarmState:interact(target)
     return nil
 end
 
+-- The break --------------------------------------------------------------------
+
+-- Starts the glitch sequence. It plays once per game (gameData.hasBroken), so
+-- later calls return false. `reason` is 'oversell' or 'idle'.
+function FarmState:startBreak(reason)
+    if self.breaking or self.gameData.hasBroken then return false end
+    self.breaking = true
+    self.breakReason = reason
+    self.gameData.hasBroken = true
+    self.heldDir = nil
+    self.hover = nil
+    if reason == 'idle' then
+        self:say('Hm? Is something... wrong?', FARM_BREAK_GLITCH_TIME + FARM_BREAK_FALL_TIME)
+    end
+
+    local music = gSounds['farm-music']
+    if music then music:stop() end
+    gSounds['glitch']:play()
+
+    -- 1) shake and corruption ramp up; 2) the farmer falls; 3) done. The last
+    -- timer only sets a flag: changing state from inside a Timer callback
+    -- would clear this group while Timer.update is iterating it.
+    local group = self.breakTimers
+    Timer.tween(FARM_BREAK_GLITCH_TIME, {
+        [self.fx] = {shake = FARM_BREAK_SHAKE, corruption = 1},
+    }):group(group)
+    Timer.after(FARM_BREAK_GLITCH_TIME, function()
+        gSounds['glitch']:play()
+        Timer.tween(FARM_BREAK_FALL_TIME, {[self.fx] = {fall = 1}}):group(group)
+    end):group(group)
+    Timer.after(FARM_BREAK_GLITCH_TIME + FARM_BREAK_FALL_TIME, function()
+        self.breakDone = true
+    end):group(group)
+    return true
+end
+
+-- While the break plays: advance the sequence only (growth is frozen and all
+-- input, including the debug key, is ignored), then change state exactly once.
+function FarmState:updateBreak(dt)
+    Timer.update(dt, self.breakTimers)
+    self:updateEffects(dt)
+    if self.breakDone and not self.transitioned then
+        self.transitioned = true
+        gStateMachine:change('backrooms', CarryOverGameData(self.gameData))
+    end
+end
+
+-- Villager requests and the idle fallback; only active after a sale.
+function FarmState:updateVillager(dt)
+    local data = self.gameData
+    if not data.hasSold then return end
+
+    self.idleTimer = self.idleTimer + dt
+    if self.idleTimer >= FARM_IDLE_BREAK_TIME then
+        self:startBreak('idle')
+        return
+    end
+
+    -- out of stock: keep asking for more
+    if Farm.totalCrops(data) == 0 then
+        self.nagTimer = self.nagTimer - dt
+        if self.nagTimer <= 0 then
+            self.nagIndex = self.nagIndex % #FARM_VILLAGER_REQUESTS + 1
+            self:say(FARM_VILLAGER_REQUESTS[self.nagIndex])
+            self.nagTimer = FARM_VILLAGER_NAG_INTERVAL
+        end
+    end
+end
+
 -- Update -----------------------------------------------------------------------
+
+function FarmState:updateEffects(dt)
+    for i = #self.popups, 1, -1 do
+        local p = self.popups[i]
+        p.life = p.life - dt
+        p.y = p.y - dt * 16
+        if p.life <= 0 then table.remove(self.popups, i) end
+    end
+    if self.villagerLine then
+        self.villagerLine.time = self.villagerLine.time - dt
+        if self.villagerLine.time <= 0 then self.villagerLine = nil end
+    end
+end
 
 function FarmState:updateMovement(dt)
     for _, dir in ipairs(DIR_ORDER) do
@@ -249,6 +366,11 @@ function FarmState:updateMouse()
 end
 
 function FarmState:update(dt)
+    if self.breaking then
+        self:updateBreak(dt)
+        return
+    end
+
     Timer.update(dt, self.timers)
 
     if IsDebugAdvancePressed() then
@@ -267,7 +389,9 @@ function FarmState:update(dt)
     if anyPressed(FARM_KEYS.interact) then
         self:interact(self:facingTarget())
     end
+    if self.breaking then return end      -- that press started the break
     self:updateMouse()
+    if self.breaking then return end      -- so did that click
 
     -- ease the drawn position toward the tile for smooth steps
     local tx, ty = FarmTileToPixel(self.player.col, self.player.row)
@@ -275,16 +399,8 @@ function FarmState:update(dt)
     self.player.drawX = self.player.drawX + (tx - self.player.drawX) * k
     self.player.drawY = self.player.drawY + (ty - self.player.drawY) * k
 
-    for i = #self.popups, 1, -1 do
-        local p = self.popups[i]
-        p.life = p.life - dt
-        p.y = p.y - dt * 16
-        if p.life <= 0 then table.remove(self.popups, i) end
-    end
-    if self.villagerLine then
-        self.villagerLine.time = self.villagerLine.time - dt
-        if self.villagerLine.time <= 0 then self.villagerLine = nil end
-    end
+    self:updateEffects(dt)
+    self:updateVillager(dt)
 end
 
 -- Context hint for the bottom bar, from the keyboard target.
@@ -303,6 +419,8 @@ function FarmState:hintText()
         local cropType = Farm.pickCrop(self.gameData)
         if cropType then
             return '[E] sell ' .. cropType .. ' (+' .. CROP_VALUES[cropType] .. 'c)'
+        elseif self.gameData.hasSold then
+            return '[E] sell another?'
         end
         return 'harvest a crop to sell'
     end
@@ -367,21 +485,26 @@ function FarmState:renderHighlights()
     end
 end
 
-function FarmState:renderPlayer()
+-- `dy` and `rotation` (optional) are used by the fall.
+function FarmState:renderPlayer(dy, rotation)
     local p = self.player
     local image = gTextures['hero']
     local w, h = image:getDimensions()
     local scale = math.min(2, (FARM_TILE - 4) / math.max(w, h))
     local flip = p.facing == 'left' and -1 or 1
     love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.draw(image, p.drawX + FARM_TILE / 2, p.drawY + FARM_TILE - 2, 0,
-        scale * flip, scale, w / 2, h)
+    love.graphics.draw(image, p.drawX + FARM_TILE / 2, p.drawY + FARM_TILE - 2 + (dy or 0),
+        rotation or 0, scale * flip, scale, w / 2, h)
 end
 
 function FarmState:renderVillagerLine()
     local text = self.villagerLine and self.villagerLine.text
     if not text then
-        text = Farm.totalCrops(self.gameData) > 0 and 'Buying crops!' or 'Crops?'
+        if Farm.totalCrops(self.gameData) > 0 then
+            text = 'Buying crops!'
+        else
+            text = self.gameData.hasSold and 'More crops?' or 'Crops?'
+        end
     end
     local vx, vy = FarmTileToPixel(FARM_VILLAGER.col, FARM_VILLAGER.row)
     local font = gFonts['small']
@@ -438,7 +561,57 @@ function FarmState:renderHUD()
     end
 end
 
+-- Corrupted blocks and horizontal tears, scaled by fx.corruption.
+local CORRUPTION_COLORS = {
+    {1, 0, 1}, {0, 1, 1}, {0.95, 0.9, 0.45}, {0, 0, 0}, {1, 1, 1},
+}
+function FarmState:renderCorruption()
+    local n = math.floor(self.fx.corruption * FARM_BREAK_CORRUPTION_BLOCKS)
+    for _ = 1, n do
+        local c = CORRUPTION_COLORS[math.random(#CORRUPTION_COLORS)]
+        love.graphics.setColor(c[1], c[2], c[3], 0.4 + math.random() * 0.5)
+        if math.random() < 0.3 then
+            love.graphics.rectangle('fill', 0, math.random(0, VIRTUAL_HEIGHT), VIRTUAL_WIDTH,
+                math.random(1, 4))
+        else
+            love.graphics.rectangle('fill', math.random(0, VIRTUAL_WIDTH - 8),
+                math.random(0, VIRTUAL_HEIGHT - 8), math.random(4, 40), math.random(2, 16))
+        end
+    end
+end
+
+-- The break: the shaking farm lurches up and away while the farmer drops
+-- through it, corruption spreads, and the screen fades to black.
+function FarmState:renderBreak()
+    local fx = self.fx
+    local sx = (math.random() * 2 - 1) * fx.shake
+    local sy = (math.random() * 2 - 1) * fx.shake
+    local drop = fx.fall * fx.fall
+
+    love.graphics.push()
+    love.graphics.translate(sx, sy - drop * VIRTUAL_HEIGHT * 0.5)
+    self:renderField()
+    self:renderVillagerLine()
+    love.graphics.pop()
+
+    love.graphics.push()
+    love.graphics.translate(sx, sy)
+    self:renderPlayer(drop * VIRTUAL_HEIGHT, fx.fall * 6)
+    self:renderHUD()
+    love.graphics.pop()
+
+    self:renderCorruption()
+    love.graphics.setColor(0, 0, 0, fx.fall)
+    love.graphics.rectangle('fill', 0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT)
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
 function FarmState:render()
+    if self.breaking then
+        self:renderBreak()
+        return
+    end
+
     self:renderField()
     self:renderHighlights()
     self:renderPlayer()

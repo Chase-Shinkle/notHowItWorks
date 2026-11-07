@@ -498,5 +498,262 @@ test('Farm rules: plant/harvest/sell return values', function()
     eq(d.coins, CROP_VALUES.pumpkin); eq(d.hasSold, true)
 end)
 
+-- 3. the break -----------------------------------------------------------------
+local BREAK_TIME = FARM_BREAK_GLITCH_TIME + FARM_BREAK_FALL_TIME
+
+-- A farm started from `overrides`, with the farmer facing the villager.
+local function farmAtVillager(overrides, args)
+    loadGame(args)
+    gStateMachine:change('farm', NewGameData(overrides))
+    local farm = gStateMachine.current
+    farm.player.col, farm.player.row, farm.player.facing = FARM_VILLAGER.col - 1, FARM_VILLAGER.row, 'right'
+    assert(farm:facingTarget().kind == 'villager', 'facing villager')
+    return farm
+end
+
+-- Records every gStateMachine:change call by state name.
+local function countChanges()
+    local names = {}
+    local original = gStateMachine.change
+    gStateMachine.change = function(self, name, data)
+        names[#names + 1] = name
+        return original(self, name, data)
+    end
+    return names
+end
+
+local function countOf(list, value)
+    local n = 0
+    for _, v in ipairs(list) do if v == value then n = n + 1 end end
+    return n
+end
+
+test('break: no break when selling with no crops before any sale', function()
+    local farm = farmAtVillager({})
+    for _ = 1, 5 do press('e') end
+    eq(farm.breaking, false, 'no break before a sale')
+    eq(farm.gameData.hasSold, false); eq(farm.gameData.hasBroken, false)
+    eq(farm.villagerLine.text, 'Got any crops?')
+    -- the idle fallback cannot fire before a sale either
+    run(FARM_IDLE_BREAK_TIME + 5)
+    eq(farm.breaking, false, 'no idle break before a sale')
+    assert(gStateMachine.current == farm, 'still on the farm')
+end)
+
+test('break: villager keeps asking for crops after the last one is sold', function()
+    local farm = farmAtVillager({crops = {pumpkin = 1}})
+    press('e')
+    eq(farm.gameData.crops.pumpkin, 0); eq(farm.gameData.hasSold, true)
+    eq(farm.breaking, false, 'a normal sale does not break')
+    eq(farm.villagerLine.text, 'Thanks! Got another?')
+    eq(farm:hintText(), '[E] sell another?')
+    -- repeated, cycling requests while out of stock
+    run(FARM_VILLAGER_NAG_INTERVAL + 0.05)
+    eq(farm.villagerLine.text, FARM_VILLAGER_REQUESTS[1])
+    run(FARM_VILLAGER_NAG_INTERVAL)
+    eq(farm.villagerLine.text, FARM_VILLAGER_REQUESTS[2])
+    -- default bubble also asks for more
+    farm.villagerLine = nil
+    mock.reset(); love.draw()
+    local asked = false
+    for _, c in ipairs(mock.calls) do if c.name == 'print' and c.args[1] == 'More crops?' then asked = true end end
+    assert(asked, 'bubble asks for more crops')
+    eq(farm.breaking, false, 'asking alone does not break')
+end)
+
+test('break: over-sell after a sale and stock exhaustion starts the break', function()
+    local farm = farmAtVillager({crops = {vine = 2}})
+    press('e'); eq(farm.breaking, false, 'first sale')
+    press('e'); eq(farm.breaking, false, 'second sale empties stock')
+    eq(Farm.totalCrops(farm.gameData), 0)
+    assert(Farm.isOverSell(farm.gameData), 'over-sell condition')
+    local coins = farm.gameData.coins
+    eq(farm:interact(farm:facingTarget()), 'oversell')
+    eq(farm.breaking, true); eq(farm.breakReason, 'oversell'); eq(farm.gameData.hasBroken, true)
+    eq(farm.gameData.coins, coins, 'over-sell pays nothing real')
+    eq(Farm.totalCrops(farm.gameData), 0, 'no negative crops')
+    assert(gStateMachine.current == farm, 'sequence plays on the farm first')
+end)
+
+test('break: over-sell by mouse click also starts the break', function()
+    local farm = farmAtVillager({hasSold = true})
+    local vx, vy = FarmTileToPixel(FARM_VILLAGER.col, FARM_VILLAGER.row)
+    mock.mouseAt(vx + 16, vy + 16); mock.click(1); step()
+    eq(farm.breaking, true); eq(farm.breakReason, 'oversell')
+end)
+
+test('break: input is locked while the glitch sequence plays', function()
+    local farm = farmAtVillager({hasSold = true, seeds = {beanstalk = 2}})
+    -- a mature crop the player could otherwise harvest by click
+    local plot = farm:plotAt(FARM_PLOTS.col, FARM_PLOTS.row)
+    plot.state, plot.seedType, plot.stage = PLOT_MATURE, 'beanstalk', FARM_GROWTH_STAGES
+    local growing = farm:plotAt(FARM_PLOTS.col + 1, FARM_PLOTS.row)
+    Farm.plant(growing, farm.gameData, 'beanstalk', farm.timers)
+    press('e')
+    eq(farm.breaking, true)
+    local col, row, facing = farm.player.col, farm.player.row, farm.player.facing
+    local seed = farm.selectedSeed
+    for _, key in ipairs({'left', 'up', 'down', 'w', 'e', 'space', 'return', '2', '3', 'tab', 'q', 'f1'}) do
+        press(key)
+    end
+    mock.hold('left'); run(0.5); mock.release('left')
+    local px, py = FarmTileToPixel(plot.col, plot.row)
+    mock.mouseAt(px + 10, py + 10); mock.click(1); step()
+    mock.mouseAt(4 + 46 + 10, 10); mock.click(1); step()   -- seed slot 2
+    eq(farm.player.col, col); eq(farm.player.row, row); eq(farm.player.facing, facing)
+    eq(farm.selectedSeed, seed, 'seed selection locked')
+    eq(plot.state, PLOT_MATURE, 'click did not harvest')
+    eq(farm.gameData.crops.beanstalk, 0)
+    eq(farm.gameData.seeds.beanstalk, 1, 'no planting')
+    eq(growing.stage, 1, 'growth frozen during the break')
+    eq(farm.hover, nil, 'no hover')
+    eq(farm:interact(farm:facingTarget()), nil, 'interact refused')
+    eq(farm:interact({kind = 'plot', plot = plot}), nil)
+    assert(gStateMachine.current == farm, 'debug key ignored during the break')
+end)
+
+test('break: sequence shakes, corrupts and falls, then changes to backrooms exactly once', function()
+    local farm = farmAtVillager({hasSold = true})
+    local plays = 0
+    gSounds['glitch'] = {play = function() plays = plays + 1 end}
+    local changes = countChanges()
+    press('e')
+    eq(farm.breaking, true)
+    eq(plays, 1, 'glitch sound on start')
+    -- glitch phase: shake and corruption ramp up, no fall yet
+    run(FARM_BREAK_GLITCH_TIME * 0.5)
+    assert(farm.fx.shake > 0 and farm.fx.corruption > 0, 'glitch ramping')
+    eq(farm.fx.fall, 0, 'not falling yet')
+    mock.reset(); love.draw()
+    assert(mock.count('translate') >= 2, 'shake offsets applied')
+    local fillRects = 0
+    for _, c in ipairs(mock.calls) do if c.name == 'rectangle' and c.args[1] == 'fill' then fillRects = fillRects + 1 end end
+    assert(fillRects > 5, 'corruption blocks drawn')
+    -- fall phase
+    run(FARM_BREAK_GLITCH_TIME * 0.5 + FARM_BREAK_FALL_TIME * 0.5)
+    eq(farm.fx.corruption, 1); eq(plays, 2, 'second glitch sound as the fall starts')
+    assert(farm.fx.fall > 0 and farm.fx.fall < 1, 'falling, fall=' .. farm.fx.fall)
+    mock.reset(); love.draw()
+    assert(mock.count('rotate') + mock.count('draw') > 0, 'falling farmer drawn')
+    -- not over until the full duration
+    eq(countOf(changes, 'backrooms'), 0, 'no transition mid-sequence')
+    assert(gStateMachine.current == farm)
+    run(BREAK_TIME * 0.5 + 0.1)
+    eq(countOf(changes, 'backrooms'), 1, 'one transition')
+    eq(gStateMachine.current.usesPush, false, 'ends in the backrooms')
+    eq(#farm.breakTimers, 0, 'sequence timers cleared')
+    eq(#farm.timers, 0)
+    -- nothing can replay it
+    run(BREAK_TIME * 2)
+    eq(farm:startBreak('oversell'), false, 'once per game')
+    eq(countOf(changes, 'backrooms'), 1, 'still exactly one transition')
+    eq(#changes, 1)
+end)
+
+test('break: a second trigger during the sequence does not restart it', function()
+    local farm = farmAtVillager({hasSold = true})
+    local changes = countChanges()
+    press('e')
+    run(BREAK_TIME * 0.5)
+    local fall = farm.fx.fall
+    eq(farm:startBreak('idle'), false)
+    eq(farm.breakReason, 'oversell')
+    farm.idleTimer = FARM_IDLE_BREAK_TIME * 2
+    run(BREAK_TIME * 0.5 + 0.1)
+    assert(farm.fx.fall >= fall)
+    eq(countOf(changes, 'backrooms'), 1)
+end)
+
+test('break: farm re-entered with already-broken data cannot break again', function()
+    loadGame()
+    local changes = countChanges()
+    gStateMachine:change('farm', NewGameData({hasSold = true, hasBroken = true}))
+    local farm = gStateMachine.current
+    farm.player.col, farm.player.row, farm.player.facing = FARM_VILLAGER.col - 1, FARM_VILLAGER.row, 'right'
+    eq(farm:interact(farm:facingTarget()), 'no-crops')
+    run(FARM_IDLE_BREAK_TIME + BREAK_TIME + 1)
+    eq(farm.breaking, false)
+    eq(countOf(changes, 'backrooms'), 0)
+end)
+
+test('carry-over: low-seed arrival is topped up to the first room minimum', function()
+    local farm = farmAtVillager({seeds = {}, coins = 7, hasSold = true})
+    eq(Farm.totalSeeds(farm.gameData), 0)
+    press('e'); run(BREAK_TIME + 0.1)
+    local back = gStateMachine.current
+    eq(back.usesPush, false, 'in backrooms')
+    for _, seedType in ipairs(SEED_TYPES) do
+        eq(back.gameData.seeds[seedType], FIRST_ROOM_MIN_SEEDS[seedType] or 0, seedType .. ' topped up')
+    end
+    eq(back.gameData.seeds.beanstalk >= 1, true, 'can finish the tutorial room')
+    eq(back.gameData.coins, 0, 'coins dropped')
+    eq(Farm.totalCrops(back.gameData), 0, 'crops dropped')
+    assert(find(mock.printed, '[backrooms] seeds received: ' .. FormatSeeds(back.gameData.seeds)), 'printed')
+    eq(farm.gameData.coins, 7, 'farm data untouched')
+end)
+
+test('carry-over: high-seed arrival keeps exactly the seeds held at the break', function()
+    local farm = farmAtVillager({seeds = {beanstalk = 5, pumpkin = 3, vine = 4}, coins = 20,
+        crops = {pumpkin = 1}})
+    -- plant one vine on the farm, sell the last crop, then over-sell
+    local plot = farm:plotAt(FARM_PLOTS.col, FARM_PLOTS.row)
+    Farm.plant(plot, farm.gameData, 'vine', farm.timers)
+    press('e'); eq(farm.gameData.hasSold, true)
+    press('e'); eq(farm.breaking, true)
+    run(BREAK_TIME + 0.1)
+    local back = gStateMachine.current
+    eq(back.usesPush, false, 'in backrooms')
+    assert(back.gameData ~= farm.gameData, 'a fresh table, not the farm data')
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=5 pumpkin=3 vine=3')
+    eq(back.gameData.coins, 0); eq(Farm.totalCrops(back.gameData), 0)
+    assert(find(mock.printed, '[backrooms] seeds received: beanstalk=5 pumpkin=3 vine=3'), 'printed')
+end)
+
+test('carry-over: CarryOverGameData copies seeds, tops up per type, drops coins/crops', function()
+    loadGame()
+    local d = NewGameData({seeds = {pumpkin = 4}, coins = 9, crops = {vine = 2}, hasSold = true})
+    local c = CarryOverGameData(d)
+    eq(FormatSeeds(c.seeds), 'beanstalk=1 pumpkin=4 vine=0')
+    eq(c.coins, 0); eq(c.crops.vine, 0); eq(c.hasSold, true)
+    c.seeds.pumpkin = 0
+    eq(d.seeds.pumpkin, 4, 'seeds not aliased')
+    local custom = CarryOverGameData(d, {vine = 2, pumpkin = 1})
+    eq(FormatSeeds(custom.seeds), 'beanstalk=0 pumpkin=4 vine=2')
+end)
+
+test('idle: fallback break fires after the configured delay following a sale', function()
+    local farm = farmAtVillager({crops = {beanstalk = 1}})
+    local changes = countChanges()
+    press('e'); eq(farm.gameData.hasSold, true)
+    run(FARM_IDLE_BREAK_TIME - 0.5)
+    eq(farm.breaking, false, 'not before the delay')
+    run(1)
+    eq(farm.breaking, true, 'idle fallback fired'); eq(farm.breakReason, 'idle')
+    run(BREAK_TIME + 0.1)
+    eq(countOf(changes, 'backrooms'), 1)
+    eq(gStateMachine.current.usesPush, false, 'idle break also ends in the backrooms')
+    eq(gStateMachine.current.gameData.seeds.beanstalk, STARTING_SEEDS.beanstalk)
+end)
+
+test('idle: a new sale restarts the idle delay', function()
+    local farm = farmAtVillager({crops = {beanstalk = 2}})
+    press('e')
+    run(FARM_IDLE_BREAK_TIME - 5)
+    press('e')                                -- second sale resets the timer
+    run(FARM_IDLE_BREAK_TIME - 1)
+    eq(farm.breaking, false, 'delay measured from the latest sale')
+    run(1.5)
+    eq(farm.breaking, true); eq(farm.breakReason, 'idle')
+end)
+
+test('break: sequence renders and completes with every asset as a placeholder', function()
+    local farm = farmAtVillager({hasSold = true}, {'.', '--placeholder-assets'})
+    assert(gSounds['glitch'].isPlaceholder, 'glitch sound is a stub')
+    press('e')
+    for _ = 1, 6 do run(BREAK_TIME / 6); love.draw() end
+    run(0.1); love.draw()
+    eq(gStateMachine.current.usesPush, false, 'reached backrooms')
+end)
+
 realPrint(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)
