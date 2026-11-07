@@ -12,6 +12,10 @@ LevelGen = {}
 
 local CELL, T, DOOR = LEVELGEN_CELL, LEVELGEN_WALL, LEVELGEN_DOOR
 local VOID_Z = LEVELGEN_VOID_Z
+-- section 3 tunables (defaults here to keep constants.lua conflict-free)
+LEVELGEN_OPT_TYPES = LEVELGEN_OPT_TYPES or {'pit', 'gap'}   -- optional modules never rise
+LEVELGEN_OPT_MAX_AREA = LEVELGEN_OPT_MAX_AREA or 8          -- most cells behind one optional module
+LEVELGEN_SHORTCUT_MIN = LEVELGEN_SHORTCUT_MIN or 6          -- shortcut must skip at least this many steps
 local MODULUS = 2147483647
 
 -- RNG -------------------------------------------------------------------------
@@ -355,10 +359,73 @@ function LevelGen.build(seed, difficulty)
         local c = queue[head]; head = head + 1
         for _, nb in ipairs(treeNeighbors(cells, conn, c)) do
             if not nb.region then
-                nb.region, nb.elev, nb.kind = c.region, c.elev, 'branch'
+                nb.region, nb.elev, nb.kind, nb.parent = c.region, c.elev, 'branch', c
                 queue[#queue + 1] = nb
             end
         end
+    end
+
+    -- 2b. optional plots (section 3): own rng stream, so nothing else shifts.
+    -- An alcove module sits on a straight off-path cell whose subtree (the
+    -- area) hangs behind it; area cells carry opt = index and are walled off
+    -- from everything else (rooms and loops require equal opt).
+    local orng = LevelGen.rng(seed * 13 + 4421)
+    local optional, shortcutList = {}, {}
+    local wantShortcuts = spec.shortcuts or (n >= 3 and 1 or 0)
+    local function subtree(c)
+        local out, stack = {}, {}
+        for _, nb in ipairs(treeNeighbors(cells, conn, c)) do if nb ~= c.parent then stack[#stack + 1] = nb end end
+        while #stack > 0 do
+            local x = table.remove(stack)
+            out[#out + 1] = x
+            for _, nb in ipairs(treeNeighbors(cells, conn, x)) do if nb ~= x.parent then stack[#stack + 1] = nb end end
+        end
+        return out
+    end
+    local function makeOptional(c, d, shortcut)
+        local mod = orng:pick(LEVELGEN_OPT_TYPES)
+        local def = LevelGen.MODULES[mod]
+        local o = {plot = 'p' .. (n + #optional + 1), module = mod, seed = def.seed, cell = {c.cx, c.cy},
+            dir = d, rot = DIR_ROT[d[1] .. ',' .. d[2]], region = c.region, shortcut = shortcut or false}
+        c.kind, c.module, c.dir, c.rot, c.elevOut = 'module', mod, d, o.rot, c.elev
+        c.optional, c.plotId, c.shortcut, c.deadEnd = true, o.plot, shortcut or nil, nil
+        optional[#optional + 1] = o
+        return o
+    end
+    do
+        local cand = {}
+        for _, c in ipairs(list) do
+            if c.kind == 'branch' and c.parent and #treeNeighbors(cells, conn, c) == 2 then
+                local child
+                for _, nb in ipairs(treeNeighbors(cells, conn, c)) do if nb ~= c.parent then child = nb end end
+                local s1, s2 = step(c.parent, c), step(c, child)
+                if s1[1] == s2[1] and s1[2] == s2[2] then cand[#cand + 1] = c end
+            end
+        end
+        orng:shuffle(cand)
+        local want, taken = spec.optional or math.max(2, n), {}
+        local rewardFlip = orng:int(0, 1)
+        for _, c in ipairs(cand) do
+            if #optional >= want then break end
+            local area = (not taken[c]) and subtree(c) or {}
+            local ok = #area >= 1 and #area <= LEVELGEN_OPT_MAX_AREA
+            for _, a in ipairs(area) do if taken[a] then ok = false end end
+            if ok then
+                local o = makeOptional(c, step(c.parent, c))
+                taken[c] = true
+                local branching = false
+                o.area = {}
+                for _, a in ipairs(area) do
+                    taken[a], a.opt = true, #optional
+                    o.area[#o.area + 1] = {a.cx, a.cy}
+                    if #treeNeighbors(cells, conn, a) > 2 then branching = true end
+                end
+                o.parent = {c.parent.cx, c.parent.cy}
+                o.kind = branching and 'alcove' or 'deadend'
+                o.reward = ((#optional + rewardFlip) % 2 == 1) and 'seed' or 'empty'
+            end
+        end
+        if #optional < 2 - wantShortcuts then return nil, 'too few optional plots' end
     end
     local vrng = LevelGen.rng(seed * 17 + 301)   -- ceiling variety: own stream
     for _, c in ipairs(list) do
@@ -379,6 +446,12 @@ function LevelGen.build(seed, difficulty)
         end
     end
 
+    for _, c in ipairs(list) do
+        if c.optional then
+            for _, nb in ipairs(treeNeighbors(cells, conn, c)) do conn[edgeKey(c, nb)] = 'open' end
+        end
+    end
+
     -- 3. rooms: connected 2x2 blocks of one region, no module / start / exit cell
     local rooms, inRoom = {}, {}
     local blocks = {}
@@ -387,7 +460,7 @@ function LevelGen.build(seed, difficulty)
             local b = {cells[key(cx, cy)], cells[key(cx + 1, cy)], cells[key(cx, cy + 1)], cells[key(cx + 1, cy + 1)]}
             local ok = true
             for _, c in ipairs(b) do
-                if c.kind == 'module' or c.start or c.exit or c.region ~= b[1].region then ok = false end
+                if c.kind == 'module' or c.start or c.exit or c.region ~= b[1].region or (c.opt or 0) ~= (b[1].opt or 0) then ok = false end
             end
             if ok then blocks[#blocks + 1] = b end
         end
@@ -420,7 +493,7 @@ function LevelGen.build(seed, difficulty)
             local nb = cells[key(c.cx + d[1], c.cy + d[2])]
             if nb and not conn[edgeKey(c, nb)] and c.kind ~= 'module' and nb.kind ~= 'module'
                 and not c.start and not c.exit and not nb.start and not nb.exit
-                and c.region == nb.region and c.elev == nb.elev then
+                and c.region == nb.region and c.elev == nb.elev and (c.opt or 0) == (nb.opt or 0) then
                 cands[#cands + 1] = {c, nb}
             end
         end
@@ -434,6 +507,48 @@ function LevelGen.build(seed, difficulty)
         end
     end
     if #loopEdges == 0 then return nil, 'no loop candidate' end
+
+    -- 4b. shortcuts: a free leaf M (parent Z) joins the far cell Y straight
+    -- across it, so M becomes a straight module on a new loop inside one
+    -- region. Solving it shortens Z..Y; nothing needs it.
+    do
+        local function dist(a, b)
+            local d, q, h = {[a] = 0}, {a}, 1
+            while h <= #q do
+                local c = q[h]; h = h + 1
+                if c == b then return d[c] end
+                for _, nb in ipairs(treeNeighbors(cells, conn, c)) do
+                    if not d[nb] then d[nb] = d[c] + 1; q[#q + 1] = nb end
+                end
+            end
+        end
+        local cand = {}
+        for _, c in ipairs(list) do
+            if c.kind == 'branch' and c.parent and c.deadEnd and not c.loop and not c.opt and not c.room
+                and c.parent.kind ~= 'module' then cand[#cand + 1] = c end
+        end
+        orng:shuffle(cand)
+        local made = 0
+        for _, c in ipairs(cand) do
+            if made >= wantShortcuts then break end
+            local z = c.parent
+            local d = step(z, c)
+            local y = cells[key(c.cx + d[1], c.cy + d[2])]
+            if y and y.kind ~= 'module' and not y.start and not y.exit and not y.opt and y.region == c.region
+                and y.elev == c.elev and #treeNeighbors(cells, conn, c) == 1 then
+                local td = dist(z, y)
+                if td and td >= LEVELGEN_SHORTCUT_MIN then
+                    local o = makeOptional(c, d, true)
+                    o.from, o.to, o.treeDist = {z.cx, z.cy}, {y.cx, y.cy}, td
+                    conn[edgeKey(z, c)], conn[edgeKey(c, y)] = 'open', 'open'
+                    c.ceil = c.elev + LEVELGEN_CEILING
+                    shortcutList[#shortcutList + 1] = o
+                    made = made + 1
+                end
+            end
+        end
+        if made < wantShortcuts then return nil, 'no shortcut site' end
+    end
     for _, c in ipairs(list) do
         local deg = 0
         for _, d in ipairs(SIDES) do
@@ -520,7 +635,7 @@ function LevelGen.build(seed, difficulty)
             mbox('floor', 0, CELL, -h, h, VOID_Z - T, VOID_Z)
             local px, py = f.point(def.plot[1], def.plot[2])
             local pz = e + def.plot[3]
-            plots[#plots + 1] = {id = 'p' .. c.k, pos = {px, py, pz}, dir = f.dirName(def.dir), reach = def.reach}
+            plots[#plots + 1] = {id = c.plotId or ('p' .. c.k), pos = {px, py, pz}, dir = f.dirName(def.dir), reach = def.reach}
             if c.module == 'pit' then
                 mbox('floor', 0, def.pitX0, -h, h, e - T, e)
                 mbox('floor', def.pitX1, CELL, -h, h, e - T, e)
@@ -614,27 +729,49 @@ function LevelGen.build(seed, difficulty)
     -- 7. seeds (prefix rule: critical seed k lies in a region < k; extras off the path)
     local seedTypes, used = {}, {}
     for _, link in ipairs(chain) do used[link.seed] = true end
+    for _, o in ipairs(optional) do used[o.seed] = true end
     for _, t in ipairs(SEED_TYPES) do if used[t] then seedTypes[#seedTypes + 1] = t end end
     local pickups = {}
-    local function place(c, seedType, tier, k)
+    local function place(c, seedType, tier, k, r)
+        r = r or rng
         local mx, my = LevelGen.cellCenter(c.cx, c.cy)
-        pickups[#pickups + 1] = {pos = {mx + (rng:next() - 0.5) * 3.4, my + (rng:next() - 0.5) * 3.4, c.elev},
+        pickups[#pickups + 1] = {pos = {mx + (r:next() - 0.5) * 3.4, my + (r:next() - 0.5) * 3.4, c.elev},
             seed = seedType, tier = tier, obstacle = k}
     end
     for k = 1, n do
         local branchCells, pathCells = {}, {}
         for _, c in ipairs(list) do
-            if c.region < k and c.kind == 'branch' then branchCells[#branchCells + 1] = c
+            if c.region < k and c.kind == 'branch' and not c.opt then branchCells[#branchCells + 1] = c
             elseif c.region < k and c.kind == 'filler' and not c.start then pathCells[#pathCells + 1] = c end
         end
         local pool = (#branchCells > 0 and rng:chance(0.7)) and branchCells or pathCells
         place(rng:pick(pool), chain[k].seed, 'critical', k)
     end
     local sideCells = {}
-    for _, c in ipairs(list) do if c.kind == 'branch' then sideCells[#sideCells + 1] = c end end
+    for _, c in ipairs(list) do if c.kind == 'branch' and not c.opt then sideCells[#sideCells + 1] = c end end
     if #sideCells == 0 then return nil, 'no side cells' end
     for _ = 1, rng:int(1, n) do
         place(rng:pick(sideCells), rng:pick(seedTypes), 'extra')
+    end
+    -- section 3 seeds, own stream: one seed of each optional module's crop in
+    -- a non-optional dead end / branch no later than its region, plus the
+    -- reward seed inside alcoves and dead ends marked 'seed'
+    for _, o in ipairs(optional) do
+        local ends, any = {}, {}
+        for _, c in ipairs(sideCells) do
+            if c.region <= o.region then
+                any[#any + 1] = c
+                if c.deadEnd then ends[#ends + 1] = c end
+            end
+        end
+        local pool = #ends > 0 and ends or (#any > 0 and any or sideCells)
+        local sc = orng:pick(pool)
+        place(sc, o.seed, 'extra', nil, orng)
+        o.supply = {sc.cx, sc.cy}
+        if not o.shortcut and o.reward == 'seed' then
+            local a = orng:pick(o.area)
+            place(cells[key(a[1], a[2])], orng:pick(seedTypes), 'extra', nil, orng)
+        end
     end
 
     -- 8. assemble
@@ -643,7 +780,8 @@ function LevelGen.build(seed, difficulty)
         metaCells[i] = {cx = c.cx, cy = c.cy, kind = c.kind, region = c.region, elev = c.elev, elevOut = c.elevOut,
             ceil = c.ceil, k = c.k, module = c.module, dir = c.dir, rot = c.rot, onPath = c.onPath or false,
             pathIndex = c.pathIndex, start = c.start, exit = c.exit, degree = c.degree, room = c.room,
-            inset = c.inset, deadEnd = c.deadEnd, nook = c.nook, loop = c.loop}
+            inset = c.inset, deadEnd = c.deadEnd, nook = c.nook, loop = c.loop,
+            optional = c.optional, shortcut = c.shortcut, opt = c.opt, plotId = c.plotId}
     end
     local metaPath = {}
     for i, c in ipairs(path) do metaPath[i] = {c.cx, c.cy} end
@@ -666,7 +804,8 @@ function LevelGen.build(seed, difficulty)
             grid = {W, H}, start = {path[1].cx, path[1].cy}, exitCell = {path[L].cx, path[L].cy},
             path = metaPath, pathLength = L, turns = countTurns(path), minPath = minPath, minTurns = minTurns,
             regions = regionInfo, rooms = rooms, loopEdges = loopEdges, loops = #loopEdges,
-            fallback = fallback, boxCount = #boxes},
+            fallback = fallback, boxCount = #boxes,
+            optional = optional, shortcuts = shortcutList, shortcutsWanted = wantShortcuts, plotCount = #plots},
     }
     return Dressing.apply(data, seed)
 end
@@ -675,7 +814,7 @@ end
 
 -- Cells reachable from the start cell over doorways and open edges while the
 -- modules with k >= blockFrom are not crossed (their cell is not entered).
-local function reachable(meta, blockFrom)
+local function reachable(meta, blockFrom, blockOptional)
     local byKey, adj = {}, {}
     for _, c in ipairs(meta.cells) do byKey[key(c.cx, c.cy)] = c end
     for e in pairs(meta.edges) do
@@ -689,13 +828,91 @@ local function reachable(meta, blockFrom)
         local k = table.remove(stack)
         for _, nk in ipairs(adj[k] or {}) do
             local c = byKey[nk]
-            if not seen[nk] and not (c.kind == 'module' and c.k >= blockFrom) then
+            local blocked = c.kind == 'module'
+                and ((c.optional and blockOptional) or (not c.optional and c.k >= blockFrom))
+            if not seen[nk] and not blocked then
                 seen[nk] = true
                 stack[#stack + 1] = nk
             end
         end
     end
     return seen, byKey
+end
+
+-- Section 3 invariants (meta.optional / meta.shortcuts); true or false, reason.
+-- Cells reachable with every optional module blocked are the "critical-only"
+-- world: it must hold the exit and every critical seed and none of the areas.
+function LevelGen.checkBranches(data)
+    local meta = data.meta
+    if #data.plots < meta.obstacles + 2 then return false, 'fewer than two extra plots' end
+    if #meta.shortcuts < meta.shortcutsWanted then return false, 'missing shortcut' end
+    local crit, byKey = reachable(meta, math.huge, true)
+    if not crit[key(meta.exitCell[1], meta.exitCell[2])] then return false, 'exit needs an optional plot' end
+    for _, p in ipairs(data.pickups) do
+        if p.tier == 'critical' then
+            local cx, cy = cellOf(p.pos[1], p.pos[2])
+            if not crit[key(cx, cy)] then return false, 'critical seed needs an optional plot' end
+        end
+    end
+    local seen = {}
+    for _, o in ipairs(meta.optional) do
+        if seen[o.plot] then return false, 'duplicate plot id ' .. o.plot end
+        seen[o.plot] = true
+        local mk = key(o.cell[1], o.cell[2])
+        if not byKey[mk].optional then return false, 'optional cell not marked ' .. mk end
+        if o.shortcut then
+            local from, to = key(o.from[1], o.from[2]), key(o.to[1], o.to[2])
+            if not (crit[from] and crit[to]) then return false, 'shortcut ends not reachable' end
+            local function dist(blockOpt)
+                local d, q, h = {[from] = 0}, {from}, 1
+                local adj = {}
+                for e in pairs(meta.edges) do
+                    local a, b = e:match('^(.-)|(.*)$')
+                    adj[a] = adj[a] or {}; adj[b] = adj[b] or {}
+                    table.insert(adj[a], b); table.insert(adj[b], a)
+                end
+                while h <= #q do
+                    local k = q[h]; h = h + 1
+                    for _, nk in ipairs(adj[k] or {}) do
+                        if not d[nk] and not (blockOpt and byKey[nk].optional) then d[nk] = d[k] + 1; q[#q + 1] = nk end
+                    end
+                end
+                return d[to]
+            end
+            local walled, open = dist(true), dist(false)
+            if not walled or not open or open >= walled then return false, 'shortcut ' .. o.plot .. ' does not shorten' end
+        else
+            if crit[mk] then return false, 'optional module reachable ' .. mk end
+            local inArea = {}
+            for _, a in ipairs(o.area) do inArea[key(a[1], a[2])] = true end
+            for _, a in ipairs(o.area) do
+                local ak = key(a[1], a[2])
+                if crit[ak] then return false, 'optional area reachable early ' .. ak end
+                if ak == key(meta.exitCell[1], meta.exitCell[2]) or byKey[ak].onPath then
+                    return false, 'optional area holds a critical cell ' .. ak
+                end
+            end
+            -- only the module links the area to the rest
+            for e in pairs(meta.edges) do
+                local a, b = e:match('^(.-)|(.*)$')
+                if inArea[a] ~= inArea[b] and a ~= mk and b ~= mk then return false, 'area leaks at ' .. e end
+            end
+            -- solving it opens the area
+            local opened = reachable(meta, math.huge, false)
+            for ak in pairs(inArea) do if not opened[ak] then return false, 'area not opened ' .. ak end end
+            local extras = 0
+            for _, p in ipairs(data.pickups) do
+                local cx, cy = cellOf(p.pos[1], p.pos[2])
+                if inArea[key(cx, cy)] then
+                    extras = extras + 1
+                    if p.tier ~= 'extra' then return false, 'critical seed inside an optional area' end
+                end
+            end
+            if o.reward == 'empty' and extras > 0 then return false, 'decoy holds a seed' end
+            if o.reward == 'seed' and extras == 0 then return false, 'reward area is empty' end
+        end
+    end
+    return true
 end
 
 -- Returns true, or false and a reason. Checks structure and seed sufficiency;
@@ -745,8 +962,8 @@ function LevelGen.check(data)
     for _, c in ipairs(meta.cells) do
         if c.kind == 'module' then
             local def = LevelGen.MODULES[c.module]
-            if c.ceil - c.elev < def.minCeiling then return false, 'ceiling too low at module ' .. c.k end
-            if c.ceil - c.elevOut < BACKROOMS_PLAYER_HEIGHT + 0.5 then return false, 'no headroom after module ' .. c.k end
+            if c.ceil - c.elev < def.minCeiling then return false, 'ceiling too low at module ' .. tostring(c.k or c.plotId) end
+            if c.ceil - c.elevOut < BACKROOMS_PLAYER_HEIGHT + 0.5 then return false, 'no headroom after module ' .. tostring(c.k or c.plotId) end
             -- straight: exactly two passages, on opposite faces
             local open = {}
             for _, d in ipairs(SIDES) do
@@ -754,13 +971,15 @@ function LevelGen.check(data)
                 if nb and meta.edges[edgeKey(c, nb)] then open[#open + 1] = d end
             end
             if #open ~= 2 or open[1][1] + open[2][1] ~= 0 or open[1][2] + open[2][2] ~= 0 then
-                return false, 'module ' .. c.k .. ' is not on a straight passage'
+                return false, 'module ' .. tostring(c.k or c.plotId) .. ' is not on a straight passage'
             end
         end
     end
+    local bok, bmsg = LevelGen.checkBranches(data)
+    if not bok then return false, bmsg end
     -- prefix sufficiency: seeds collectable before obstacle k cover obstacles 1..k
     for k = 1, meta.obstacles do
-        local before = reachable(meta, k)
+        local before = reachable(meta, k, true)
         local have, need = {}, {}
         for _, p in ipairs(data.pickups) do
             if p.tier == 'critical' then
