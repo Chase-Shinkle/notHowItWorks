@@ -1,17 +1,21 @@
 # Tasks
 
+> A checked box means the code is written. Runtime and manual verification
+> status lives in `verification.md`; no Lua runtime was available, so those
+> checks are still pending for 1.1-2.3.
+
 ## 1. Foundation and render path
 
-- [ ] 1.1 Let a state opt out of `push` in `main.lua` `love.draw`; verify a stub state draws a g3d cube at native resolution with correct depth while `StartState` still renders through push.
-- [ ] 1.2 Create `FarmState` and `BackroomsState` stubs, register them in `main.lua` and `src/Dependencies.lua`, and verify `StartState` -> farm -> backrooms transitions run via a debug key press.
-- [ ] 1.3 Add a shared game-data table (seeds, coins, crops, hasSold) passed through `gStateMachine:change`; verify the backrooms stub prints the seeds received.
-- [ ] 1.4 Add placeholder fallbacks (flat colors) for missing textures/sounds in `Dependencies.lua`; verify the game launches with empty asset folders.
+- [x] 1.1 Let a state opt out of `push` in `main.lua` `love.draw`; verify a stub state draws a g3d cube at native resolution with correct depth while `StartState` still renders through push.
+- [x] 1.2 Create `FarmState` and `BackroomsState` stubs, register them in `main.lua` and `src/Dependencies.lua`, and verify `StartState` -> farm -> backrooms transitions run via a debug key press.
+- [x] 1.3 Add a shared game-data table (seeds, coins, crops, hasSold) passed through `gStateMachine:change`; verify the backrooms stub prints the seeds received.
+- [x] 1.4 Add placeholder fallbacks (flat colors) for missing textures/sounds in `Dependencies.lua`; verify the game launches with empty asset folders.
 
 ## 2. 2D farm (farm-planting, farm-harvesting, villager-selling)
 
-- [ ] 2.1 Implement a farm grid with plots, a player cursor/avatar, and keyboard/mouse interaction; verify movement and plot highlighting by running the game.
-- [ ] 2.2 Implement plant, timed growth stages, and harvest on plots with Timer; verify seed count decreases, crops mature, and harvest adds to inventory.
-- [ ] 2.3 Implement a villager and selling for coins; verify coins and crop count update correctly, and the first plant -> harvest -> sell cycle finishes in under about 3 minutes.
+- [x] 2.1 Implement a farm grid with plots, a player cursor/avatar, and keyboard/mouse interaction; verify movement and plot highlighting by running the game.
+- [x] 2.2 Implement plant, timed growth stages, and harvest on plots with Timer; verify seed count decreases, crops mature, and harvest adds to inventory.
+- [x] 2.3 Implement a villager and selling for coins; verify coins and crop count update correctly, and the first plant -> harvest -> sell cycle finishes in under about 3 minutes.
 
 ## 3. The break (oversell-break, fall-transition, seed-carryover)
 

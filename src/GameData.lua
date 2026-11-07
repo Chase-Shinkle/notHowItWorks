@@ -10,10 +10,16 @@ function NewGameData(overrides)
         seeds[seedType] = source[seedType] or 0
     end
 
+    -- harvested crops are counted per seed type, like seeds
+    local crops = {}
+    for _, seedType in ipairs(SEED_TYPES) do
+        crops[seedType] = (overrides.crops or {})[seedType] or 0
+    end
+
     return {
         seeds = seeds,
         coins = overrides.coins or 0,
-        crops = overrides.crops or {},
+        crops = crops,
         hasSold = overrides.hasSold or false,
     }
 end

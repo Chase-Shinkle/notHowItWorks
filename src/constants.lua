@@ -20,3 +20,49 @@ STARTING_SEEDS = {
     pumpkin = 2,
     vine = 2,
 }
+
+-- 2D farm ---------------------------------------------------------------------
+-- The farm is a grid of FARM_TILE-pixel tiles over the 320x320 virtual screen.
+-- Tile coordinates are 1-based (col, row). Row 1 is the HUD bar and the last
+-- row is the hint bar, so the walkable field is rows 2 .. FARM_ROWS - 1.
+FARM_TILE = 32
+FARM_COLS = VIRTUAL_WIDTH / FARM_TILE      -- 10
+FARM_ROWS = VIRTUAL_HEIGHT / FARM_TILE     -- 10
+FARM_FIELD_TOP = 2
+FARM_FIELD_BOTTOM = FARM_ROWS - 1
+
+-- Plot rectangle (2 rows, so every plot is reachable from above or below).
+FARM_PLOTS = {col = 2, row = 4, cols = 3, rows = 2}
+
+-- The villager stands on this tile; the player sells by facing/clicking it.
+FARM_VILLAGER = {col = 8, row = 4}
+
+-- Player start: directly below a plot and facing it, so the first key press
+-- plants.
+FARM_PLAYER_START = {col = 3, row = 6, facing = 'up'}
+
+-- Growth: a crop moves through FARM_GROWTH_STAGES visible stages (1 = seeds,
+-- last = mature), one stage every FARM_STAGE_TIME seconds (12 s in total).
+FARM_GROWTH_STAGES = 5
+FARM_STAGE_TIME = 3
+
+-- Coins paid by villagers per harvested crop.
+CROP_VALUES = {
+    beanstalk = 3,
+    pumpkin = 5,
+    vine = 4,
+}
+
+-- Grid movement: one tile per press; holding a key repeats after a delay.
+FARM_MOVE_REPEAT_DELAY = 0.25
+FARM_MOVE_REPEAT_INTERVAL = 0.12
+
+-- Key bindings (any key in a list works).
+FARM_KEYS = {
+    up = {'up', 'w'},
+    down = {'down', 's'},
+    left = {'left', 'a'},
+    right = {'right', 'd'},
+    interact = {'e', 'space', 'return', 'kpenter'},
+    nextSeed = {'tab', 'q'},
+}

@@ -56,14 +56,15 @@ function Assets.newSilentSound()
     return setmetatable(stub, {__index = function() return noop end})
 end
 
--- Returns image, isPlaceholder.
-function Assets.loadImage(path, fallbackColor)
+-- Returns image, isPlaceholder. `fallbackSize` (optional) sizes the square
+-- placeholder, e.g. so placeholder growth stages still get bigger.
+function Assets.loadImage(path, fallbackColor, fallbackSize)
     if available('image', path) then
         local ok, image = pcall(love.graphics.newImage, path)
         if ok then return image, false end
         recordMissing('image', path, tostring(image))
     end
-    return Assets.newPlaceholderImage(fallbackColor), true
+    return Assets.newPlaceholderImage(fallbackColor, fallbackSize), true
 end
 
 -- Returns source, isPlaceholder.
@@ -88,11 +89,11 @@ function Assets.loadFont(path, size)
     return love.graphics.newFont(size), path ~= nil
 end
 
--- Fills `target` from a manifest of {key = {path, fallback}} entries using
--- `loader(path, fallback)`; returns target.
+-- Fills `target` from a manifest of {key = {path, fallback, extra}} entries
+-- using `loader(path, fallback, extra)`; returns target.
 function Assets.loadAll(target, manifest, loader)
     for key, entry in pairs(manifest) do
-        target[key] = loader(entry[1], entry[2])
+        target[key] = loader(entry[1], entry[2], entry[3])
     end
     return target
 end
