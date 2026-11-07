@@ -165,3 +165,36 @@ itself.
   autotest 117 (real) and 109 (placeholder) checks from source and artifact,
   and 114 for the artifact with `--debug`. The package sha256 was stable
   across two builds (`f34787f3...6c59` at this point).
+
+## 5. Backrooms HUD (M4, backrooms)
+
+- 5.1 `BackroomsState:visibleSeedTypes()` lists the types with an allotment
+  above zero, in `SEED_TYPES` order. It drives the HUD seed list, the `1-3`
+  keys (key i still means `SEED_TYPES[i]`, so labels and keys do not move
+  between rooms; keys for hidden types do nothing), `Q` / `Tab` cycling (held
+  visible types only) and `selectSeed` (always lands on a visible type). The
+  HUD still never draws coins. Room data, `gameData.seeds`, carry-over and
+  reset are unchanged. Headless tests:
+  - Room 1 with carried pumpkin 5 / vine 4 shows `[1 beanstalk x3]` only.
+  - Room 2 shows `[2 pumpkin x2]| 3 vine x2 `; Room 3 shows all three; no
+    coin text in any room.
+  - Hidden keys do nothing: `2` and `3` in Room 1, `1` in Room 2.
+  - Q / Tab: stays on beanstalk in Room 1; pumpkin <-> vine in Room 2; all
+    three in Room 3.
+
+  One existing test (`planting: occupied plots and empty seed types ...`)
+  pressed `1` in Room 2. It now checks that the key is a no-op and covers
+  "no seeds left" with an emptied visible type (vine). The tutorial test that
+  sets `selectedSeed` directly still shows that the demo plot rule refuses
+  other types.
+- 5.2 Headless: Room 1 entered with beanstalk 0 / pumpkin 3 / vine 2 gets
+  `beanstalk=1 pumpkin=3 vine=2` (top-up; extras kept, hidden). After planting
+  and R, the recorded seeds are restored exactly. Room 2 gets and resets to
+  its fixed allotment. The existing seed-carryover and reset tests pass
+  unchanged. Autotest (real runtime): the Room 1 HUD text drawn is
+  `Room 1: something is growing (1/3) | [1 beanstalk x1] | <controls>` while
+  holding `beanstalk=1 pumpkin=2 vine=2`. That is beanstalk only, no coins.
+  Pressing 2, 3 and Q leaves beanstalk selected. The Room 2 HUD lists pumpkin
+  and vine only, Room 3 lists all three, and the playthrough completes (120
+  real / 112 placeholder checks, 0 failed). Screenshot
+  `06-room1-arrival-zoom.png` shows the Room 1 HUD.

@@ -1979,6 +1979,77 @@ test('planting: away from plots nothing is planted and no seed is used', functio
     eq(FormatSeeds(back.gameData.seeds), 'beanstalk=0 pumpkin=2 vine=2')
 end)
 
+-- backrooms HUD (polish M4, backrooms) ---------------------------------------------
+local function hudSeedLabels(back)
+    mock.reset(); love.draw()
+    local labels = {}
+    for _, c in ipairs(mock.calls) do
+        if c.name == 'print' and type(c.args[1]) == 'string' and c.args[3] == 32 then labels[#labels + 1] = c.args[1] end
+    end
+    return table.concat(labels, '|')
+end
+
+local function hudHasCoins()
+    for _, c in ipairs(mock.calls) do
+        local t = (c.name == 'print' or c.name == 'printf') and c.args[1]
+        if type(t) == 'string' and (t:find('coin', 1, true) or t:find('%d+c$') or t:find('%d+c ')) then return t end
+    end
+    return nil
+end
+
+test('hud: visible seed types follow the room allotment (room 1 beanstalk; room 2 pumpkin, vine; room 3 all)', function()
+    local back = toBackrooms({beanstalk = 3, pumpkin = 5, vine = 4})
+    eq(table.concat(back:visibleSeedTypes(), ','), 'beanstalk')
+    eq(hudSeedLabels(back), '[1 beanstalk x3]', 'room 1 HUD: beanstalk only, despite carried pumpkins and vines')
+    eq(hudHasCoins(), nil, 'no coins in the backrooms HUD')
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=3 pumpkin=5 vine=4', 'hidden counts still tracked')
+    back:advance()
+    eq(table.concat(back:visibleSeedTypes(), ','), 'pumpkin,vine')
+    eq(hudSeedLabels(back), '[2 pumpkin x2]| 3 vine x2 ', 'room 2 HUD: pumpkin and vine, no beanstalk')
+    eq(hudHasCoins(), nil)
+    back:advance()
+    eq(table.concat(back:visibleSeedTypes(), ','), 'beanstalk,pumpkin,vine')
+    eq(hudSeedLabels(back), ' 1 beanstalk x2 |[2 pumpkin x2]| 3 vine x2 ', 'room 3 HUD: all three')
+    eq(hudHasCoins(), nil)
+end)
+
+test('hud: keys for hidden types do nothing; Q / Tab visit visible types only', function()
+    local back = toBackrooms({beanstalk = 3, pumpkin = 5, vine = 4})
+    eq(back.selectedSeed, 'beanstalk')
+    press('2'); eq(back.selectedSeed, 'beanstalk', 'room 1: pumpkin key does nothing')
+    press('3'); eq(back.selectedSeed, 'beanstalk', 'room 1: vine key does nothing')
+    press('q'); eq(back.selectedSeed, 'beanstalk', 'room 1: Q stays on the only visible type')
+    press('tab'); eq(back.selectedSeed, 'beanstalk', 'room 1: Tab too')
+    back:advance()
+    eq(back.selectedSeed, 'pumpkin', 'room 2 starts on a visible type')
+    press('1'); eq(back.selectedSeed, 'pumpkin', 'room 2: beanstalk key does nothing')
+    local seen = {}
+    for _ = 1, 4 do press('q'); seen[#seen + 1] = back.selectedSeed end
+    eq(table.concat(seen, ','), 'vine,pumpkin,vine,pumpkin', 'room 2: Q cycles pumpkin <-> vine')
+    press('tab'); eq(back.selectedSeed, 'vine')
+    back:advance()
+    seen = {}
+    for _ = 1, 3 do press('tab'); seen[#seen + 1] = back.selectedSeed end
+    eq(table.concat(seen, ','), 'beanstalk,pumpkin,vine', 'room 3: Tab visits all three')
+    press('1'); eq(back.selectedSeed, 'beanstalk')
+end)
+
+test('hud: resets and carry-over are unchanged by hiding (room 1 extras kept, reset restores them)', function()
+    local back = toBackrooms({beanstalk = 0, pumpkin = 3, vine = 2})
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=1 pumpkin=3 vine=2', 'room 1 top-up; extras kept but hidden')
+    back.player:setPosition(0.4, 0, 0); run(0.2)
+    press('e')
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=0 pumpkin=3 vine=2')
+    press('r')
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=1 pumpkin=3 vine=2', 'room 1 reset restores the recorded seeds')
+    eq(hudSeedLabels(back), '[1 beanstalk x1]')
+    back:advance()
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=0 pumpkin=2 vine=2', 'room 2: fixed allotment')
+    back.player:setPosition(-5, 0, 0); run(0.2); press('e')
+    press('r')
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=0 pumpkin=2 vine=2', 'room 2 reset restores its allotment')
+end)
+
 test('planting: occupied plots and empty seed types refuse without using seeds', function()
     local back = toRoom(2)
     back.player:setPosition(-4.4, 0, 0); run(0.2)
@@ -1992,12 +2063,15 @@ test('planting: occupied plots and empty seed types refuse without using seeds',
     eq(back.gameData.seeds.vine, 2, 'occupied plot refuses another type')
     eq(back.message.text, 'Something is already growing here')
     press('1')
-    eq(back.selectedSeed, 'beanstalk', 'a type can be selected even with none held')
+    eq(back.selectedSeed, 'vine', 'beanstalk is hidden in room 2: its key does nothing')
+    back.gameData.seeds.vine = 0
+    press('2'); press('3')
+    eq(back.selectedSeed, 'vine', 'a visible type can be selected even with none held')
     back.player:setPosition(0.8, 0, 0); run(0.2)
     eq(back:targetPlot().id, 'edge')
     press('e')
-    eq(back.gameData.seeds.beanstalk, 0); eq(back.room:plotById('edge').crop, nil, 'no beanstalk seeds: nothing planted')
-    eq(back.message.text, 'No beanstalk seeds left')
+    eq(back.gameData.seeds.vine, 0); eq(back.room:plotById('edge').crop, nil, 'no vine seeds: nothing planted')
+    eq(back.message.text, 'No vine seeds left')
 end)
 
 test('planting: 1-3 select, Q / Tab cycle through held types, a click plants', function()

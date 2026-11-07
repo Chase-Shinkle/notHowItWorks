@@ -280,6 +280,12 @@ local function script()
     wait(0.3)
     check(Billboard.getAlphaShader() ~= nil, 'billboard alpha-discard shader compiled (no fallback)')
     shot('06-room1-arrival', {0, 0, 400, 70, 3}) -- Room 1 HUD text and seed list
+    -- Room 1 HUD (polish M4): only beanstalk is listed, even with farm pumpkins
+    -- and vines carried over, and no coins
+    local hudText = table.concat(lastFrameTexts, ' | ')
+    check(hudText:find('beanstalk x', 1, true) ~= nil and not hudText:find('pumpkin', 1, true)
+        and not hudText:find('vine', 1, true) and not hudText:find('%dc%f[%W]'),
+        'room 1 HUD lists beanstalk only and no coins (seeds held: %s; HUD: %s)', seeds(), hudText)
     if not debugFlag then
         press('f1')
         check(state() == back and back.roomIndex == 1, 'release: F1 does not skip room 1')
@@ -313,12 +319,11 @@ local function script()
     -- climbing an unfinished demo does nothing
     holdUntil('w', function() return p.z > 0.2 end, 1)
     check(p.z < 0.05, 'room 1: half-grown demo is not climbable (z=%.2f)', p.z)
-    if (back.gameData.seeds.pumpkin or 0) > 0 then
-        local pk = back.gameData.seeds.pumpkin
-        press('2'); press('e')
-        check(back.gameData.seeds.pumpkin == pk, 'room 1: demo plot refuses a pumpkin (msg: %s)',
-            back.message and back.message.text or '')
-    end
+    -- room 1 uses only beanstalk: the keys for the carried pumpkin/vine seeds
+    -- do nothing (polish M4), so they cannot even be tried on the demo plot
+    press('2'); press('3'); press('q')
+    check(back.selectedSeed == 'beanstalk', 'room 1: pumpkin/vine keys and Q leave beanstalk selected (%s)',
+        back.selectedSeed)
     press('1'); press('e')
     check(back.room:plotById('demo').crop.timer ~= nil, 'room 1: beanstalk seed resumes the demo growth')
     wait(0.6)
@@ -330,6 +335,9 @@ local function script()
     check(seeds() == FormatSeeds({pumpkin = 2, vine = 2}), 'room 2 allotment: %s', seeds())
     wait(0.3)
     shot('09-room2-arrival', {290, 380, 120, 80, 5}) -- billboard sprite edges
+    hudText = table.concat(lastFrameTexts, ' | ')
+    check(hudText:find('pumpkin x', 1, true) and hudText:find('vine x', 1, true) and not hudText:find('beanstalk', 1, true),
+        'room 2 HUD lists pumpkin and vine only (%s)', hudText)
 
     -- Room 2: wrong type in the pit, then reset, then the right solution
     p = back.player
@@ -361,7 +369,10 @@ local function script()
     check(reached, 'room 2: cross the vine to the exit -> room 3')
     check(seeds() == FormatSeeds({beanstalk = 2, pumpkin = 2, vine = 2}), 'room 3 allotment: %s', seeds())
     wait(0.3)
-    shot('12-room3-arrival')
+    shot('12-room3-arrival', {0, 0, 450, 70, 3})
+    hudText = table.concat(lastFrameTexts, ' | ')
+    check(hudText:find('beanstalk x', 1, true) and hudText:find('pumpkin x', 1, true) and hudText:find('vine x', 1, true),
+        'room 3 HUD lists all three types (%s)', hudText)
 
     -- Room 3: pumpkin, beanstalk, vine
     p = back.player

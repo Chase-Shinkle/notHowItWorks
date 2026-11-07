@@ -61,8 +61,10 @@ requests a 24-bit depth buffer for the window.
 - Seeds: Room 1 keeps the farm seeds (topped up to its allotment); later rooms
   give exactly their own allotment.
 - Seed puzzles: E / Enter / left click plants the selected seed on the
-  nearest soil plot in range (there is no planting anywhere else). 1-3 select a
-  type, Q / Tab cycles; the HUD shows every type's count. R resets the room
+  nearest soil plot in range (there is no planting anywhere else; the Room 2
+  and 3 pit plots reach 3.8 m, so they can be planted from well back on the
+  floor). 1-3 select a type, Q / Tab cycles, among the types the room uses
+  (its allotment); the HUD shows only those counts and no coins. R resets the room
   (crops removed, seeds restored to what you had on entering it).
 - Crops (`src/Crop.lua`) grow over 2-2.5 s and do nothing until fully grown:
   a beanstalk is a 3 m climb volume (press forward while standing in it to

@@ -28,8 +28,8 @@
 
 ## 5. Backrooms HUD (M4, backrooms)
 
-- [ ] 5.1 Add a `visibleSeedTypes()` derived from the room allotment and use it for the HUD seed list and for `1-3`, `Q`, `Tab` selection; verify headless tests for Room 1 (beanstalk only), Room 2 (pumpkin, vine), Room 3 (all), hidden-key no-op and cycling.
-- [ ] 5.2 Verify room reset still restores the recorded seeds and Room 1 carry-over with extra pumpkin and vine seeds is unchanged (`tests/` seed-carryover tests plus the playthrough), and a screenshot of the Room 1 HUD shows only beanstalk and no coins.
+- [x] 5.1 Add a `visibleSeedTypes()` derived from the room allotment and use it for the HUD seed list and for `1-3`, `Q`, `Tab` selection; verify headless tests for Room 1 (beanstalk only), Room 2 (pumpkin, vine), Room 3 (all), hidden-key no-op and cycling.
+- [x] 5.2 Verify room reset still restores the recorded seeds and Room 1 carry-over with extra pumpkin and vine seeds is unchanged (`tests/` seed-carryover tests plus the playthrough), and a screenshot of the Room 1 HUD shows only beanstalk and no coins.
 
 ## 6. Integration
 

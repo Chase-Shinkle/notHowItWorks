@@ -7,7 +7,8 @@
 --
 -- Seed puzzles: E / Enter / left click plants the selected seed on the
 -- nearest fixed plot in range (Room:nearestPlot); Q / Tab or 1-3 select the
--- seed type; R resets the room. Crops grow on this state's own knife Timer
+-- seed type, among the types the current room uses (visibleSeedTypes); R
+-- resets the room. Crops grow on this state's own knife Timer
 -- group, which is cleared whenever a room is loaded or reset, so nothing from
 -- an earlier attempt keeps growing.
 BackroomsState = Class{__includes = BaseState}
@@ -108,27 +109,53 @@ end
 
 -- Seed selection --------------------------------------------------------------
 
--- Selects `seedType` if the player has one; otherwise the first type in
--- SEED_TYPES order that they do have; otherwise keeps `seedType` (or the
--- first type) so the HUD still shows a selection.
+-- The seed types the current room uses: those with an allotment above zero,
+-- in SEED_TYPES order. The HUD lists only these and the seed keys only select
+-- these. Other types are still counted in gameData.seeds (carry-over and
+-- reset are unchanged); they just cannot be used here.
+function BackroomsState:visibleSeedTypes()
+    local list = {}
+    local allotment = self.room and self.room.allotment or {}
+    for _, t in ipairs(SEED_TYPES) do
+        if (allotment[t] or 0) > 0 then list[#list + 1] = t end
+    end
+    return list
+end
+
+function BackroomsState:isSeedVisible(seedType)
+    for _, t in ipairs(self:visibleSeedTypes()) do
+        if t == seedType then return true end
+    end
+    return false
+end
+
+-- Selects `seedType` if it is visible and the player has one; otherwise the
+-- first visible type they do have; otherwise keeps `seedType` if visible (or
+-- the first visible type) so the HUD still shows a selection.
 function BackroomsState:selectSeed(seedType)
     local seeds = self.gameData.seeds
-    if seedType and (seeds[seedType] or 0) > 0 then
+    local visible = self:visibleSeedTypes()
+    if seedType and self:isSeedVisible(seedType) and (seeds[seedType] or 0) > 0 then
         self.selectedSeed = seedType
         return
     end
-    for _, t in ipairs(SEED_TYPES) do
+    for _, t in ipairs(visible) do
         if (seeds[t] or 0) > 0 then self.selectedSeed = t; return end
     end
-    self.selectedSeed = seedType or SEED_TYPES[1]
+    if seedType and self:isSeedVisible(seedType) then
+        self.selectedSeed = seedType
+    else
+        self.selectedSeed = visible[1] or seedType or SEED_TYPES[1]
+    end
 end
 
--- Next type (in SEED_TYPES order, wrapping) that the player holds.
+-- Next visible type (in SEED_TYPES order, wrapping) that the player holds.
 function BackroomsState:cycleSeed()
-    local start = 1
-    for i, t in ipairs(SEED_TYPES) do if t == self.selectedSeed then start = i end end
-    for k = 1, #SEED_TYPES do
-        local t = SEED_TYPES[(start + k - 1) % #SEED_TYPES + 1]
+    local visible = self:visibleSeedTypes()
+    local start = 0
+    for i, t in ipairs(visible) do if t == self.selectedSeed then start = i end end
+    for k = 1, #visible do
+        local t = visible[(start + k - 1) % #visible + 1]
         if (self.gameData.seeds[t] or 0) > 0 then self.selectedSeed = t; return end
     end
 end
@@ -221,8 +248,10 @@ function BackroomsState:update(dt)
         self:resetRoom()
         return
     end
+    -- key i always means SEED_TYPES[i]; keys for types this room hides do nothing
     for i, key in ipairs(BACKROOMS_KEYS.seedSlots) do
-        if love.keyboard.wasPressed(key) and SEED_TYPES[i] then self.selectedSeed = SEED_TYPES[i] end
+        local t = SEED_TYPES[i]
+        if love.keyboard.wasPressed(key) and t and self:isSeedVisible(t) then self.selectedSeed = t end
     end
     if anyPressed(BACKROOMS_KEYS.nextSeed) then self:cycleSeed() end
     if clickPlants or anyPressed(BACKROOMS_KEYS.plant) then self:plant() end
@@ -271,9 +300,13 @@ function BackroomsState:renderHUD()
     love.graphics.setFont(gFonts['default'])
     love.graphics.print(string.format('%s  (%d/%d)', self.room.name, self.roomIndex, #self.rooms), 10, 10)
 
-    -- per-type seed counts; the selected type is bracketed and bright
+    -- seed counts for the types this room uses (no coins in the backrooms);
+    -- each is labelled with its key, and the selected type is bracketed
     local x = 10
-    for i, t in ipairs(SEED_TYPES) do
+    local keyOf = {}
+    for i, t in ipairs(SEED_TYPES) do keyOf[t] = i end
+    for _, t in ipairs(self:visibleSeedTypes()) do
+        local i = keyOf[t]
         local selected = t == self.selectedSeed
         local n = self.gameData.seeds[t] or 0
         local label = string.format(selected and '[%d %s x%d]' or ' %d %s x%d ', i, t, n)

@@ -34,7 +34,10 @@ Backrooms (3D, first person):
 - Look: **mouse** (captured on entry). Walk: **WASD** / **arrow keys**.
 - Plant the selected seed on the nearest soil plot: **E** / **Enter** / left
   click.
-- Seeds: **1-3** select, **Q** / **Tab** cycle.
+- Seeds: **1-3** select, **Q** / **Tab** cycle. The HUD lists only the seed
+  types the current room uses (Room 1: beanstalk; Room 2: pumpkin and vine;
+  Room 3: all three). Keys for other types do nothing there, and seeds you
+  carried in are kept.
 - Beanstalk: walk forward into it to climb, back to climb down, sideways to
   step off at the top. Pumpkins fill pits. Vines bridge gaps.
 - **R**: reset the room (crops removed, seeds restored). Falling into a pit
