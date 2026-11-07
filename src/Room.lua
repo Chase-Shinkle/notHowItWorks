@@ -494,9 +494,11 @@ function Room.playerOnCrop(crop, pmin, pmax)
     return PlayerController.boxesOverlap(pmin, pmax, lo, hi)
 end
 
--- Removes the crop on `plot`, freeing it (the seed is not refunded). The
+-- Removes the crop on `plot`, freeing it and cancelling any pending growth. The
 -- player box (pmin, pmax) must be clear of it. Returns true, or false and a
 -- reason: 'no-plot' | 'empty' | 'demo' | 'standing'. Nothing changes on failure.
+-- On success the second value is the removed crop (crop.type is the seed to
+-- refund; the caller does the refunding).
 function Room:uproot(plot, pmin, pmax)
     if not plot then return false, 'no-plot' end
     local crop = plot.crop

@@ -26,8 +26,8 @@
 
 ## 4. Uproot refund
 
-- [ ] 4.1 Make `Room:uproot` return the crop type and refund one seed in `BackroomsState`, cancelling pending growth for growing crops; tests for grown, growing, demo-refusal and standing-on refusal, including the repeated plant and uproot stock invariant.
-- [ ] 4.2 Add the uproot key and message, and update the HUD text; verify in a headless play script that plant then uproot restores the seed count.
+- [ ] 4.1 Make `Room:uproot` return the crop type and refund one seed in `BackroomsState`, cancelling pending growth for growing crops; tests for grown, growing, demo-refusal and standing-on refusal, including the repeated plant and uproot stock invariant. (implemented, UNVERIFIED: tests/maze_refund.lua written, not run)
+- [ ] 4.2 Add the uproot key and message, and update the HUD text; verify in a headless play script that plant then uproot restores the seed count. (implemented, UNVERIFIED: HUD/message done; headless play script not run)
 
 ## 5. Checkpoints and respawn
 
