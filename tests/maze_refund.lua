@@ -118,7 +118,7 @@ end)
 
 test('HUD text mentions the uproot refund', function()
     local fh = assert(io.open('src/states/game/BackroomsState.lua', 'r')); local src = fh:read('*a'); fh:close()
-    assert(src:find('X: uproot (refund)', 1, true))
+    assert(src:find('Right-click / X: uproot (refund)', 1, true))
 end)
 
 realPrint(string.format('\n%d passed, %d failed', passed, failed))

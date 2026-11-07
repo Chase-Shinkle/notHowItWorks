@@ -3653,6 +3653,39 @@ test('uproot 3.1: freeing a plot lets it take a new seed; uprooting refunds one 
     eq(out, false, 'nothing left to uproot')
 end)
 
+test('uproot 3.1b: every crop type, growing or grown, targets from a normal standing spot beside its collider; standing still refuses', function()
+    local back = toBackrooms()
+    local room = back.room
+    for _, seed in ipairs({'beanstalk', 'pumpkin', 'vine'}) do
+        for _, grown in ipairs({false, true}) do
+            local plot = {id = 't', pos = {0, 0, 0}, dir = '+x', reach = BACKROOMS_PLANT_RANGE}
+            local crop = Crop(seed, plot)
+            plot.crop = crop
+            room.plots = {plot}
+            if grown then crop.active = true end
+            -- just outside the full footprint (player radius ~0.3), on the plot's floor, midway along its long side
+            local sx = (crop.min[1] + crop.max[1]) / 2
+            local x, y = sx, crop.max[2] + 0.4
+            if seed == 'vine' then x = crop.max[1] - 0.2 end   -- far end of the vine, > reach from the centre
+            local label = seed .. (grown and ' grown' or ' growing')
+            assert(room:nearestCropPlot(x, y, 0) == plot, label .. ' targeted from beside it')
+            local pmin, pmax = {x - 0.3, y - 0.3, 0}, {x + 0.3, y + 0.3, 1.8}
+            local ok = room:uproot(plot, pmin, pmax)
+            eq(ok, true, label .. ' uprooted')
+            -- safety refusal unchanged: standing on the crop
+            local plot2 = {id = 't2', pos = {0, 0, 0}, dir = '+x', reach = BACKROOMS_PLANT_RANGE}
+            plot2.crop = Crop(seed, plot2)
+            local c = plot2.crop
+            local ok2, why = room:uproot(plot2, {c.min[1], c.min[2], c.max[3] - 0.05}, {c.min[1] + 0.6, c.min[2] + 0.6, c.max[3] + 1.8})
+            eq(ok2, false, label .. ' refused on/in crop'); eq(why, 'standing')
+        end
+    end
+    -- too far from the footprint is still out of reach
+    local plot = {id = 't', pos = {0, 0, 0}, dir = '+x', reach = BACKROOMS_PLANT_RANGE}
+    plot.crop = Crop('pumpkin', plot); room.plots = {plot}
+    eq(room:nearestCropPlot(plot.crop.max[1] + BACKROOMS_PLANT_RANGE + 0.5, 0, 0), nil)
+end)
+
 test('uproot 3.2: refused for the demo crop and while standing on or in the crop', function()
     local back = toBackrooms()
     local demo = back.room:plotById('demo')

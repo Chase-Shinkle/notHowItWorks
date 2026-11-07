@@ -316,7 +316,8 @@ BACKROOMS_KEYS = {
     nextSeed = {'q', 'tab'},
     seedSlots = {'1', '2', '3'},      -- select SEED_TYPES[i] directly
     reset = {'r'},
-    uproot = {'x'},                   -- remove the crop on the nearest plot
+    uproot = {'x'},                   -- alternate: remove the crop on the nearest plot
+    uprootMouse = 2,                  -- right mouse button (mouse captured): primary uproot
 }
 
 -- Procedural backrooms levels (src/LevelGen.lua). Cells are square, CELL m on
