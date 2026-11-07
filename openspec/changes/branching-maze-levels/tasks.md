@@ -20,9 +20,12 @@
 
 ## 3. Branch plots
 
-- [ ] 3.1 Turn off-path subtrees into optional modules (alcoves, empty decoys, extra-seed dead ends) and add at least one shortcut in later levels; test each optional area is unreachable until its module is solved and that none gates the exit or a critical seed.
-- [ ] 3.2 Enforce at least two more plots than critical obstacles; test the plot counts across many seeds.
-- [ ] 3.3 Place critical seeds by the prefix rule outside optional areas and extras in dead ends and alcoves; test prefix sufficiency and that a critical-seed-only run solves the level.
+- [~] 3.1 Turn off-path subtrees into optional modules (alcoves, empty decoys, extra-seed dead ends) and add at least one shortcut in later levels; test each optional area is unreachable until its module is solved and that none gates the exit or a critical seed.
+  - IMPLEMENTED in src/LevelGen.lua (section 2b/4b, `LevelGen.checkBranches`, called by `check`): alcove/dead-end modules (pit/gap) on straight off-path cells with the subtree behind them as walled-off area, decoys vs extra-seed rewards, shortcut modules (leaf joined straight across to a same-region cell) from difficulty 2 on. Assertions in tests/maze_branches.lua; NOT run, nothing in this section has been executed.
+- [~] 3.2 Enforce at least two more plots than critical obstacles; test the plot counts across many seeds.
+  - IMPLEMENTED: `checkBranches` requires `#plots >= obstacles + 2` (generation retries a seed otherwise); count test in tests/maze_branches.lua, NOT run.
+- [~] 3.3 Place critical seeds by the prefix rule outside optional areas and extras in dead ends and alcoves; test prefix sufficiency and that a critical-seed-only run solves the level.
+  - IMPLEMENTED: critical seeds stay in non-optional branch/filler cells of earlier regions; extras in non-optional dead ends and optional areas; prefix check blocks optional modules; test in tests/maze_branches.lua, NOT run. Physical (reach) critical-only run belongs to 7.1.
 
 ## 4. Uproot refund
 
