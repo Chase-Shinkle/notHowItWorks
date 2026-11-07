@@ -90,3 +90,20 @@ requests a 24-bit depth buffer for the window.
   without Lua. It does not run any code and cannot replace the test run.
 - Verification status for the OpenSpec change is tracked in
   `openspec/changes/farm-to-backrooms-crop-escape/verification.md`.
+
+## Automated checks
+
+`sh tests/check_all.sh` runs everything on the real LÖVE 11.5 runtime
+(needs `love` and `xvfb-run`):
+
+- `love tests/love_runner tests/run.lua`: headless tests with LÖVE's LuaJIT
+  and a mocked LÖVE API (`tests/mock_love.lua`).
+- `love tests/love_runner tests/reachability.lua`: every plot assignment in
+  every room; only the intended solutions may reach an exit.
+- `xvfb-run -a timeout 8 love .` (and `--placeholder-assets`): launch with no
+  `Error` in the log.
+- `xvfb-run -a -s '-screen 0 1024x1024x24' love . --autotest` (and
+  `--placeholder-assets`): a scripted playthrough of the real game, from the
+  start screen through the farm, the break and all three rooms to the ending,
+  with injected input. Screenshots go to `$AUTOTEST_OUT` (default
+  `/tmp/autotest`). `--autotest` is a test hook only.

@@ -1559,12 +1559,14 @@ test('planting: the nearest plot within range is chosen; nothing elsewhere', fun
         id = 'plots', spawn = {0, 0, 0}, allotment = {},
         boxes = Room.shellBoxes(10, 10, 6),
         exit = {pos = {0, 0, -50}, size = {1, 1, 1}},
-        plots = {{id = 'a', pos = {0, -2, 0}}, {id = 'b', pos = {0, 2, 0}}, {id = 'high', pos = {4, 0, 2.6}}},
+        plots = {{id = 'a', pos = {0, -1.5, 0}}, {id = 'b', pos = {0, 1.5, 0}}, {id = 'high', pos = {4, 0, 2.6}}},
     })
     eq(room:nearestPlot(0, -1.5, 0).id, 'a')
     eq(room:nearestPlot(0.5, 1.1, 0).id, 'b')
-    eq(room:nearestPlot(0, 0.1, 0).id, 'a', 'nearest of two in range')
-    eq(room:nearestPlot(0, -2 + BACKROOMS_PLANT_RANGE - 0.01, 0).id, 'a', 'just inside the range')
+    eq(room:nearestPlot(0, -0.1, 0).id, 'a', 'nearest of two in range')
+    eq(room:nearestPlot(0, 0.1, 0).id, 'b', 'nearest of two in range')
+    eq(room:nearestPlot(-(BACKROOMS_PLANT_RANGE - 0.01), -1.5, 0).id, 'a', 'just inside the range')
+    eq(room:nearestPlot(-(BACKROOMS_PLANT_RANGE + 0.01), -1.5, 0), nil, 'just outside the range')
     eq(room:nearestPlot(3, -2, 0), nil, 'out of horizontal range')
     eq(room:nearestPlot(4, 0, 0), nil, 'a plot 2.6 m above is out of reach')
     eq(room:nearestPlot(4, 0, 2.6).id, 'high', 'reachable from its own level')
@@ -1637,7 +1639,9 @@ end)
 test('planting: 1-3 select, Q / Tab cycle through held types, a click plants', function()
     local back = toRoom(3)
     eq(FormatSeeds(back.gameData.seeds), 'beanstalk=2 pumpkin=2 vine=2')
-    eq(back.selectedSeed, 'beanstalk')
+    -- room 2 auto-selected pumpkin (no beanstalks there); a held selection is kept
+    eq(back.selectedSeed, 'pumpkin', 'selection carried from room 2')
+    press('1'); eq(back.selectedSeed, 'beanstalk')
     press('2'); eq(back.selectedSeed, 'pumpkin')
     press('q'); eq(back.selectedSeed, 'vine')
     press('tab'); eq(back.selectedSeed, 'beanstalk', 'cycling wraps')

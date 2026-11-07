@@ -1,8 +1,11 @@
 # Tasks
 
-> A checked box means the code is written. Runtime and manual verification
-> status lives in `verification.md`; no Lua runtime was available, so those
-> checks are still pending for 1.1-5.7 (none of the Lua tests has been run).
+> A checked box means the code is written and its automated checks pass on
+> the real LÖVE 11.5 / LuaJIT runtime (`sh tests/check_all.sh`: 102/102
+> headless tests, 84/84 reachability assignments, clean launches, and a
+> scripted real-game playthrough of the whole flow with 72/72 checks, with
+> and without placeholder assets). Human visual / playfeel / audio checks
+> are still pending for 1.1-5.7; see `verification.md`.
 
 ## 1. Foundation and render path
 

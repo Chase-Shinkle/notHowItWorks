@@ -86,3 +86,9 @@ function love.draw()
         push:apply('end')
     end
 end
+
+-- `love . --autotest`: scripted headless playthrough (tests/autotest.lua).
+-- Never loaded in normal play.
+for _, a in ipairs(arg or {}) do
+    if a == '--autotest' then require 'tests/autotest' end
+end

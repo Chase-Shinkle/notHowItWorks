@@ -52,6 +52,7 @@ local function getAlphaShader()
     end
     return alphaShader or nil
 end
+Billboard.getAlphaShader = getAlphaShader   -- nil if it fell back (checked by tests/autotest.lua)
 
 -- def = {texture = <gTextures key or Image>, pos = {x, y, z}, height = h,
 --        width = w (optional, default keeps the image aspect ratio),

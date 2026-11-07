@@ -9,7 +9,7 @@
 --   pumpkin    solid 2.6 x 2.6 x 1.0. With no step-up, its top is only
 --              walkable when it grows in a 1.0 m deep pit, where it fills the
 --              pit level with the floor.
---   vine       solid 6.0 long x 1.4 wide x 0.3 thick, top level with its
+--   vine       solid 6.0 long x 1.2 wide x 0.3 thick, top level with its
 --              plot, growing in the plot's `dir`: a bridge over a gap.
 --
 -- Room puzzles (see design.md, "Section 5 room geometry", for the reasoning
