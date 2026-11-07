@@ -27,3 +27,7 @@ The system SHALL refuse to uproot the tutorial demo crop and SHALL refuse while 
 #### Scenario: Demo crop
 - **WHEN** the player tries to uproot the tutorial demo crop
 - **THEN** nothing is removed
+
+### Input and targeting (amendment)
+
+The right mouse button (mouse captured) is the primary uproot input; X remains an alternate. Reach is measured to the crop's full footprint as well as the plot centre, so every grown or growing crop type is targetable from a normal standing position beside its (unshrunk) collider. The standing-on/in refusal is unchanged.

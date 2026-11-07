@@ -441,7 +441,7 @@ local function script()
             press('e')
             check(plot.crop ~= nil, 'level %d obstacle %d: %s planted', idx, k, link.seed)
             if k == 1 then
-                -- uproot refunds the seed (section 4): X on the growing crop, then plant it again
+                -- uproot refunds the seed (section 4): X (alternate to right-click) on the growing crop, then plant it again
                 local before = back.gameData.seeds[link.seed]
                 press('x')
                 check(plot.crop == nil and back.gameData.seeds[link.seed] == before + 1,

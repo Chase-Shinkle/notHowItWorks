@@ -572,15 +572,25 @@ function Room:plant(plot, seedType, seeds, group)
     return true, crop
 end
 
--- The nearest plot in reach (as nearestPlot) that holds a crop, or nil.
+-- The nearest plot holding a crop that the player at feet (x, y, z) can
+-- uproot, or nil. Distance is measured to the crop's full footprint (its
+-- physical collider is never shrunk, so a grown pumpkin or vine keeps the
+-- player well away from the plot centre) as well as to the plot centre, and
+-- must be within the plot's `reach`; vertically the feet must be within
+-- BACKROOMS_PLANT_HEIGHT of the plot or of the crop's vertical extent.
 function Room:nearestCropPlot(x, y, z)
     local best, bestD
     for _, plot in ipairs(self.plots) do
-        if plot.crop then
+        local crop = plot.crop
+        if crop then
             local dx, dy = plot.pos[1] - x, plot.pos[2] - y
             local d = math.sqrt(dx * dx + dy * dy)
-            if d <= plot.reach and math.abs(plot.pos[3] - z) <= BACKROOMS_PLANT_HEIGHT
-                and (not bestD or d < bestD) then
+            local fx = math.max(crop.min[1] - x, 0, x - crop.max[1])
+            local fy = math.max(crop.min[2] - y, 0, y - crop.max[2])
+            d = math.min(d, math.sqrt(fx * fx + fy * fy))
+            local H = BACKROOMS_PLANT_HEIGHT
+            local zOk = math.abs(plot.pos[3] - z) <= H or (z >= crop.min[3] - H and z <= crop.max[3] + H)
+            if d <= plot.reach and zOk and (not bestD or d < bestD) then
                 best, bestD = plot, d
             end
         end

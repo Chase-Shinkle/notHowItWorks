@@ -340,7 +340,8 @@ function BackroomsState:update(dt)
         return
     end
 
-    local clickPlants = false
+    local clickPlants, clickUproots = false, false
+    if self.mouseCaptured and love.mouse.wasPressed(BACKROOMS_KEYS.uprootMouse) then clickUproots = true end
     if self.mouseCaptured and anyPressed(BACKROOMS_KEYS.releaseMouse) then
         self:setMouseCaptured(false)
     elseif not self.mouseCaptured and love.mouse.wasPressed(1) then
@@ -360,7 +361,7 @@ function BackroomsState:update(dt)
     end
     if anyPressed(BACKROOMS_KEYS.nextSeed) then self:cycleSeed() end
     if clickPlants or anyPressed(BACKROOMS_KEYS.plant) then self:plant() end
-    if anyPressed(BACKROOMS_KEYS.uproot) then self:uproot() end
+    if clickUproots or anyPressed(BACKROOMS_KEYS.uproot) then self:uproot() end
 
     if self.message then
         self.message.time = self.message.time - dt
@@ -452,7 +453,7 @@ function BackroomsState:renderHUD()
     -- (e.g. a 640 px wide window), instead of letting printf wrap mid-phrase
     local font = gFonts['default']
     local hints = self.mouseCaptured
-        and {'WASD: move   mouse: look   E: plant   X: uproot (refund)   Q / 1-3: seed', 'R: reset room   Esc: free mouse'}
+        and {'WASD: move   mouse: look   E: plant   Right-click / X: uproot (refund)   Q / 1-3: seed', 'R: reset room   Esc: free mouse'}
         or {'Click to capture the mouse'}
     local joined = table.concat(hints, '   ')
     if font:getWidth(joined) <= w - 20 then hints = {joined} end
