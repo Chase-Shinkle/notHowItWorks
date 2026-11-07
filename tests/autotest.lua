@@ -220,6 +220,15 @@ local function script()
     shot('03-farm-grown')
     press('e')
     check(Farm.totalCrops(farm.gameData) == 1, 'farm: harvest adds one crop')
+    -- the harvested crop flies to its HUD slot; the count is already right
+    check(#farm.juice.flyers == 1, 'farm: harvest launches one flying crop to the HUD (%d)', #farm.juice.flyers)
+    wait(FX_FLY_TIME + 0.1)
+    check(#farm.juice.flyers == 0, 'farm: the flying crop landed in its slot')
+    -- the look pipeline runs on the real runtime unless turned off
+    local noShader = false
+    for _, a in ipairs(arg or {}) do if a == '--no-shader' then noShader = true end end
+    check(FarmShader.enabled == not noShader, 'farm: look pipeline %s (%s)',
+        FarmShader.enabled and 'enabled' or 'off', tostring(FarmShader.reason))
 
     -- walk to the tile below the villager (8,5) and face up
     for _ = 1, 5 do press('right'); wait(0.05) end
@@ -272,6 +281,12 @@ local function script()
         'farm: back facing the villager at (%d,%d)', farm.player.col, farm.player.row)
 
     -- over-sell -> break
+    -- day counter: day 1 so far; the clock is moved (setup) to 1 s before
+    -- the next dawn, and one real second of play turns it to day 2
+    check(farm:dayNumber() == 1, 'farm: still day %d after the first loop', farm:dayNumber())
+    farm.dayTime = FARM_DAY_LENGTH - 1
+    wait(1.2)
+    check(farm:dayNumber() == 2, 'farm: the day counter goes up at dawn (day %d)', farm:dayNumber())
     local farmSeeds = FormatSeeds(farm.gameData.seeds)
     press('e')
     check(farm.breaking == true, 'farm: over-sell starts the break')

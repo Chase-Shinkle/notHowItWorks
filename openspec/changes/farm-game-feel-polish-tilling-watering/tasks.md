@@ -36,7 +36,7 @@
 
 ## 6. Integration
 
-- [ ] 6.1 Extend `tests/autotest.lua` with a full farm run (till, plant, water, harvest with fly-to-HUD, sell, buy, day counter, break into the backrooms); verify it passes and that debug features remain off in the packaged build.
+- [x] 6.1 Extend `tests/autotest.lua` with a full farm run (till, plant, water, harvest with fly-to-HUD, sell, buy, day counter, break into the backrooms); verify it passes and that debug features remain off in the packaged build.
 - [ ] 6.2 Run `sh tests/check_all.sh` and `sh tools/package.sh` twice and verify all checks pass, the package hash is stable, and the backrooms visuals and carry-over are unchanged.
 - [ ] 6.3 Record results in `openspec/changes/farm-game-feel-polish-tilling-watering/verification.md`, including screenshots of each requirement area; verify every spec scenario has a pass or an explicit manual-check note.
 
