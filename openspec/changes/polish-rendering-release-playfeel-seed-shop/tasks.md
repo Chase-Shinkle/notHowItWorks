@@ -33,5 +33,5 @@
 
 ## 6. Integration
 
-- [ ] 6.1 Run `sh tests/check_all.sh` end to end (headless tests, reachability, launches, playthrough with real and placeholder assets, from source and from the rebuilt `.love`); verify all pass.
-- [ ] 6.2 Play the packaged `.love` once by hand: crisp text and sprites, no F1 effect, plant the Room 2/3 pit from a comfortable distance, buy and plant a seed on the farm; record results in `verification.md`.
+- [x] 6.1 Run `sh tests/check_all.sh` end to end (headless tests, reachability, launches, playthrough with real and placeholder assets, from source and from the rebuilt `.love`); verify all pass.
+- [x] 6.2 Play the packaged `.love` once by hand: crisp text and sprites, no F1 effect, plant the Room 2/3 pit from a comfortable distance, buy and plant a seed on the farm; record results in `verification.md`.

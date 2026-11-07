@@ -198,3 +198,81 @@ itself.
   and vine only, Room 3 lists all three, and the playthrough completes (120
   real / 112 placeholder checks, 0 failed). Screenshot
   `06-room1-arrival-zoom.png` shows the Room 1 HUD.
+
+## 6. Integration
+
+- 6.1 `sh tests/check_all.sh` end to end at the section 5 commit: **ALL CHECKS
+  PASSED**.
+
+  | Check | Baseline (`1e76973`) | Now |
+  |-------|-----------------------|-----|
+  | headless tests (`tests/run.lua`) | 105 passed | **124 passed, 0 failed** |
+  | reachability sweep | 84 searched, 0 unexpected | 84 searched, 0 unexpected |
+  | pit-rim measurement (`tests/rim.lua`, new) | - | ok (2.53 m / 2.54 m) |
+  | plain launch 8 s, real / placeholder | ok / ok | ok / ok |
+  | autotest from source, real / placeholder | 82 / 74 checks | **120 / 112 checks, 0 failed** |
+  | package, two builds | same sha256 | same sha256 `687f945c...25d5`, 282 files, no dev-only files |
+  | artifact launch 8 s, real / placeholder | ok / ok | ok / ok |
+  | artifact autotest, real / placeholder | 82 / 74 | **120 / 112, 0 failed** |
+  | artifact autotest `--debug` (new) | - | **117 checks, 0 failed** |
+
+- 6.2 **This was a scripted playthrough, not a human one.** No person played
+  the build. The closest available substitute was two scripted runs of the
+  packaged `.love`, with screenshots in `/workspace/qa/polish/` (see its
+  `README.md`), all under Xvfb + Mesa llvmpipe.
+  1. The packaged autotest (`love <.love> --autotest`, plus `--debug`): 120
+     and 117 checks, 0 failed. Input goes through the game's own handlers at a
+     fixed 1/60 s step. Close-ups of HUD text, sprites, the stall, the Room 1
+     HUD and the pit prompt are included.
+  2. A real-input session on the **plain packaged build** (`love <.love>`, no
+     autotest code loaded). `drive_packaged.sh` sends real X key and mouse
+     events with xdotool on a wall-clock schedule and grabs the screen with
+     ffmpeg. The game's console log confirms each step. Results:
+     - Crisp text and sprites: farm HUD, seed bags, hero, stall and backrooms
+       HUD are sharp in every grab. `m1-farm-hud-before/after` zooms show the
+       blur gone. Wall and floor textures are smooth with no mipmap artifacts.
+     - No F1 effect: F1 on the start screen, the farm and Room 1 left the state
+       unchanged. No debug marker, debug line or FPS text appeared anywhere.
+     - Seed stall: facing it showed `[E] buy beanstalk seed (2c)`. A real
+       mouse click on it bought a seed (3c -> 1c, beanstalk x1 -> x2, popup
+       `+1 beanstalk -2c`). E with 1c was denied (`beanstalk seed costs 2c
+       (have 1c)`). The bought seed was then planted on plot (4,5), the farm
+       was over-sold and the break played.
+     - Room 1 HUD: `[1 beanstalk x1]` only, no coins, while holding
+       `beanstalk=1 pumpkin=2 vine=2`. The keys 2, 3 and Q changed nothing.
+     - Pit from a comfortable distance: Room 2 showed the "E / click: plant
+       pumpkin" prompt and planted at about 1.4 m back from the rim. Room 3
+       planted the pit from the spawn, 2 m back from the rim. Both crossings
+       and the beanstalk climb worked, and the run reached the ending
+       (`[ending] escaped the backrooms with seeds: beanstalk=1 pumpkin=1
+       vine=1`).
+     - The packaged build with `--debug` (`drive_packaged_debug.sh`): F1
+       skipped start -> farm -> Room 1 -> Room 2. The farm showed the `f1`
+       marker and the backrooms showed `f1: debug skip room fps: 207`.
+
+  Honest limits: the script cannot see the screen while playing, so it
+  presses R on arriving in Rooms 2 and 3 to start from a known spot. In a
+  first attempt without that, a long blind `w` hold overshot the Room 2 rim
+  three times, falling and respawning (the designed behaviour). Feel, timing,
+  readability on a real monitor or GPU, and sound (still no audio files) have
+  not been judged by a person.
+
+### Deviations and new issues
+
+- **Pit reach is 3.8 m, not the design's about 2.6 m** (see section 3): at
+  2.6 m tasks 3.1 and 3.3 cannot be met. The design and spec wording ("about
+  2.6 m") could be updated to 3.8 m in a later artifact pass. The specs
+  themselves (at least 2.5 m, 1.0 m or more back) are met.
+- The `openspec` CLI is not installed, so the apply workflow was followed by
+  hand against `tasks.md`.
+- `lib/push.lua`'s `push:toReal` ignores the scale (it is marked TODO in the
+  library). The autotest inverts `push:toGame` itself for the real-cursor
+  stall click. The game does not use `toReal`.
+- New, not fixed (out of scope):
+  - Pressing a hidden seed key in the backrooms gives no feedback. A player in
+    Room 2 who presses 1 sees nothing happen.
+  - The pit prompt and the "Room reset" message are drawn over the exit
+    marker near the crosshair (this was already the case).
+  - The ending subtitle reads "its supposed to" (this was already the case).
+- `dist/` is git-ignored. The package is rebuilt by `sh tools/package.sh`
+  and was not committed.
