@@ -73,6 +73,10 @@ a:update(0, p)
 walk(a, p, BACKROOMS_FOOTSTEP_STRIDE * 200, 0.1)
 check(#seq >= 190, 'many steps played')
 check(repeats == 0, 'no footstep index twice in a row')
+local ordered = true
+for k, i in ipairs(seq) do if i ~= (k - 1) % 5 + 1 then ordered = false end end
+check(ordered, 'footsteps cycle 1..5 in order')
+check(BACKROOMS_FOOTSTEP_PITCH_VARIATION <= 0.03 and BACKROOMS_FOOTSTEP_VOLUME_VARIATION <= 0.03, 'variation <= 3%')
 local seen = {}
 for _, i in ipairs(seq) do seen[i] = true end
 check(#seq > 0 and seen[1] and seen[5], 'all five sounds are used')

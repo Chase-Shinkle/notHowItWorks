@@ -35,14 +35,12 @@ function BackroomsAudio:reset()
     self.lastX, self.lastY = nil, nil
 end
 
--- Picks a footstep index that differs from the previous one.
+-- Cycles the footsteps 1..n in order (no randomness).
 function BackroomsAudio:pickIndex()
     local n = #self.footsteps
     if n <= 1 then return 1 end
-    local i = self.rng(1, n - 1)
-    if self.lastIndex and i >= self.lastIndex then i = i + 1 end
-    self.lastIndex = i
-    return i
+    self.lastIndex = (self.lastIndex or 0) % n + 1
+    return self.lastIndex
 end
 
 function BackroomsAudio:playStep()
