@@ -2947,7 +2947,7 @@ end)
 test('hud: seeds | divider | produce, coin icon and day; nothing overlaps with three-digit counts', function()
     local farm = toFarm()
     for _, t in ipairs(SEED_TYPES) do farm.gameData.seeds[t] = 999; farm.gameData.crops[t] = 999 end
-    farm.gameData.coins = 999; farm.displayCoins = 999; farm.day = 999
+    farm.gameData.coins = 999; farm.displayCoins = 999; farm.dayTime = 998.5 * FARM_DAY_LENGTH
     local L = farm:hudLayout()
     local font = gFonts['small']
     -- worst case text width: the mock font or LÖVE 11.5's 8 px font (5 px per digit/char, measured)
@@ -3179,6 +3179,184 @@ test('decor: ambient sway and shimmer move with time but tile positions never ch
     local t = farm.time
     run(1)
     eq(farm.time, t, 'ambient time frozen during the break')
+end)
+
+-- farm game feel: day cycle and shader pass (section 5) --------------------------------
+-- A stand-in compiled pass, so the shader path can be checked headless.
+local function fakePass()
+    local sent = {}
+    local shader = {sent = sent}
+    function shader:hasUniform() return true end
+    function shader:send(name, v) sent[name] = v end
+    local canvas = {setFilter = function() end}
+    FarmShader.reset()
+    FarmShader.tried, FarmShader.enabled, FarmShader.shader, FarmShader.canvas = true, true, shader, canvas
+    return shader, canvas
+end
+
+test('day: a new farm is day 1 in full daylight; the counter goes up at each dawn', function()
+    local farm = toFarm()
+    eq(farm:dayNumber(), 1)
+    local t = farm:dayTint()
+    eq(t[1] + t[2] + t[3], 3, 'not tinted at the start')
+    run(FARM_DAY_LENGTH * (1 - FARM_DAY_START_PHASE) - 0.2)
+    eq(farm:dayNumber(), 1, 'still day 1 just before dawn')
+    assert(farm:dayPhase() > 0.99, 'end of the night')
+    run(0.4)
+    eq(farm:dayNumber(), 2, 'new dawn, new day'); assert(farm:dayPhase() < 0.01, 'cycle restarted')
+    run(FARM_DAY_LENGTH)
+    eq(farm:dayNumber(), 3)
+end)
+
+test('day: the tint runs dawn warm -> day neutral -> dusk orange -> night cool and darker, night stays readable', function()
+    loadGame()
+    local function luma(c) return 0.299 * c[1] + 0.587 * c[2] + 0.114 * c[3] end
+    local dawn, day, dusk, night = FarmDayTint(0.02), FarmDayTint(0.4), FarmDayTint(0.66), FarmDayTint(0.84)
+    assert(dawn[1] > dawn[3], 'dawn warm'); eq(day[1] + day[2] + day[3], 3, 'day neutral')
+    assert(dusk[1] > dusk[2] and dusk[2] > dusk[3], 'dusk orange')
+    assert(night[3] > night[1] and luma(night) < luma(day), 'night cool and darker')
+    local darkest = 1
+    for i = 0, 100 do darkest = math.min(darkest, luma(FarmDayTint(i / 100))) end
+    assert(darkest >= 0.65, 'darkest point keeps ~0.7 brightness (' .. darkest .. ')')
+    -- continuous across the wrap
+    local a, b = FarmDayTint(0.9999), FarmDayTint(0)
+    assert(math.abs(a[1] - b[1]) + math.abs(a[2] - b[2]) + math.abs(a[3] - b[3]) < 0.01, 'no jump at dawn')
+end)
+
+test('day: growth takes the same time across a day boundary; the clock pauses in the break', function()
+    local farm = farmAtVillager({crops = {beanstalk = 1}})
+    local plot = farm:plotAt(FARM_PLOTS.col, FARM_PLOTS.row)
+    farm.dayTime = FARM_DAY_LENGTH - 5                  -- 5 s before the next dawn
+    plot.tilled = true; Farm.plant(plot, farm.gameData, 'beanstalk'); Farm.water(plot)
+    local t = 0
+    while plot.state ~= PLOT_MATURE and t < 30 do step(); t = t + 1 / 60 end
+    eq(farm:dayNumber(), 2, 'crossed into day 2 while growing')
+    assert(math.abs(t - Farm.growthTime(true)) < 0.05, 'matured in ' .. t .. ' s across the boundary')
+    press('e'); press('e')                              -- sell, over-sell
+    eq(farm.breaking, true)
+    local clock = farm.dayTime
+    run(1.5)
+    eq(farm.dayTime, clock, 'time of day frozen during the break')
+end)
+
+test('shader: headless (no GL) falls back once with a logged reason; the tint overlay keeps the cycle visible', function()
+    local farm = toFarm()
+    run(0.2); love.draw(); love.draw()
+    eq(FarmShader.enabled, false)
+    local logged = 0
+    for _, line in ipairs(mock.printed) do if line:find('[farm-shader] disabled', 1, true) then logged = logged + 1 end end
+    eq(logged, 1, 'reason logged once')
+    -- at night the fallback multiplies the view by the night tint, before the HUD
+    farm.dayTime = 0.84 * FARM_DAY_LENGTH
+    mock.reset(); love.draw()
+    local night = farm:dayTint()
+    local overlayAt, hudAt
+    for i, c in ipairs(mock.calls) do
+        if c.name == 'setBlendMode' and c.args[1] == 'multiply' then overlayAt = overlayAt or i end
+        if c.name == 'print' and c.args[1] == 'Day 1' then hudAt = i end
+    end
+    assert(overlayAt and hudAt and overlayAt < hudAt, 'tint overlay before the HUD text')
+    local col = mock.calls[overlayAt + 1]
+    eq(col.name, 'setColor'); eq(col.args[1], night[1]); eq(col.args[3], night[3])
+end)
+
+test('shader: --no-shader forces the same fallback path and the farm stays playable', function()
+    local f2 = toFarm({'--no-shader'})
+    love.draw()
+    eq(FarmShader.forceOff, true); eq(FarmShader.enabled, false)
+    assert(FarmShader.reason:find('no-shader', 1, true), FarmShader.reason)
+    tillPlantWater()
+    eq(f2:facingTarget().plot.watered, true, 'playable without the pass')
+end)
+
+test('shader: the scene goes into the farm canvas and through the pass; text and HUD are drawn after it', function()
+    local farm = toFarm()
+    local shader, canvas = fakePass()
+    mock.reset(); love.draw()
+    local setCanvasTo, shaderOn, shaderOff, drawCanvas, hud
+    for i, c in ipairs(mock.calls) do
+        if c.name == 'setCanvas' and c.args[1] == canvas then setCanvasTo = setCanvasTo or i end
+        if c.name == 'setShader' and c.args[1] == shader then shaderOn = i end
+        if c.name == 'setShader' and c.args[1] == nil and shaderOn then shaderOff = shaderOff or i end
+        if c.name == 'draw' and c.args[1] == canvas then drawCanvas = i end
+        if c.name == 'print' and c.args[1] == 'Day 1' then hud = i end
+    end
+    assert(setCanvasTo and shaderOn and drawCanvas and shaderOff and hud, 'pass ran')
+    assert(setCanvasTo < shaderOn and shaderOn < drawCanvas and drawCanvas < shaderOff and shaderOff < hud,
+        'scene -> canvas -> shader -> HUD after the pass')
+    eq(mock.count('setBlendMode'), 0, 'no fallback overlay while the pass is on')
+    -- uniforms come from the constants and the day tint
+    local u = shader.sent
+    eq(u.bloomStrength, FARM_FX_BLOOM); eq(u.sunStrength, FARM_FX_SUN); eq(u.shaftStrength, FARM_FX_SHAFT)
+    eq(u.glimmerStrength, FARM_FX_GLIMMER); eq(u.bloomThreshold, FARM_FX_BLOOM_THRESHOLD)
+    eq(u.dayTint[1], 1); assert(u.daylight > 0.9, 'daylight at the start')
+    farm.dayTime = 0.84 * FARM_DAY_LENGTH
+    love.draw()
+    eq(u.dayTint[3], farm:dayTint()[3]); assert(u.daylight < 0.1, 'night: no sun')
+end)
+
+test('shader: every look constant is a uniform; zeroing one changes only that uniform', function()
+    loadGame()
+    local fh = assert(io.open('shaders/farm.glsl', 'r')); local src = fh:read('*a'); fh:close()
+    local base = FarmShader.uniforms({time = 3, tint = {1, 1, 1}})
+    for name in pairs(base) do
+        assert(src:find('uniform %w+ ' .. name .. ';'), 'shader declares ' .. name)
+    end
+    for _, c in ipairs({{'FARM_FX_BLOOM', 'bloomStrength'}, {'FARM_FX_SUN', 'sunStrength'},
+            {'FARM_FX_SHAFT', 'shaftStrength'}, {'FARM_FX_GLIMMER', 'glimmerStrength'}}) do
+        local saved = _G[c[1]]
+        _G[c[1]] = 0
+        local u = FarmShader.uniforms({time = 3, tint = {1, 1, 1}})
+        _G[c[1]] = saved
+        for name, v in pairs(base) do
+            if name == c[2] then eq(u[name], 0, c[1] .. ' -> ' .. name)
+            else
+                local function ser(x) return type(x) == 'table' and table.concat(x, ',') or tostring(x) end
+                eq(ser(u[name]), ser(v), c[1] .. ' leaves ' .. name)
+            end
+        end
+    end
+end)
+
+test('shader: during the break the pass is plain and corruption and the fade are drawn on top of it', function()
+    local farm = farmAtVillager({hasSold = true})
+    local shader, canvas = fakePass()
+    press('e')
+    eq(farm.breaking, true)
+    farm.dayTime = 0.84 * FARM_DAY_LENGTH                -- even at night: no tint in the break
+    run(FARM_BREAK_GLITCH_TIME + FARM_BREAK_FALL_TIME * 0.5)
+    mock.reset(); love.draw()
+    local u = shader.sent
+    eq(u.dayTint[1] + u.dayTint[2] + u.dayTint[3], 3, 'tint zeroed')
+    eq(u.bloomStrength, 0); eq(u.sunStrength, 0); eq(u.shaftStrength, 0); eq(u.glimmerStrength, 0)
+    local shaderOff, lastFill, fadeAlpha
+    for i, c in ipairs(mock.calls) do
+        if c.name == 'setShader' and c.args[1] == nil then shaderOff = i end
+        if c.name == 'rectangle' and c.args[1] == 'fill' then lastFill = i end
+        if c.name == 'setColor' and c.args[1] == 0 and c.args[2] == 0 and c.args[3] == 0 then fadeAlpha = c.args[4] end
+    end
+    assert(shaderOff and lastFill > shaderOff, 'corruption and fade after the pass')
+    assert(fadeAlpha and fadeAlpha > 0, 'fade drawn')
+    local fillsAfter = 0
+    for i = shaderOff, #mock.calls do
+        local c = mock.calls[i]
+        if c.name == 'rectangle' and c.args[1] == 'fill' then fillsAfter = fillsAfter + 1 end
+    end
+    assert(fillsAfter > 5, 'corruption blocks drawn outside the pass (' .. fillsAfter .. ')')
+    run(BREAK_TIME)
+    eq(gStateMachine.current.usesPush, false, 'reached the backrooms')
+end)
+
+test('shader: the backrooms never uses the farm pass', function()
+    local fh = assert(io.open('src/states/game/BackroomsState.lua', 'r')); local src = fh:read('*a'); fh:close()
+    assert(not src:find('FarmShader', 1, true), 'BackroomsState does not reference FarmShader')
+    local back = toBackrooms({beanstalk = 1})
+    local shader = fakePass()
+    mock.reset(); love.draw()
+    for _, c in ipairs(mock.calls) do
+        assert(not (c.name == 'setShader' and c.args[1] == shader), 'farm shader set in the backrooms')
+    end
+    eq(next(shader.sent), nil, 'no uniforms sent')
 end)
 
 realPrint(string.format('\n%d passed, %d failed', passed, failed))

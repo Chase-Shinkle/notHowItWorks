@@ -178,6 +178,39 @@ FX_TICKER_MIN_SPEED = 8     -- coin ticker: minimum coins per second
 FX_COIN_TICK_INTERVAL = 0.06 -- minimum seconds between coin tick sounds
 FARM_SFX_VOLUME = 0.6       -- volume of the generated farm sound effects
 
+-- Farm day cycle ---------------------------------------------------------------
+-- A day lasts FARM_DAY_LENGTH seconds of farm time (paused during the break)
+-- and runs dawn -> day -> dusk -> night; the day counter goes up at each new
+-- dawn (phase 0). A new farm starts at FARM_DAY_START_PHASE, in full
+-- daylight. FARM_DAY_TINTS are keyframes {phase, {r, g, b}} multiplied over
+-- the farm view (by the shader, or by a fallback overlay); night stays at
+-- about 0.7 brightness so the farm is still readable.
+FARM_DAY_LENGTH = 90
+FARM_DAY_START_PHASE = 0.2
+FARM_DAY_TINTS = {
+    {0.00, {1.00, 0.84, 0.72}},     -- dawn: warm
+    {0.10, {1.00, 0.95, 0.88}},
+    {0.18, {1.00, 1.00, 1.00}},     -- day: neutral
+    {0.55, {1.00, 1.00, 1.00}},
+    {0.66, {1.00, 0.80, 0.62}},     -- dusk: orange
+    {0.76, {0.64, 0.68, 0.92}},     -- night: cool and darker
+    {0.92, {0.64, 0.68, 0.92}},
+    {1.00, {1.00, 0.84, 0.72}},     -- back to dawn
+}
+
+-- Farm post-process shader (shaders/farm.glsl via src/FarmShader.lua) ---------------
+-- Every strength is a uniform, so the look is tuned here, not in the GLSL.
+-- Setting one to 0 removes that effect only. Initial defaults, not yet
+-- tuned (tuning follows the shader/look review).
+FARM_FX_SUN = 0.12                      -- warm multiply toward FARM_FX_SUN_COLOR (by day)
+FARM_FX_SUN_COLOR = {1.0, 0.93, 0.78}
+FARM_FX_SHAFT = 0.06                    -- diagonal light shafts (by day)
+FARM_FX_SHAFT_SPEED = 0.03              -- shaft drift (screen widths per second)
+FARM_FX_BLOOM = 0.35                    -- glow added from bright areas
+FARM_FX_BLOOM_THRESHOLD = 0.7           -- luminance where bloom starts
+FARM_FX_GLIMMER = 0.6                   -- sparkle on very bright pixels (ripe crops, pond)
+FARM_FX_GLIMMER_THRESHOLD = 0.8         -- luminance where glimmer starts
+
 -- The break (over-sell -> glitch -> fall) ----------------------------------------
 -- After the first sale the villager keeps asking for crops. Trying to sell
 -- with zero crops (once hasSold is true) starts the break; so does going

@@ -83,6 +83,7 @@ function FarmState:enter(gameData)
     self.displayCoins = self.gameData.coins or 0   -- the HUD's ticking coin count
     self.coinTickTimer = 0
     self.time = 0                         -- seconds on the farm outside the break (ambient motion)
+    self.dayTime = FARM_DAY_START_PHASE * FARM_DAY_LENGTH   -- day cycle clock, paused in the break
     self.villagerLine = nil               -- {text, time left}
 
     -- the break
@@ -564,13 +565,23 @@ function FarmState:update(dt)
     self.player.drawY = self.player.drawY + (ty - self.player.drawY) * k
 
     self.time = self.time + dt
+    self.dayTime = self.dayTime + dt
     self:updateEffects(dt)
     self:updateVillager(dt)
 end
 
--- The day number shown in the HUD.
+-- Day cycle: phase 0..1 within the current day (0 = dawn), the day number
+-- (1 on a new farm, +1 at each dawn) and the tint for the current phase.
+function FarmState:dayPhase()
+    return (self.dayTime % FARM_DAY_LENGTH) / FARM_DAY_LENGTH
+end
+
 function FarmState:dayNumber()
-    return self.day or 1
+    return math.floor(self.dayTime / FARM_DAY_LENGTH) + 1
+end
+
+function FarmState:dayTint()
+    return FarmDayTint(self:dayPhase())
 end
 
 -- Bottom-bar hint for the seed stall: the selected type and its price.
@@ -1033,25 +1044,61 @@ function FarmState:renderCorruption()
     end
 end
 
+-- Draws `drawScene` either into the farm canvas and then through the shader
+-- (into push's canvas), or, without the pass, straight through followed by a
+-- multiply overlay of the day tint (skipped when `plain`).
+function FarmState:drawThroughPass(drawScene, plain)
+    if FarmShader.init() then
+        local target = love.graphics.getCanvas()
+        love.graphics.push('all')
+        love.graphics.setCanvas(FarmShader.canvas)
+        love.graphics.origin()
+        love.graphics.clear(0, 0, 0, 1)
+        drawScene()
+        love.graphics.pop()
+        love.graphics.setCanvas(target)
+        FarmShader.send(FarmShader.uniforms({time = self.time, tint = self:dayTint(), plain = plain}))
+        love.graphics.setShader(FarmShader.shader)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(FarmShader.canvas, 0, 0)
+        love.graphics.setShader()
+        return true
+    end
+    drawScene()
+    if not plain then
+        local t = self:dayTint()
+        love.graphics.setBlendMode('multiply', 'premultiplied')
+        love.graphics.setColor(t[1], t[2], t[3], 1)
+        love.graphics.rectangle('fill', 0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT)
+        love.graphics.setBlendMode('alpha')
+    end
+    return false
+end
+
 -- The break: the shaking farm lurches up and away while the farmer drops
--- through it, corruption spreads, and the screen fades to black.
+-- through it, corruption spreads, and the screen fades to black. The scene
+-- goes through the pass with the tint and every lighting effect zeroed; the
+-- corruption and the fade are drawn on top, outside it, so nothing softens
+-- or hides them.
 function FarmState:renderBreak()
     local fx = self.fx
     local sx = (math.random() * 2 - 1) * fx.shake
     local sy = (math.random() * 2 - 1) * fx.shake
     local drop = fx.fall * fx.fall
 
-    love.graphics.push()
-    love.graphics.translate(sx, sy - drop * VIRTUAL_HEIGHT * 0.5)
-    self:renderField()
-    self:renderVillagerLine()
-    love.graphics.pop()
+    self:drawThroughPass(function()
+        love.graphics.push()
+        love.graphics.translate(sx, sy - drop * VIRTUAL_HEIGHT * 0.5)
+        self:renderField()
+        self:renderVillagerLine()
+        love.graphics.pop()
 
-    love.graphics.push()
-    love.graphics.translate(sx, sy)
-    self:renderPlayer(drop * VIRTUAL_HEIGHT, fx.fall * 6)
-    self:renderHUD()
-    love.graphics.pop()
+        love.graphics.push()
+        love.graphics.translate(sx, sy)
+        self:renderPlayer(drop * VIRTUAL_HEIGHT, fx.fall * 6)
+        self:renderHUD()
+        love.graphics.pop()
+    end, true)
 
     self:renderCorruption()
     love.graphics.setColor(0, 0, 0, fx.fall)
@@ -1059,21 +1106,25 @@ function FarmState:renderBreak()
     love.graphics.setColor(1, 1, 1, 1)
 end
 
+-- The field, characters and effects go through the post-process pass; the
+-- speech bubble, popups, HUD and flying pickups are drawn after it, so text
+-- stays crisp and readable at night.
 function FarmState:render()
     if self.breaking then
         self:renderBreak()
         return
     end
 
-    self:renderField()
-    self:renderHighlights()
-    self:renderPlayer()
-    self:renderTool()
+    self:drawThroughPass(function()
+        self:renderField()
+        self:renderHighlights()
+        self:renderPlayer()
+        self:renderTool()
+        self.juice:drawParticles()
+    end)
+
     self:renderVillagerLine()
-
-    self.juice:drawParticles()
     self.juice:drawPopups(gFonts['small'])
-
     self:renderHUD()
     self.juice:drawFlyers()               -- harvested crops fly into the HUD
     love.graphics.setColor(1, 1, 1, 1)

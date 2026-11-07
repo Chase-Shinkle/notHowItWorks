@@ -47,6 +47,18 @@ requests a 24-bit depth buffer for the window.
   and a pond. Fence, barn, well, bushes and pond block movement (you turn to
   face them); the path and the scattered tufts and stones do not. Every plot,
   the villager and the stall stay reachable from the start (a test checks).
+- Day cycle: a `FARM_DAY_LENGTH` (90 s) day runs dawn -> day -> dusk -> night
+  and tints the farm (`FARM_DAY_TINTS`); the HUD day counter goes up at each
+  dawn. A new farm starts on day 1 in daylight. It pauses during the break
+  and changes no rules (growth, prices, break timers, carry-over).
+- Look: the farm is drawn through one post-process shader
+  (`shaders/farm.glsl`, `src/FarmShader.lua`): warm sun and light shafts,
+  soft bloom, glimmer on very bright pixels and the day tint, all tuned by the
+  `FARM_FX_*` constants. HUD, speech bubble and popups are drawn after it.
+  If the shader cannot compile (or with `love . --no-shader`) the farm is
+  drawn without it plus a day-tint overlay, and the reason is logged once.
+  During the break the pass is neutral, so corruption and the fade stay
+  crisp. The backrooms never uses it.
 - Names: the `vine` seed type is shown to the player as "corn" everywhere
   (`SEED_DISPLAY_NAMES` / `SeedName`); internal keys and art are unchanged.
 
@@ -94,6 +106,11 @@ requests a 24-bit depth buffer for the window.
   respawns you at the room start with your crops and seeds kept.
 
 ## Debug / testing
+
+- `love . --farm-shots` (development only, `tests/farm_shots.lua`): real
+  runtime reviewer captures of the farm into `$SHOTS_OUT` (default
+  `/tmp/farm-shots`), with real-font HUD layout and shader fallback checks;
+  add `--no-shader` / `--placeholder-assets` for the other render paths.
 
 - Debug mode is off by default (including in the packaged `.love`). Launch
   with `love . --debug` to turn it on; then `F1` advances

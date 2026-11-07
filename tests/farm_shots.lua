@@ -134,7 +134,7 @@ end)
 scene('hud', function()
     local farm = newFarm({seeds = {beanstalk = 999, pumpkin = 0, vine = 120}, crops = {beanstalk = 999, pumpkin = 105, vine = 0},
         coins = 999})
-    farm.day = 999                                -- setup: worst-case day width
+    farm.dayTime = 998.4 * FARM_DAY_LENGTH        -- setup: day 999 (worst-case width), daytime phase
     farm:selectSeed('pumpkin')                    -- selected and empty: dimmed but outlined
     wait(0.3)
     shot('hud-three-digit-counts', 'counts, coins and day set to three digits directly (setup); pumpkin selected with 0 seeds; empty produce dimmed',
@@ -210,6 +210,76 @@ scene('characters-data', function()
     check(ok1 and ok2 and differ > 30 and not Assets.isPlaceholder(gTextures['villager']),
         'villager.png loaded as gTextures.villager and differs from the hero in %d pixels', differ)
     coroutine.yield()
+end)
+
+scene('day-cycle', function()
+    local farm = newFarm({crops = {pumpkin = 1, beanstalk = 3}, coins = 12})
+    -- setup: a few crops in the plots so the tint is seen on them
+    for i, p in ipairs(farm.plots) do
+        if i <= 4 then p.tilled = true; Farm.plant(p, farm.gameData, 'pumpkin'); Farm.water(p); Farm.advance(p, i * 3) end
+    end
+    face(farm, 6, 5, 'up')
+    for _, c in ipairs({{'dawn', 0.03}, {'dusk', 0.66}, {'night', 0.84}}) do
+        farm.dayTime = c[2] * FARM_DAY_LENGTH       -- setup: jump the clock to this phase
+        wait(0.3)
+        shot('day-' .. c[1], string.format('clock set to phase %.2f (%s) directly (setup), then 0.3 s of play', c[2], c[1]))
+    end
+end)
+
+scene('ripe', function()
+    local farm = newFarm()
+    -- setup: every plot mature (glimmer/bloom on the ripe markers and pond)
+    for _, p in ipairs(farm.plots) do
+        p.tilled = true; Farm.plant(p, farm.gameData, 'pumpkin') ; Farm.advance(p, 100)
+        if (farm.gameData.seeds.pumpkin or 0) == 0 then farm.gameData.seeds.pumpkin = 2 end
+    end
+    face(farm, 6, 7, 'down')
+    wait(1.0)
+    shot('ripe-crops-daylight', 'setup: all six plots planted and advanced to mature directly; 1 s of idle play',
+        {0, FARM_TILE * 3 - 16, FARM_TILE * 6, FARM_TILE * 3, 3})
+    -- pond close-up for the shimmer/glimmer
+    shot('pond-closeup', 'same frame sequence, pond and well', {FARM_TILE * 7, FARM_TILE * 6, FARM_TILE * 3, FARM_TILE * 3, 4})
+end)
+
+scene('compile-failure', function()
+    if not FarmShader.enabled and FarmShader.forceOff then
+        log('compile-failure scene skipped: the pass is already off (--no-shader)')
+        return
+    end
+    -- force a compile failure at runtime: bad GLSL, then re-init
+    FarmShader.reset()
+    -- a well-formed effect() whose body does not compile (undeclared name),
+    -- so the failure comes from the GLSL compiler itself
+    FarmShader.sourceOverride = 'vec4 effect(vec4 c, Image t, vec2 uv, vec2 sc) { return Texel(t, uv) * notDeclared; }'
+    local farm = newFarm()
+    wait(0.2)
+    check(FarmShader.enabled == false and tostring(FarmShader.reason):find('compile failed', 1, true) ~= nil,
+        'forced compile failure falls back (%s)', tostring(FarmShader.reason))
+    press('e'); press('e'); press('e')            -- till, plant, water by real input
+    local plot = farm:plotAt(3, 5)
+    check(plot.tilled and plot.state == PLOT_GROWING and plot.watered, 'farm plays without the pass (tilled, planted, watered)')
+    wait(0.5)
+    shot('compile-failure-fallback', 'shader source replaced at runtime by GLSL that fails to compile (setup); farm drawn by the fallback path after three real E presses')
+    FarmShader.sourceOverride = nil
+    FarmShader.reset()
+    wait(0.1)
+    check(FarmShader.enabled == true, 'pass restored after the forced failure')
+end)
+
+scene('break', function()
+    local farm = newFarm({hasSold = true, crops = {}})
+    face(farm, FARM_VILLAGER.col - 1, FARM_VILLAGER.row, 'right')
+    wait(0.3)
+    press('e')                                    -- real over-sell starts the break
+    check(farm.breaking, 'over-sell started the break')
+    wait(FARM_BREAK_GLITCH_TIME * 0.6)
+    shot('break-mid', 'real over-sell, then 60% of the glitch phase: shake + corruption')
+    wait(FARM_BREAK_GLITCH_TIME * 0.4 + FARM_BREAK_FALL_TIME * 0.6)
+    shot('break-fade', 'fall phase at ~60%: farmer dropping, fade to black over corruption')
+    wait(FARM_BREAK_FALL_TIME)
+    check(gStateMachine.current.usesPush == false, 'break ended in the backrooms')
+    wait(0.3)
+    shot('backrooms-after-break', 'backrooms room 1 right after the break (no farm pass)')
 end)
 
 -- Main loop ---------------------------------------------------------------------

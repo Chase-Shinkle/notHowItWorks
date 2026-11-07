@@ -12,6 +12,7 @@ require 'src/Geometry'
 require 'src/GameData'
 require 'src/Farm'
 require 'src/Fx'
+require 'src/FarmShader'
 require 'src/PlayerController'
 require 'src/Billboard'
 require 'src/Crop'
@@ -29,9 +30,12 @@ require 'src/states/game/EndingState'
 --   equivalent to launching with empty asset folders.
 --   `love . --debug` turns on DEBUG_MODE (F1 skip, debug HUD text); it is off
 --   otherwise, including in the packaged release.
+--   `love . --no-shader` draws the farm without its post-process pass (the
+--   same path as a shader that fails to compile).
 for _, a in ipairs(arg or {}) do
     if a == '--placeholder-assets' then Assets.forcePlaceholders = true end
     if a == '--debug' then DEBUG_MODE = true end
+    if a == '--no-shader' then FarmShader.forceOff = true end
 end
 
 local FARM_PACK = 'graphics/Farming - Crops Pack 017/'
