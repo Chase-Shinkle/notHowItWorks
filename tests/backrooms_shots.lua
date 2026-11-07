@@ -13,6 +13,12 @@
 --   BR_POSES    comma list of pose names (default: all)
 --   BR_PRESET   lighting preset forced on every level (bright|dim|single-bulb|near-dark)
 --   BR_BAD_SHADER=1  compile garbage instead of shaders/backrooms.glsl (real-runtime failure path)
+--   BR_BAD_POST=1    compile garbage instead of shaders/backrooms_post.glsl (post rung falls away, look stays)
+--   BR_SCENES   comma list of scene names (see SCENES) added after the POSES; BR_POSES=none
+--               skips the fixed poses. Scenes aim the camera at things in the generated level
+--               (module obstacle, plot + crop, pickup, exit, prop, nook); BR_LEVELS picks the level
+--               (module scenes search levels 2.. for the first one with that obstacle).
+--   quality: pass --quality=high|medium|low on the command line (BackroomsLook.setQuality).
 --   BR_MODE     "shots", "perf" or "both" (default both)
 --   BR_WARMUP   perf warm-up frames per pose (default 90)
 --   BR_FRAMES   timed frames per pose (default 300)
@@ -46,6 +52,7 @@ local function list(env, default)
 end
 local LEVELS = list('BR_LEVELS', '1,2')
 local ONLY_POSES = os.getenv('BR_POSES') and list('BR_POSES', '') or nil
+local SCENE_NAMES = os.getenv('BR_SCENES') and list('BR_SCENES', '') or {}
 os.execute('mkdir -p "' .. OUT .. '"')
 io.stdout:setvbuf('line')
 local function log(fmt, ...) print(string.format('[backrooms-shots] ' .. fmt, ...)) end
@@ -59,12 +66,83 @@ local POSES = {
     {name = 'ceiling', dx = 8, yaw = 0, pitch = 0.45},
 }
 
+-- Scenes: pose.fn(room, state) -> feet x, y, z, yaw, pitch (nil: scene absent in this level).
+-- Everything is derived from the room data, so a seed gives the same picture.
+local CELL = LEVELGEN_CELL or 6
+-- stand ~dist from (x, y, z) on the side of its cell's centre line, looking at it
+local function aimAt(x, y, z, dist)
+    local cx, cy = math.floor(x / CELL), math.floor((y + CELL / 2) / CELL)
+    local mx, my = cx * CELL + CELL / 2, cy * CELL
+    local dx, dy = x - mx, y - my
+    local d = math.sqrt(dx * dx + dy * dy)
+    if d < 0.3 then dx, dy, d = 1, 0, 1 end
+    local ux, uy = dx / d, dy / d
+    local sx, sy = x - ux * dist, y - uy * dist
+    return sx, sy, z, math.atan2(uy, ux), -0.12
+end
+local function moduleScene(name)
+    return function(room)
+        for _, c in ipairs(room.data.meta and room.data.meta.cells or {}) do
+            if c.module == name then
+                local x0 = c.cx * CELL
+                return x0 + 0.4, c.cy * CELL, c.elev, 0, -0.25
+            end
+        end
+    end
+end
+local function plotScene(room, state)
+    local plot = room.plots[1]
+    if not plot then return end
+    if not plot.crop then
+        local seed = room.data.meta and room.data.meta.chain and room.data.meta.chain[1].seed or 'pumpkin'
+        local crop = Crop(seed, plot, {progress = 0.6})
+        crop.demo = true
+        plot.crop = crop
+        room.crops[#room.crops + 1] = crop
+    end
+    local p = plot.pos
+    return p[1] - 2.6, p[2], p[3], 0, -0.1
+end
+local SCENES = {
+    ['plot-crop'] = plotScene,
+    ['pickup'] = function(room)
+        local p = room.pickups[1]
+        if p then return aimAt(p.pos[1], p.pos[2], p.pos[3], 2.2) end
+    end,
+    ['exit'] = function(room)
+        local e = room.exit.pos
+        return e[1] - 4.5, e[2], e[3] - 1.1, 0, -0.05
+    end,
+    ['pit'] = moduleScene('pit'), ['ledge'] = moduleScene('ledge'), ['gap'] = moduleScene('gap'),
+    ['prop'] = function(room)
+        for _, b in ipairs(room.data.billboards or {}) do
+            if b.dressing then return aimAt(b.pos[1], b.pos[2], b.pos[3], 2.6) end
+        end
+    end,
+    ['nook'] = function(room)
+        for _, b in ipairs(room.data.billboards or {}) do
+            if not b.dressing and b.texture == 'sacks' then return aimAt(b.pos[1], b.pos[2], b.pos[3], 2.2) end
+        end
+    end,
+}
+local MODULE_SCENES = {pit = true, ledge = true, gap = true}
+
 local function save(data, file)
     local f = io.open(file, 'wb')
     if f then f:write(data:encode('png'):getString()); f:close() end
 end
 
 local function look() return rawget(_G, 'BackroomsLook') end
+
+-- one-line state of the fallback ladder: look shader / post pass / quality
+local function ladder()
+    local lk = look()
+    if not lk then return 'look absent' end
+    return string.format('quality=%s look=%s%s post=%s%s', lk.quality, lk.enabled and 'on' or 'OFF',
+        lk.enabled and '' or ' (' .. tostring(lk.reason) .. ')', lk.postEnabled and 'on' or 'OFF',
+        lk.postEnabled and '' or ' (' .. tostring(lk.postReason or (lk.enabled and 'not tried' or 'look off')) .. ')')
+end
+local function loadavg() local f = io.open('/proc/loadavg'); local l = f and f:read('*l') or '?'; if f then f:close() end return l end
 
 local jobs = {}
 for _, lv in ipairs(LEVELS) do
@@ -76,8 +154,18 @@ for _, lv in ipairs(LEVELS) do
             end
         end
     end
+    for _, name in ipairs(SCENE_NAMES) do
+        if MODULE_SCENES[name] then
+            -- one job per scene: the first level >= 2 (from this one) that has the obstacle
+            if not jobs[name] then jobs[name] = true; jobs[#jobs + 1] = {level = tonumber(lv), scene = name, search = true,
+                pose = {name = name, fn = SCENES[name]}} end
+        else
+            jobs[#jobs + 1] = {level = tonumber(lv), scene = name, pose = {name = name, fn = SCENES[name]}}
+        end
+    end
 end
 
+local startLoad = loadavg()
 local results, failures = {}, 0
 local job, jobIndex, phase, frame, clock = nil, 0, 'start', 0, 0
 local samples, tStart, lastT, syncDone, syncTime, shotDone = {}, 0, 0, false, 0, false
@@ -86,6 +174,14 @@ local state
 local function setPose(j)
     local room = state.room
     local s = room.spawn
+    if j.pose.fn then
+        local x, y, z, yaw, pitch = j.pose.fn(room, state)
+        if not x then x, y, z, yaw, pitch = s[1], s[2], s[3], s[4] or 0, 0 end
+        state.player:setPosition(x, y, z)
+        local ex, ey, ez = state.player:eyePosition()
+        g3d.camera.lookInDirection(ex, ey, ez, yaw, pitch)
+        return
+    end
     state.player:setPosition(s[1] + j.pose.dx, s[2], s[3])
     local ex, ey, ez = state.player:eyePosition()
     g3d.camera.lookInDirection(ex, ey, ez, (s[4] or 0) + j.pose.yaw, j.pose.pitch)
@@ -96,7 +192,20 @@ local function startJob()
     job = jobs[jobIndex]
     if not job then return false end
     state:loadRoom(job.level)
+    if job.search then
+        -- obstacle scenes: walk up the levels until one has the module
+        while not job.pose.fn(state.room) and job.level < state:levelCount() do
+            job.level = job.level + 1
+            state:loadRoom(job.level)
+        end
+        if not job.pose.fn(state.room) then log('scene %s: no such obstacle in any level of this seed', job.scene) end
+    end
     if PRESET then state.room:setLighting(PRESET) end
+    if job.scene then
+        local x = job.pose.fn(state.room)
+        log('scene %s: level %d (%s)%s', job.scene, job.level, tostring(state.room.id),
+            x and '' or ' ABSENT in this level (spawn view used)')
+    end
     setPose(job)
     phase, frame, samples, syncDone, shotDone = 'warmup', 0, {}, false, false
     return true
@@ -125,11 +234,13 @@ function love.run()
     if love.timer then love.timer.step() end
     love.window.updateMode(800, 800, {vsync = 0})
     if os.getenv('BR_BAD_SHADER') and look() then look().sourceOverride = 'this is not glsl' end
+    if os.getenv('BR_BAD_POST') and look() then look().postSourceOverride = 'this is not glsl' end
     local info = {love.graphics.getRendererInfo()}
     local lk = look()
     log('LÖVE %d.%d; renderer: %s; vsync=%s; look=%s; out %s', select(1, love.getVersion()), select(2, love.getVersion()),
         table.concat(info, ' / '), tostring(love.window.getVSync()),
         lk and (lk.enabled and 'on' or ('off (' .. tostring(lk.reason) .. ')')) or 'absent', OUT)
+    log('loadavg at start: %s', startLoad)
     gStateMachine:change('backrooms')
     state = gStateMachine.current
     local started = false
@@ -150,6 +261,7 @@ function love.run()
         love.draw()
         local wantShot = (MODE ~= 'perf') and phase == 'warmup' and frame == WARMUP - 1
         if wantShot then
+            log('shot L%d %s: %s', job.level, job.pose.name, ladder())
             local file = string.format('%s/L%d-%s%s.png', OUT, job.level, job.pose.name, SUFFIX)
             love.graphics.captureScreenshot(function(data) save(data, file); shotDone = true end)
         end
@@ -179,9 +291,10 @@ function love.run()
                     local file = OUT .. '/perf' .. SUFFIX .. '.txt'
                     local f = io.open(file, 'w')
                     if f then
-                        f:write(string.format('renderer: %s\nvsync: %s\nlook: %s\nwarmup=%d frames=%d\n',
-                            table.concat(info, ' / '), tostring(love.window.getVSync()),
-                            lk and (lk.enabled and 'on' or 'off') or 'absent', WARMUP, FRAMES))
+                        local sw = table.concat(info, ' '):lower():match('llvmpipe') or table.concat(info, ' '):lower():match('softpipe')
+                        f:write(string.format('renderer: %s%s\nvsync: %s\nladder: %s\nwarmup=%d frames=%d\nloadavg at end: %s (at start: %s)\n',
+                            table.concat(info, ' / '), sw and '  [SOFTWARE RENDERER: compare runs on this machine only, not GPU numbers]' or '',
+                            tostring(love.window.getVSync()), ladder(), WARMUP, FRAMES, loadavg(), startLoad))
                         for _, r in ipairs(results) do
                             f:write(string.format('level %d %-10s %.3f ms/frame p50 %.3f p95 %.3f max %.3f\n',
                                 r.level, r.pose, r.ms_per_frame, r.p50_ms, r.p95_ms, r.max_ms))
