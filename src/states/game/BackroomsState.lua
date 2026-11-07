@@ -315,7 +315,7 @@ function BackroomsState:advance()
         self:loadRoom(self.roomIndex + 1)
     else
         self.finished = true
-        gStateMachine:change('ending', self.gameData)
+        gStateMachine:change('ending', {gameData = self.gameData, runSeed = self.runSeed})
     end
 end
 

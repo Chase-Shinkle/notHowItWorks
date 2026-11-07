@@ -24,12 +24,12 @@
 
 ## 4. Ending scene
 
-- [ ] 4.1 Pass `{gameData, runSeed}` from `BackroomsState:advance` to the ending; `EndingState:enter` also accepts a bare `gameData` with a random seed; unit test both forms.
-- [ ] 4.2 Make `EndingState` `usesPush = false`: build a `Room` from `LevelGen.generate` for the run seed, render through `BackroomsLook.renderScene`, use a flickering lighting preset; test that the same seed yields the same level and that `--no-shader` still renders.
-- [ ] 4.3 Implement the scripted camera (time-parameterised drift and sway, holds at the end, clamped inside the hallway, ignores input) with an authored-hallway fallback; test the path stays within open cells across a seed sweep and that input does not move it.
-- [ ] 4.4 Start `BackroomsAudio` in `enter` and dispose it in `exit`; free the mouse; test that audio is disposed when leaving to the title and that no hum plays on the title screen.
-- [ ] 4.5 Draw the fading headline, subtitle and the "Back to Title" / "Exit Game" menu in `renderHUD`; ignore input until the buttons have faded in; test that a held key at entry activates nothing, "Back to Title" goes to `start`, and Exit quits.
-- [ ] 4.6 Update `tests/autotest.lua` ending step (state check, screenshot heuristic no longer assumes a mostly black screen) and verify the full run: title -> farm -> backrooms -> ending -> title -> new game.
+- [x] 4.1 Pass `{gameData, runSeed}` from `BackroomsState:advance` to the ending; `EndingState:enter` also accepts a bare `gameData` with a random seed; unit test both forms.
+- [x] 4.2 Make `EndingState` `usesPush = false`: build a `Room` from `LevelGen.generate` for the run seed, render through `BackroomsLook.renderScene`, use a flickering lighting preset; test that the same seed yields the same level and that `--no-shader` still renders.
+- [x] 4.3 Implement the scripted camera (time-parameterised drift and sway, holds at the end, clamped inside the hallway, ignores input) with an authored-hallway fallback; test the path stays within open cells across a seed sweep and that input does not move it.
+- [x] 4.4 Start `BackroomsAudio` in `enter` and dispose it in `exit`; free the mouse; test that audio is disposed when leaving to the title and that no hum plays on the title screen.
+- [x] 4.5 Draw the fading headline, subtitle and the "Back to Title" / "Exit Game" menu in `renderHUD`; ignore input until the buttons have faded in; test that a held key at entry activates nothing, "Back to Title" goes to `start`, and Exit quits.
+- [x] 4.6 Update `tests/autotest.lua` ending step (state check, screenshot heuristic no longer assumes a mostly black screen) and verify the full run: title -> farm -> backrooms -> ending -> title -> new game.
 
 ## 5. Integration
 

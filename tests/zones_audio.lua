@@ -156,7 +156,8 @@ state = gStateMachine.current
 state.finished = false; state.advancing = false
 state.roomIndex = state:levelCount()
 state:advance()                           -- last exit -> ending
-check(gStateMachine.current ~= state and next(playing) == nil, 'ending run leaves nothing playing')
+check(gStateMachine.current ~= state and state.audio == nil and not playing[state.hum], 'backrooms audio is gone at the ending')
+check(playing[gSounds['backrooms-hum']] and gStateMachine.current.audio, 'the ending plays its own hum')
 gStateMachine:change('start')
 check(next(playing) == nil, 'back at the start screen: silence')
 
