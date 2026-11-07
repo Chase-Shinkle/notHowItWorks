@@ -3950,5 +3950,174 @@ test('look 2.2/2.3: with the look on, gameplay objects get the readability floor
     eq(floors[#floors], 0, 'floor reset after the gameplay objects')
 end)
 
+-- backrooms atmosphere (section 3) ---------------------------------------------------
+local function fakePostSetup()
+    BackroomsLook.reset()
+    local sh = fakeShader()
+    love.filesystem.read = function() return 'stub glsl' end
+    love.graphics.newShader = function() return sh end
+    love.graphics.newImage = function() return {setFilter = function() end} end
+    love.image.newImageData = function() return {mapPixel = function() end} end
+    love.graphics.newCanvas = function(w, h) return {w = w, h = h, setFilter = function() end,
+        getDimensions = function(self) return self.w, self.h end} end
+    return sh
+end
+
+test('atmos 3.1: fog colour and density are uploaded per room, denser/darker in worse rooms', function()
+    loadGame()
+    local sh = fakePostSetup()
+    local seen = {}
+    for _, name in ipairs({'bright', 'dim', 'single-bulb', 'near-dark'}) do
+        local room = lookRoom({lighting = name})
+        BackroomsLook.begin(room, 0, 0, 1, 0)
+        local p = BACKROOMS_LIGHT_PRESETS[name]
+        eq(sh.sent.fogDensity[1], p.fogDensity, name .. ' density')
+        eq(sh.sent.fogColor[1], p.fogColor, name .. ' colour')
+        local c = p.fogColor
+        assert(c[1] >= c[2] and c[2] > c[3] * 1.5, name .. ' fog is yellow-brown')
+        seen[#seen + 1] = p.fogDensity
+    end
+    for i = 2, #seen do assert(seen[i] > seen[i - 1], 'fog thickens from bright to near-dark') end
+    local src = io.open('shaders/backrooms.glsl'):read('*a')
+    assert(src:find('FOG_NEAR', 1, true), 'shader keeps near range clear')
+end)
+
+test('atmos 3.2: shafts under live fixtures scale with fog; low quality skips them', function()
+    loadGame()
+    fakePostSetup()
+    eq(BackroomsLook.shaftStrength(0), 0)
+    assert(BackroomsLook.shaftStrength(0.05) > BackroomsLook.shaftStrength(0.02))
+    assert(BackroomsLook.shaftStrength(5) <= 0.4, 'capped')
+    local room = lookRoom({lighting = 'bright'})
+    BackroomsLook.init()
+    local function shaftDraws()
+        mock.reset()
+        BackroomsLook.drawShafts(room, 0, 0)
+        return mock.count('model.draw')
+    end
+    BackroomsLook.setQuality('high')
+    local n = shaftDraws()
+    assert(n >= 1 and n <= BACKROOMS_LOOK_MAX_LIGHTS, 'shafts drawn: ' .. n)
+    local sawAdd = false
+    for _, c in ipairs(mock.calls) do if c.name == 'setBlendMode' and c.args[1] == 'add' then sawAdd = true end end
+    assert(sawAdd, 'additive blend')
+    local last = mock.calls[#mock.calls]
+    eq(last.name, 'setDepthMode'); eq(last.args[2], true, 'depth writes restored')
+    BackroomsLook.setQuality('medium'); assert(shaftDraws() >= 1, 'medium keeps shafts')
+    BackroomsLook.setQuality('low'); eq(shaftDraws(), 0, 'low skips shafts')
+    eq(BackroomsLook.bloomStrength(), 0); BackroomsLook.setQuality('high'); assert(BackroomsLook.bloomStrength() > 0)
+end)
+
+test('atmos 3.3: scene goes through a depth canvas and grade; HUD is drawn outside canvas and shader', function()
+    loadGame({'--debug'})
+    fakePostSetup()
+    mock.press('f1'); step()
+    mock.press('f1'); step()
+    eq(gStateMachine.current.usesPush, false)
+    mock.reset()
+    love.draw()
+    eq(BackroomsLook.postEnabled, true)
+    local canvas, shader, sceneInCanvas, drewPass, hudPrints = nil, nil, 0, false, 0
+    for _, c in ipairs(mock.calls) do
+        if c.name == 'setCanvas' then canvas = c.args[1]
+            if canvas then eq(canvas.depth, true, 'canvas has a depth buffer') end
+        elseif c.name == 'setShader' then shader = c.args[1]
+        elseif c.name == 'model.draw' and canvas then sceneInCanvas = sceneInCanvas + 1
+        elseif c.name == 'draw' and shader == BackroomsLook.postShader then drewPass = true
+        elseif c.name == 'print' then
+            hudPrints = hudPrints + 1
+            eq(canvas, nil, 'HUD text not drawn into the scene canvas')
+            eq(shader, nil, 'HUD text not drawn through the grade shader')
+        end
+    end
+    assert(sceneInCanvas > 0, 'room drawn into the canvas')
+    assert(drewPass, 'canvas drawn through the post shader')
+    assert(hudPrints > 0, 'HUD printed')
+end)
+
+test('atmos 3.3: post failures fall back to the plain direct render, logged once, state restored', function()
+    loadGame({'--debug'})
+    fakePostSetup()
+    love.graphics.newCanvas = function() error('no canvas (forced)') end
+    mock.press('f1'); step()
+    mock.press('f1'); step()
+    local printed = {}
+    print = function(...) printed[#printed + 1] = table.concat({...}, ' ') end
+    mock.reset()
+    for _ = 1, 3 do love.draw() end
+    print = realPrint
+    eq(BackroomsLook.postEnabled, false)
+    assert(BackroomsLook.postReason:find('canvas creation failed', 1, true), BackroomsLook.postReason)
+    local n = 0
+    for _, l in ipairs(printed) do if l:find('post-process off', 1, true) then n = n + 1 end end
+    eq(n, 1, 'logged once')
+    for _, c in ipairs(mock.calls) do
+        if c.name == 'setCanvas' then eq(c.args[1], nil, 'never switched to a canvas') end
+    end
+    assert(mock.count('model.draw') > 0, 'scene still drawn')
+    -- a failing pass shader mid-frame also falls back and resets render state
+    BackroomsLook.reset(); fakePostSetup()
+    BackroomsLook.init(); BackroomsLook.initPost()
+    local real = love.graphics.draw
+    love.graphics.draw = function() error('pass failed (forced)') end
+    local ok = pcall(BackroomsLook.renderScene, function() end)
+    love.graphics.draw = real
+    eq(BackroomsLook.postEnabled, false, 'pass failure disables post')
+    local lastShader
+    for _, c in ipairs(mock.calls) do if c.name == 'setShader' then lastShader = c.args[1] end end
+    eq(lastShader, nil, 'shader reset to none')
+    -- --no-shader: no post either
+    BackroomsLook.reset(); BackroomsLook.forceOff = true
+    eq(BackroomsLook.initPost(), false); BackroomsLook.forceOff = false
+end)
+
+local function levelSignature(room)
+    local parts = {}
+    local function r(v) return string.format('%.4f', v) end
+    for _, c in ipairs(room:solidColliders()) do
+        parts[#parts + 1] = 'c' .. r(c.min[1]) .. ',' .. r(c.min[2]) .. ',' .. r(c.min[3]) .. ',' .. r(c.max[1]) .. ',' .. r(c.max[2]) .. ',' .. r(c.max[3])
+    end
+    for _, p in ipairs(room.plots) do parts[#parts + 1] = 'p' .. p.id .. r(p.pos[1]) .. ',' .. r(p.pos[2]) .. ',' .. r(p.pos[3]) end
+    for _, p in ipairs(room.pickups) do parts[#parts + 1] = 'k' .. p.seed .. (p.tier or '') .. r(p.pos[1]) .. ',' .. r(p.pos[2]) end
+    parts[#parts + 1] = 'e' .. r(room.exit.min[1]) .. ',' .. r(room.exit.min[2])
+    -- collision probes on a grid
+    for x = -2, 30, 1.5 do for y = -6, 6, 1.5 do
+        local hit = false
+        for _, c in ipairs(room:solidColliders()) do
+            if PlayerController.boxesOverlap({x - 0.3, y - 0.3, 0.1}, {x + 0.3, y + 0.3, 1.7}, c.min, c.max) then hit = true; break end
+        end
+        parts[#parts + 1] = hit and '1' or '0'
+    end end
+    return table.concat(parts, '|')
+end
+
+test('atmos 3.4: same level has identical geometry, plots, pickups and collisions at every quality and with the shader off', function()
+    loadGame()
+    local data = LevelGen.generate(4242, 2)
+    local baseline
+    local function build(setup)
+        BackroomsLook.forceOff = false
+        setup()
+        local room = Room(data)
+        for _ = 1, 2 do room:draw(room.spawn[1], room.spawn[2]) end
+        return levelSignature(room)
+    end
+    local configs = {
+        high = function() fakePostSetup(); BackroomsLook.setQuality('high') end,
+        medium = function() fakePostSetup(); BackroomsLook.setQuality('medium') end,
+        low = function() fakePostSetup(); BackroomsLook.setQuality('low') end,
+        noshader = function() BackroomsLook.reset(); BackroomsLook.forceOff = true; BackroomsLook.setQuality('high') end,
+        badshader = function() BackroomsLook.reset(); love.filesystem.read = function() return 'x' end
+            love.graphics.newShader = function() error('bad') end end,
+    }
+    local order = {'high', 'medium', 'low', 'noshader', 'badshader'}
+    for _, name in ipairs(order) do
+        local sig = build(configs[name])
+        baseline = baseline or sig
+        eq(sig, baseline, name .. ' matches the high-quality level')
+    end
+    BackroomsLook.forceOff = false; BackroomsLook.setQuality('high')
+end)
+
 realPrint(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)

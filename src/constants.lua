@@ -364,9 +364,9 @@ BACKROOMS_FIXTURE_SIZE = {1.2, 0.6}          -- recessed panel, m
 -- the minimum light on plots, crops, pickups and the exit, so they stay
 -- readable in every preset.
 BACKROOMS_LIGHT_PRESETS = {
-    ['bright'] = {ambient = {0.62, 0.58, 0.36}, fogColor = {0.58, 0.52, 0.28}, fogDensity = 0.022,
+    ['bright'] = {ambient = {0.62, 0.58, 0.36}, fogColor = {0.56, 0.47, 0.22}, fogDensity = 0.030,
         intensity = 1.6, litEvery = 1, flicker = 0.08, buzz = 0.08, gameplayFloor = 0.7},
-    ['dim'] = {ambient = {0.34, 0.31, 0.19}, fogColor = {0.30, 0.26, 0.13}, fogDensity = 0.040,
+    ['dim'] = {ambient = {0.34, 0.31, 0.19}, fogColor = {0.30, 0.24, 0.11}, fogDensity = 0.046,
         intensity = 1.7, litEvery = 1, flicker = 0.30, buzz = 0.15, gameplayFloor = 0.62},
     ['single-bulb'] = {ambient = {0.20, 0.18, 0.10}, fogColor = {0.17, 0.14, 0.07}, fogDensity = 0.055,
         intensity = 2.0, litEvery = 4, flicker = 0.45, buzz = 0.2, gameplayFloor = 0.58},

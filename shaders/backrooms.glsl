@@ -14,6 +14,7 @@
 //                    since billboards rotate their model but keep the model-space normal.
 //   emissive         0..1 self-lit glow (fixture panels, scaled by their flicker)
 #define MAX_LIGHTS 8
+#define FOG_NEAR 1.5   // m of clear air before the fog starts, so close walls stay crisp
 
 uniform vec3 camPos;
 uniform vec3 ambient;
@@ -52,7 +53,7 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
     vec3 rgb = texel.rgb * light;
     rgb = mix(rgb, texel.rgb * 1.6, clamp(emissive, 0.0, 1.0));   // fixture panels glow past white
 
-    float fog = 1.0 - exp(-fogDensity * length(wp - camPos));
+    float fog = 1.0 - exp(-fogDensity * max(length(wp - camPos) - FOG_NEAR, 0.0));
     if (gameplay) { fog = min(fog, 0.35); }
     rgb = mix(rgb, fogColor, clamp(fog, 0.0, 1.0));
     return vec4(rgb, texel.a);

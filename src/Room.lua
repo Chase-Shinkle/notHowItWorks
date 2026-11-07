@@ -500,7 +500,7 @@ function Room:draw(cx, cy)
     for _, plot in ipairs(self.plots) do plot.model:draw(look) end
     for _, crop in ipairs(self.crops) do crop:draw(look) end
     self.exitModel:draw(look)
-    if look then self:drawShadows() end
+    if look then self:drawShadows(); BackroomsLook.drawShafts(self, cx, cy) end
     Billboard.drawAll(self.billboards, cx, cy, look)
     -- pickups bob gently; the billboard is lifted, not the pickup position
     local clock = love.timer and love.timer.getTime and love.timer.getTime() or 0

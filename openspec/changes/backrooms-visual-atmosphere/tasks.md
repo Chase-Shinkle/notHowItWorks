@@ -14,10 +14,10 @@
 
 ## 3. Atmosphere
 
-- [ ] 3.1 Add per-room fog colour and density and tune the long-hall fade; test fog uniforms per room and review a screenshot of a long hall.
-- [ ] 3.2 Add faked volumetric shafts under ceiling fixtures scaled by fog density; verify in a screenshot and that quality-low skips them.
-- [ ] 3.3 Add the optional post-process (grade, vignette, optional bloom) on a depth-capable canvas with the HUD drawn after it; test the HUD is not drawn through the pass and that fallback restores the plain render.
-- [ ] 3.4 Prove gameplay independence: a test plays the same level at every quality and with the shader disabled and asserts identical geometry, plots, pickups and collision results.
+- [x] 3.1 Add per-room fog colour and density and tune the long-hall fade; test fog uniforms per room and review a screenshot of a long hall.
+- [x] 3.2 Add faked volumetric shafts under ceiling fixtures scaled by fog density; verify in a screenshot and that quality-low skips them.
+- [x] 3.3 Add the optional post-process (grade, vignette, optional bloom) on a depth-capable canvas with the HUD drawn after it; test the HUD is not drawn through the pass and that fallback restores the plain render.
+- [x] 3.4 Prove gameplay independence: a test plays the same level at every quality and with the shader disabled and asserts identical geometry, plots, pickups and collision results.
 
 ## 4. Materials
 
@@ -36,3 +36,8 @@
 
 - [ ] 6.1 Add a backrooms screenshot script (modelled on `tests/farm_shots.lua`) and review lighting presets, fog, themes and dressing across several seeds; record findings and tuned defaults.
 - [ ] 6.2 Add the new tests to `tests/check_all.sh` and run it green on the real LÖVE runtime, including a full autotest run with the look enabled.
+
+## Section 3 verification (atmos-3)
+
+- Tests: `atmos 3.1`-`3.4` in tests/run.lua (fog uniforms per preset, shafts scaled by fog and skipped at low, depth canvas + grade with HUD outside canvas/shader, post fallback logged once with state restored, identical level signature at high/medium/low/--no-shader/bad shader). Run subset only (full suite deferred to the orchestrator): 16 look/atmos tests pass.
+- Captures in /workspace/qa/atmos/section3 (real LÖVE under Xvfb, seed 2026): `L*-*.png` full look, `-low` quality low, `-plain` --no-shader, `-badshader` forced compile failure. Fog fades the long hall to yellow-brown, vignette/grade visible, shafts faint under fixtures at high/medium and absent at low.

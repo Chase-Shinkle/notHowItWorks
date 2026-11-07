@@ -361,7 +361,7 @@ function BackroomsState:update(dt)
 end
 
 function BackroomsState:render()
-    self.room:draw(self.player.x, self.player.y)
+    BackroomsLook.renderScene(function() self.room:draw(self.player.x, self.player.y) end)
 end
 
 function BackroomsState:renderHUD()

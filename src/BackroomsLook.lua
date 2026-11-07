@@ -29,10 +29,20 @@ BackroomsLook = {
     reason = nil,
     shader = nil,
     shadowImage = nil,
+    shaftImage = nil,
+    -- post-process rung (section 3.3)
+    postPath = 'shaders/backrooms_post.glsl',
+    postSourceOverride = nil,   -- test hook
+    postTried = false,
+    postEnabled = false,
+    postReason = nil,
+    postShader = nil,
+    postCanvas = nil,
 }
 
 local function fail(reason)
     BackroomsLook.enabled, BackroomsLook.shader, BackroomsLook.shadowImage = false, nil, nil
+    BackroomsLook.shaftImage = nil
     BackroomsLook.reason = reason
     print('[backrooms-look] disabled, drawing the plain backrooms render: ' .. tostring(reason))
     return false
@@ -77,6 +87,7 @@ function BackroomsLook.init()
 
     BackroomsLook.shader = shader
     BackroomsLook.shadowImage = newShadowImage()   -- nil is fine: no blobs
+    BackroomsLook.shaftImage = BackroomsLook.newShaftImage()   -- nil is fine: no shafts
     BackroomsLook.enabled = true
     print('[backrooms-look] enabled (quality ' .. BackroomsLook.quality .. ')')
     return true
@@ -85,7 +96,9 @@ end
 -- Forget the compiled shader so the next init() tries again (tests).
 function BackroomsLook.reset()
     BackroomsLook.tried, BackroomsLook.enabled, BackroomsLook.reason = false, false, nil
-    BackroomsLook.shader, BackroomsLook.shadowImage = nil, nil
+    BackroomsLook.shader, BackroomsLook.shadowImage, BackroomsLook.shaftImage = nil, nil, nil
+    BackroomsLook.postTried, BackroomsLook.postEnabled, BackroomsLook.postReason = false, false, nil
+    BackroomsLook.postShader, BackroomsLook.postCanvas = nil, nil
 end
 
 function BackroomsLook.setQuality(q)
@@ -288,4 +301,166 @@ end
 function BackroomsLook.set(name, value)
     local shader = BackroomsLook.shader
     if shader and shader:hasUniform(name) then shader:send(name, value) end
+end
+
+-- Light shafts (3.2) -------------------------------------------------------------
+
+-- Strength (alpha) of a shaft in a room with fog density `fogDensity`: more fog,
+-- more visible light; none in clear air. Pure.
+function BackroomsLook.shaftStrength(fogDensity)
+    return math.min(0.4, math.max(0, (fogDensity or 0) * 6))
+end
+
+-- Shafts are a high/medium effect; quality low skips them.
+function BackroomsLook.shaftsEnabled()
+    return BackroomsLook.enabled and BackroomsLook.shaftImage ~= nil and BackroomsLook.quality ~= 'low'
+end
+
+-- Bloom only at high quality.
+function BackroomsLook.bloomStrength()
+    return BackroomsLook.quality == 'high' and 0.25 or 0
+end
+
+-- Soft cone of light: bright at the fixture (top), fading and widening downwards.
+function BackroomsLook.newShaftImage()
+    local w, h = 32, 64
+    local ok, data = pcall(love.image.newImageData, w, h)
+    if not ok or not data then return nil end
+    data:mapPixel(function(x, y)
+        local u, v = ((x + 0.5) / w) * 2 - 1, (y + 0.5) / h
+        local half = 0.30 + 0.70 * v
+        local a = math.max(0, 1 - math.abs(u) / half)
+        a = a * a * (1 - v) * (1 - v)
+        return 1, 1, 1, a
+    end)
+    local okImg, img = pcall(love.graphics.newImage, data)
+    if not okImg or not img then return nil end
+    img:setFilter('linear', 'linear')
+    return img
+end
+
+-- Draws additive shafts under the nearest live fixtures of `room`, after the
+-- opaque geometry. Camera-facing in yaw (billboards). Visual only.
+function BackroomsLook.drawShafts(room, cx, cy)
+    if not BackroomsLook.shaftsEnabled() then return end
+    local strength = BackroomsLook.shaftStrength(room.lighting.fogDensity)
+    if strength <= 0 then return end
+    room.shafts = room.shafts or {}
+    local cam = g3d.camera and g3d.camera.position
+    local picked = BackroomsLook.nearestLights(room.lights, cx, cy, cam and cam[3] or 1, BACKROOMS_LOOK_MAX_LIGHTS)
+    local t = BackroomsLook.now()
+    local dm, dw = 'lequal', true
+    if love.graphics.getDepthMode then dm, dw = love.graphics.getDepthMode() end
+    love.graphics.setDepthMode('lequal', false)
+    love.graphics.setBlendMode('add', 'alphamultiply')
+    for _, i in ipairs(picked) do
+        local l = room.lights[i]
+        local board = room.shafts[l]
+        if not board then
+            local h = math.min(l.pos[3], 2.4)
+            board = Billboard({texture = BackroomsLook.shaftImage, pos = {l.pos[1], l.pos[2], l.pos[3] - h},
+                height = h, width = 2.4})
+            room.shafts[l] = board
+        end
+        local c = l.color or BACKROOMS_LIGHT_COLOR
+        local k = strength * BackroomsLook.activeIntensity({mode = l.mode, intensity = 1, phase = l.phase}, t)
+        board:faceCamera(cx, cy)
+        love.graphics.setColor(c[1], c[2], c[3], k)
+        board.model:draw()
+    end
+    love.graphics.setBlendMode('alpha')
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.setDepthMode(dm or 'lequal', dw == nil and true or dw)
+end
+
+-- Post-process (3.3) --------------------------------------------------------------
+
+local function postFail(reason)
+    BackroomsLook.postEnabled, BackroomsLook.postShader, BackroomsLook.postCanvas = false, nil, nil
+    BackroomsLook.postReason = reason
+    print('[backrooms-look] post-process off, drawing the scene directly: ' .. tostring(reason))
+    return false
+end
+
+local function newPostCanvas(w, h)
+    local ok, canvas = pcall(love.graphics.newCanvas, w, h)
+    if not ok or not canvas then return nil, tostring(canvas) end
+    if canvas.setFilter then canvas:setFilter('linear', 'linear') end
+    return canvas
+end
+
+-- Compiles the post shader and creates the scene canvas once. Needs the look
+-- shader (fallback ladder: full -> no post -> no look). Safe every frame.
+function BackroomsLook.initPost()
+    if not BackroomsLook.enabled then return false end
+    if BackroomsLook.postTried then return BackroomsLook.postEnabled end
+    BackroomsLook.postTried = true
+    local source = BackroomsLook.postSourceOverride
+    if not source then
+        local ok, text = pcall(function() return love.filesystem.read(BackroomsLook.postPath) end)
+        if not ok or type(text) ~= 'string' then
+            return postFail('cannot read ' .. BackroomsLook.postPath .. ': ' .. tostring(text))
+        end
+        source = text
+    end
+    local ok, shader = pcall(love.graphics.newShader, source)
+    if not ok or not shader then return postFail('compile failed: ' .. tostring(shader)) end
+    local w, h = love.graphics.getDimensions()
+    local canvas, err = newPostCanvas(w, h)
+    if not canvas then return postFail('canvas creation failed: ' .. err) end
+    BackroomsLook.postShader, BackroomsLook.postCanvas = shader, canvas
+    BackroomsLook.postEnabled = true
+    return true
+end
+
+-- Runs `drawScene` (3D only). With the post-process available the scene goes
+-- into a depth-capable canvas and is then drawn through the grade; otherwise
+-- (or on any failure of the pass) it is drawn straight to the target. The HUD
+-- is drawn by the caller afterwards, never through this. Render state
+-- (canvas, shader, colour, blend, depth) is restored.
+function BackroomsLook.renderScene(drawScene)
+    if not BackroomsLook.initPost() then return drawScene() end
+    local target = love.graphics.getCanvas()
+    local w, h = love.graphics.getDimensions()
+    local canvas = BackroomsLook.postCanvas
+    if canvas.getDimensions then
+        local cw, ch = canvas:getDimensions()
+        if cw ~= w or ch ~= h then
+            local fresh = newPostCanvas(w, h)
+            if fresh then canvas = fresh; BackroomsLook.postCanvas = fresh end
+        end
+    end
+    local ok, err = pcall(function()
+        love.graphics.setCanvas({canvas, depth = true})
+        love.graphics.clear(0, 0, 0, 1)
+    end)
+    if not ok then
+        love.graphics.setCanvas(target)
+        postFail('depth canvas unusable: ' .. tostring(err))
+        return drawScene()
+    end
+    love.graphics.setDepthMode('lequal', true)
+    local drew, derr = pcall(drawScene)
+    love.graphics.setCanvas(target)
+    love.graphics.setDepthMode()
+    if not drew then error(derr, 0) end
+
+    local shader = BackroomsLook.postShader
+    local passed, perr = pcall(function()
+        local function send(name, v) if shader:hasUniform(name) then shader:send(name, v) end end
+        send('texel', {1 / w, 1 / h})
+        send('bloom', BackroomsLook.bloomStrength())
+        send('vignette', 0.45)
+        love.graphics.setShader(shader)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(canvas, 0, 0)
+    end)
+    love.graphics.setShader()
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.setBlendMode('alpha')
+    if not passed then
+        postFail('post pass failed: ' .. tostring(perr))
+        love.graphics.draw(canvas, 0, 0)       -- show the frame already drawn, ungraded
+    end
+    love.graphics.setDepthMode('lequal', true)
 end
