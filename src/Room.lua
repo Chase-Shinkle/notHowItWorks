@@ -50,7 +50,10 @@ ROOM_BOX_STYLES = {
     ceiling = {texture = 'ceiling', fallbackTexture = 'wall', color = {0.93, 0.9, 0.72, 1}, textured = {1, 1, 0.92, 1}},
     solid = {texture = 'wall', color = {0.78, 0.72, 0.42, 1}, textured = {0.9, 0.88, 0.8, 1}},
 }
-ROOM_EXIT_COLOR = {0.45, 1, 0.55, 0.9}
+ROOM_EXIT_COLOR = {0, 0, 0, 1}      -- solid black void (shader draws it unlit)
+ROOM_EXIT_FRAME_COLOR = {0.95, 0.9, 0.7, 1}
+ROOM_EXIT_FRAME = 0.09
+ROOM_PIT_FADE = 1.5      -- m below a pit/gap rim over which its walls fade to black
 ROOM_BASEBOARD_HEIGHT, ROOM_BASEBOARD_DEPTH = 0.14, 0.03
 ROOM_BASEBOARD_COLOR = {0.78, 0.7, 0.5, 1}
 
@@ -208,6 +211,48 @@ local function texture(key, fallbackKey)
     return tex
 end
 
+-- Render-only "bottomless" look for generated pit/gap/ledge cells. For a box
+-- reaching down to the void floor inside (or on the wall line of) a module
+-- cell, returns the rim z = lowest floor elevation of the cells it touches, so
+-- only surfaces below a real rim fade; other cells and below-zero regions are
+-- untouched. nil for anything else. Reads data.meta only (no layout change).
+local function voidRim(data, b)
+    local meta = data.meta
+    if not meta or not meta.cells or b.pos[3] - b.size[3] / 2 > LEVELGEN_VOID_Z + 0.01 then return nil end
+    local eps = LEVELGEN_WALL / 2 + 0.01
+    local rim, hasModule
+    for _, c in ipairs(meta.cells) do
+        local x0, y0 = c.cx * LEVELGEN_CELL, c.cy * LEVELGEN_CELL - LEVELGEN_CELL / 2
+        if b.pos[1] >= x0 - eps and b.pos[1] <= x0 + LEVELGEN_CELL + eps
+            and b.pos[2] >= y0 - eps and b.pos[2] <= y0 + LEVELGEN_CELL + eps then
+            rim = math.min(rim or c.elev, c.elev)
+            if c.kind == 'module' then hasModule = true end
+        end
+    end
+    return hasModule and rim or nil
+end
+
+-- Render model(s) for a box fading to black below `rim`: vertex colours go
+-- from full at the rim to black ROOM_PIT_FADE below it (works with or without
+-- the shader).
+local function voidModels(b, tex, color, rim)
+    local out = {}
+    local zlo, zhi = b.pos[3] - b.size[3] / 2, b.pos[3] + b.size[3] / 2
+    local function part(z0, z1, fade)
+        if z1 - z0 < 1e-4 then return end
+        local verts = NewRoomBoxVerts(b.size[1], b.size[2], z1 - z0, color)
+        local cz = (z0 + z1) / 2
+        for _, v in ipairs(verts) do
+            local f = fade and math.max(0, math.min(1, 1 - (rim - (v[3] + cz)) / ROOM_PIT_FADE)) or 1
+            v[9], v[10], v[11] = v[9] * f, v[10] * f, v[11] * f
+        end
+        out[#out + 1] = g3d.newModel(verts, tex, {b.pos[1], b.pos[2], cz})
+    end
+    if zhi <= rim then part(zlo, zhi, true)
+    else part(zlo, rim, true); part(rim, zhi, false) end
+    return out
+end
+
 function Room:init(data)
     local ok, err = Room.validate(data)
     if not ok then error(err, 2) end
@@ -258,7 +303,12 @@ function Room:init(data)
         end
         local verts = NewRoomBoxVerts(b.size[1], b.size[2], b.size[3], color)
         local model = g3d.newModel(verts, tex, {b.pos[1], b.pos[2], b.pos[3]})
-        self.models[#self.models + 1] = model
+        local rim = voidRim(data, b)
+        if rim then
+            for _, m in ipairs(voidModels(b, tex, color, rim)) do self.models[#self.models + 1] = m end
+        else
+            self.models[#self.models + 1] = model
+        end
         if b.collide ~= false then
             local min, max = bounds(b.pos, b.size)
             self.colliders[#self.colliders + 1] = {
@@ -299,6 +349,19 @@ function Room:init(data)
     self.exit = {pos = {e.pos[1], e.pos[2], e.pos[3]}, size = {e.size[1], e.size[2], e.size[3]}, min = emin, max = emax}
     self.exitModel = g3d.newModel(NewRoomBoxVerts(e.size[1], e.size[2], e.size[3], ROOM_EXIT_COLOR),
         gTextures['white'] or texture(nil, 'floor'), {e.pos[1], e.pos[2], e.pos[3]})
+    -- render-only pale frame (two posts + lintel) so the black void is findable
+    self.exitFrame = {}
+    do
+        local fw, sx, sy, sz = ROOM_EXIT_FRAME, e.size[1] + 0.04, e.size[2], e.size[3]
+        local wt = gTextures['white'] or texture(nil, 'floor')
+        local function part(dx, dz, w, h)
+            self.exitFrame[#self.exitFrame + 1] = g3d.newModel(
+                NewRoomBoxVerts(sx, w, h, ROOM_EXIT_FRAME_COLOR), wt, {e.pos[1], e.pos[2] + dx, e.pos[3] + dz})
+        end
+        part(-(sy / 2 + fw / 2), 0, fw, sz + fw)
+        part(sy / 2 + fw / 2, 0, fw, sz + fw)
+        part(0, sz / 2 + fw / 2, sy, fw)
+    end
 
     -- fixed plots: flat soil pads just above the surface they sit on
     self.plots = {}
@@ -613,7 +676,10 @@ function Room:draw(cx, cy)
     end
     for _, plot in ipairs(self.plots) do plot.model:draw(look) end
     for _, crop in ipairs(self.crops) do crop:draw(look) end
+    if look then BackroomsLook.set('unlit', 1) end
     self.exitModel:draw(look)
+    if look then BackroomsLook.set('unlit', 0) end
+    for _, m in ipairs(self.exitFrame) do m:draw(look) end
     if look then self:drawShadows(); BackroomsLook.drawShafts(self, cx, cy) end
     Billboard.drawAll(self.billboards, cx, cy, look)
     -- pickups bob gently; the billboard is lifted, not the pickup position

@@ -26,6 +26,7 @@ uniform vec3 fogColor;
 uniform float fogDensity;
 uniform float litFloor;
 uniform float emissive;
+uniform float unlit;   // >0: output solid black (exit void)
 
 varying vec4 worldPosition;
 varying vec3 vertexNormal;
@@ -33,6 +34,7 @@ varying vec3 vertexNormal;
 vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
     vec4 texel = Texel(tex, uv) * color;
     if (texel.a < 0.1) { discard; }
+    if (unlit > 0.0) { return vec4(0.0, 0.0, 0.0, 1.0); }
     vec3 wp = worldPosition.xyz;
     vec3 n = normalize(vertexNormal);
     bool gameplay = litFloor > 0.0;
