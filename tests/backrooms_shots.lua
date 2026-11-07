@@ -16,7 +16,7 @@
 --   BR_BAD_POST=1    compile garbage instead of shaders/backrooms_post.glsl (post rung falls away, look stays)
 --   BR_SCENES   comma list of scene names (see SCENES) added after the POSES; BR_POSES=none
 --               skips the fixed poses. Scenes aim the camera at things in the generated level
---               (module obstacle, plot + crop, pickup, exit, prop, nook); BR_LEVELS picks the level
+--               (module obstacle, plot + crop, pickup, exit, prop, nook, zone-transition, zone-<preset>, shape-<name>); BR_LEVELS picks the level
 --               (module scenes search levels 2.. for the first one with that obstacle).
 --   quality: pass --quality=high|medium|low on the command line (BackroomsLook.setQuality).
 --   BR_MODE     "shots", "perf" or "both" (default both)
@@ -177,7 +177,88 @@ local SCENES = {
         end
     end,
 }
-local MODULE_SCENES = {pit = true, ledge = true, gap = true}
+
+-- Zone / shape scenes (backrooms-zones-variety-audio 5.1), all from meta.zones / meta.cells[].zone / .shape.
+--   zone-transition   stand 2 cells before a connected zone border on the critical path (else any), looking across
+--   zone-<preset>     inside the first zone whose lighting is <preset> (bright|dim|single-bulb|near-dark)
+--   shape-<name>      at the edge of the first cell of shape <name> (cell.shape string or {name=}), facing its centre;
+--                     absent (spawn view) until the shapes group emits cell.shape
+-- All are searched across levels like the module scenes (first level of the run that has one).
+local function cellShape(c) local s = c.shape; return type(s) == 'table' and s.name or s end
+local function cellAt(meta, cx, cy)
+    for _, c in ipairs(meta.cells) do if c.cx == cx and c.cy == cy then return c end end
+end
+local function zoneTransitionScene(room)
+    local meta = room.data.meta
+    if not (meta and meta.zones) then return end
+    local function try(a, b)   -- a -> b adjacent, connected, different zone
+        if a.zone ~= b.zone and a.kind ~= 'module' and b.kind ~= 'module'
+            and meta.edges[LevelGen.edgeKey(a, b)] then
+            local dx, dy = b.cx - a.cx, b.cy - a.cy
+            local mx, my = a.cx * CELL + CELL / 2, a.cy * CELL
+            return mx - dx * CELL * 0.8, my - dy * CELL * 0.8, a.elev or 0, math.atan2(dy, dx), -0.05
+        end
+    end
+    for i = 1, #meta.path - 1 do   -- critical path first
+        local a, b = cellAt(meta, meta.path[i][1], meta.path[i][2]), cellAt(meta, meta.path[i + 1][1], meta.path[i + 1][2])
+        local x, y, z, yaw, p = try(a, b)
+        if x then return x, y, z, yaw, p end
+    end
+    for _, a in ipairs(meta.cells) do
+        for _, d in ipairs({{1, 0}, {0, 1}, {-1, 0}, {0, -1}}) do
+            local b = cellAt(meta, a.cx + d[1], a.cy + d[2])
+            if b then
+                local x, y, z, yaw, p = try(a, b)
+                if x then return x, y, z, yaw, p end
+            end
+        end
+    end
+end
+local function zoneLightingScene(preset)
+    return function(room)
+        local meta = room.data.meta
+        if not (meta and meta.zones) then return end
+        for _, z in ipairs(meta.zones) do
+            if z.lighting == preset then
+                for _, c in ipairs(meta.cells) do   -- a plain cell of that zone, viewed along a corridor/room
+                    if c.zone == z.id and c.kind ~= 'module' and not c.start then
+                        local mx, my = c.cx * CELL + CELL / 2, c.cy * CELL
+                        return mx - CELL * 0.4, my, c.elev or 0, 0, -0.05
+                    end
+                end
+            end
+        end
+    end
+end
+local function shapeScene(name)
+    return function(room)
+        local meta = room.data.meta
+        if not meta then return end
+        local first
+        for _, c in ipairs(meta.cells) do
+            if cellShape(c) == name then first = first or c end
+        end
+        if not first then return end
+        local sx, sy, n = 0, 0, 0   -- centroid of the shape's cells; stand on the far side of the first cell
+        for _, c in ipairs(meta.cells) do
+            if cellShape(c) == name and (c.shapeId == nil or c.shapeId == first.shapeId) then
+                sx, sy, n = sx + c.cx * CELL + CELL / 2, sy + c.cy * CELL, n + 1
+            end
+        end
+        local fx, fy = first.cx * CELL + CELL / 2, first.cy * CELL
+        local cx, cy = sx / n, sy / n
+        local dx, dy = cx - fx, cy - fy
+        if math.abs(dx) + math.abs(dy) < 0.5 then dx, dy = 1, 0 end
+        local d = math.sqrt(dx * dx + dy * dy)
+        dx, dy = dx / d, dy / d
+        return fx - dx * (CELL / 2 - 0.8), fy - dy * (CELL / 2 - 0.8), first.elev or 0, math.atan2(dy, dx), -0.1
+    end
+end
+SCENES['zone-transition'] = zoneTransitionScene
+for _, p in ipairs({'bright', 'dim', 'single-bulb', 'near-dark'}) do SCENES['zone-' .. p] = zoneLightingScene(p) end
+for _, nme in ipairs(ROOM_SHAPE_NAMES or {}) do SCENES['shape-' .. nme] = shapeScene(nme) end
+local MODULE_SCENES = {pit = true, ledge = true, gap = true, ['zone-transition'] = true}
+for name in pairs(SCENES) do if name:match('^zone%-') or name:match('^shape%-') then MODULE_SCENES[name] = true end end
 
 local function save(data, file)
     local f = io.open(file, 'wb')
@@ -208,7 +289,7 @@ for _, lv in ipairs(LEVELS) do
     end
     for _, name in ipairs(SCENE_NAMES) do
         if MODULE_SCENES[name] then
-            -- one job per scene: the first level >= 2 (from this one) that has the obstacle
+            -- one job per scene: the first level >= 2 (from this one) that has the obstacle / zone feature
             if not jobs[name] then jobs[name] = true; jobs[#jobs + 1] = {level = tonumber(lv), scene = name, search = true,
                 pose = {name = name, fn = SCENES[name]}} end
         else
