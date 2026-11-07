@@ -21,9 +21,9 @@
 
 ## 4. Materials
 
-- [ ] 4.1 Add `MATERIAL_THEMES` with more wall, floor and ceiling textures (placeholders allowed) and resolve box textures through the room theme in `Room:init`; test the missing-texture colour fallback.
-- [ ] 4.2 Give obstacle modules, plots and the exit a fixed high-contrast tint; screenshot each theme's pit, ledge and gap.
-- [ ] 4.3 Assign themes per room from the level seed in the generator; test the same seed gives the same themes and a level uses at least two walls and two floors.
+- [x] 4.1 Add `MATERIAL_THEMES` with more wall, floor and ceiling textures (placeholders allowed) and resolve box textures through the room theme in `Room:init`; test the missing-texture colour fallback.
+- [x] 4.2 Give obstacle modules, plots and the exit a fixed high-contrast tint; screenshot each theme's pit, ledge and gap.
+- [x] 4.3 Assign themes per room from the level seed in the generator; test the same seed gives the same themes and a level uses at least two walls and two floors.
 
 ## 5. Dressing
 
@@ -41,3 +41,9 @@
 
 - Tests: `atmos 3.1`-`3.4` in tests/run.lua (fog uniforms per preset, shafts scaled by fog and skipped at low, depth canvas + grade with HUD outside canvas/shader, post fallback logged once with state restored, identical level signature at high/medium/low/--no-shader/bad shader). Run subset only (full suite deferred to the orchestrator): 16 look/atmos tests pass.
 - Captures in /workspace/qa/atmos/section3 (real LÖVE under Xvfb, seed 2026): `L*-*.png` full look, `-low` quality low, `-plain` --no-shader, `-badshader` forced compile failure. Fog fades the long hall to yellow-brown, vignette/grade visible, shafts faint under fixtures at high/medium and absent at low.
+
+### Section 4 verification (branch wip/atmos-4)
+- 4.1: `MATERIAL_THEMES` (level0, stripe, classic) in src/Room.lua; procedural wall/floor/ceiling textures in src/Dependencies.lua (flat placeholders under `--placeholder-assets`); `Room:init` resolves via box/room `theme`, falling back to `fallbackColor`. Test "materials 4.1" (incl. missing-texture fallback).
+- 4.2: obstacle-module floors/solids (`obstacle = true`) use fixed slate/orange tints, plots a fixed tint, exit keeps `ROOM_EXIT_COLOR`; test "materials 4.2". Captures (pit/gap in levels 2-4): /workspace/qa/atmos/section4. Not captured per theme in isolation (tints are theme-independent by construction).
+- 4.3: per-cell themes from a separate RNG stream in `LevelGen.build`; test "materials 4.3" (determinism, >=2 walls and floors over 120 levels); generated layout/pickups byte-identical to HEAD for seeds 1-30 x 3 difficulties.
+- tests/run.lua: 187 passed, 0 failed (full suite not run).

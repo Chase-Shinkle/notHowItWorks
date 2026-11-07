@@ -199,13 +199,34 @@ function LevelGen.build(seed, difficulty)
 
     -- 4. boxes
     local boxes, plots, billboards = {}, {}, {}
+    local curCell, themes
     local function box(kind, x0, x1, y0, y1, z0, z1)
         boxes[#boxes + 1] = {kind = kind, pos = {(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2},
-            size = {x1 - x0, y1 - y0, z1 - z0}}
+            size = {x1 - x0, y1 - y0, z1 - z0}, theme = themes[curCell],
+            obstacle = (curCell.kind == 'module' and kind ~= 'wall' and kind ~= 'ceiling') or nil}
     end
     local function floorBox(x0, x1, y0, y1, top) box('floor', x0, x1, y0, y1, top - T, top) end
 
+    -- material themes: per cell, from an RNG stream of its own (never the
+    -- layout `rng`, so layout is unchanged); cells >= 2 so two themes always
+    -- differ in both wall and floor
+    local themeRng = LevelGen.rng(seed * 31 + 977)
+    themes = {}
+    for _, c in ipairs(list) do themes[c] = themeRng:pick(MATERIAL_THEME_NAMES) end
+    if #list >= 2 then
+        local first = themes[list[1]]
+        local allSame = true
+        for _, c in ipairs(list) do if themes[c] ~= first then allSame = false end end
+        if allSame then
+            local pickOther = themeRng:int(1, #MATERIAL_THEME_NAMES - 1)
+            local others = {}
+            for _, n in ipairs(MATERIAL_THEME_NAMES) do if n ~= first then others[#others + 1] = n end end
+            themes[list[#list]] = others[pickOther]
+        end
+    end
+
     for _, c in ipairs(list) do
+        curCell = c
         local X0, Y0 = c.cx * CELL, c.cy * CELL - CELL / 2
         local X1, Y1 = X0 + CELL, Y0 + CELL
         box('ceiling', X0, X1, Y0, Y1, c.ceil, c.ceil + T)

@@ -129,6 +129,58 @@ for seedType, art in pairs(CROP_ART) do
 end
 Assets.loadAll(gTextures, cropManifest, function(path, color, size) return Assets.loadImage(path, color, size) end)
 
+-- Procedural backrooms material textures (MATERIAL_THEMES in src/Room.lua).
+-- Generated in code, no files; with --placeholder-assets they become flat
+-- placeholders so themes fall back to their flat colours.
+local function hash(x, y)
+    local n = (x * 374761393 + y * 668265263) % 4294967296
+    n = (n * 1274126177) % 4294967296
+    return (n % 1000) / 1000
+end
+local function proceduralTexture(size, shade)
+    if Assets.forcePlaceholders then
+        local img = Assets.newPlaceholderImage({1, 1, 1, 1}, 4)
+        Assets.placeholders[img] = true
+        return img
+    end
+    local data = love.image.newImageData(size, size)
+    data:mapPixel(function(x, y)
+        local r, g, b = shade(x, y, size)
+        return r, g, b, 1
+    end)
+    local img = love.graphics.newImage(data)
+    img:setFilter('linear', 'linear')
+    return img
+end
+PROCEDURAL_SURFACE_TEXTURES = {'wall-chevron', 'wall-stripe', 'floor-carpet', 'floor-damp', 'ceiling-grid'}
+local function mix(c, k) return c[1] * k, c[2] * k, c[3] * k end
+-- sickly yellow wallpaper with chevron pairs
+gTextures['wall-chevron'] = proceduralTexture(64, function(x, y, s)
+    local band = (x + math.abs((y % 32) - 16)) % 16
+    local k = (band < 3 and 0.78 or 1) * (0.94 + 0.06 * hash(x, y))
+    return mix({0.84, 0.78, 0.38}, k)
+end)
+-- yellow wallpaper with vertical stripes
+gTextures['wall-stripe'] = proceduralTexture(64, function(x, y, s)
+    local k = ((x % 16) < 4 and 0.8 or 1) * (0.94 + 0.06 * hash(x, y))
+    return mix({0.88, 0.82, 0.5}, k)
+end)
+-- damp mustard carpet
+gTextures['floor-carpet'] = proceduralTexture(64, function(x, y, s)
+    local damp = hash(math.floor(x / 8), math.floor(y / 8)) < 0.2 and 0.82 or 1
+    return mix({0.66, 0.56, 0.24}, damp * (0.82 + 0.18 * hash(x, y)))
+end)
+-- darker stained carpet
+gTextures['floor-damp'] = proceduralTexture(64, function(x, y, s)
+    local damp = hash(math.floor(x / 16), math.floor(y / 16)) < 0.4 and 0.7 or 0.9
+    return mix({0.5, 0.44, 0.22}, damp * (0.85 + 0.15 * hash(x, y)))
+end)
+-- acoustic ceiling tiles with grid lines
+gTextures['ceiling-grid'] = proceduralTexture(64, function(x, y, s)
+    local line = (x % 32 < 2) or (y % 32 < 2)
+    return mix(line and {0.55, 0.52, 0.42} or {0.9, 0.88, 0.76}, 0.9 + 0.1 * hash(x, y))
+end)
+
 -- Plain white texture for vertex-coloured 3D crops (src/Crop.lua).
 gTextures['white'] = Assets.newPlaceholderImage({1, 1, 1, 1}, 4)
 
