@@ -9,11 +9,11 @@
 
 ## 2. Seeds and pickups
 
-- [ ] 2.1 Place critical seeds by the prefix rule and extras in dead ends/nooks, add `pickups` and `seedTypes` to the output; property test over 500 seeds that prefix sufficiency holds and critical seeds are never behind their own obstacle.
-- [ ] 2.2 Add the generation self-check with derived-seed regeneration; test that a forced-bad candidate is rejected and replaced.
-- [ ] 2.3 Extend `Room.validate`/`Room:init` to accept and build pickups and `seedTypes`; test validation errors and that bad pickups are rejected.
-- [ ] 2.4 Render pickups as bobbing seed-bag billboards and collect them by proximity in `BackroomsState`, with message and HUD count update; test collection adds one seed and removes the pickup.
-- [ ] 2.5 Make `visibleSeedTypes` use `seedTypes` when present; test a pumpkin+vine level lists only those two.
+- [x] 2.1 Place critical seeds by the prefix rule and extras in dead ends/nooks, add `pickups` and `seedTypes` to the output; property test over 500 seeds that prefix sufficiency holds and critical seeds are never behind their own obstacle.
+- [x] 2.2 Add the generation self-check with derived-seed regeneration; test that a forced-bad candidate is rejected and replaced.
+- [x] 2.3 Extend `Room.validate`/`Room:init` to accept and build pickups and `seedTypes`; test validation errors and that bad pickups are rejected.
+- [x] 2.4 Render pickups as bobbing seed-bag billboards and collect them by proximity in `BackroomsState`, with message and HUD count update; test collection adds one seed and removes the pickup.
+- [x] 2.5 Make `visibleSeedTypes` use `seedTypes` when present; test a pumpkin+vine level lists only those two.
 
 ## 3. Uproot
 

@@ -3487,5 +3487,91 @@ test('levelgen 1.4: elevation and headroom track the chain (ledge then gap)', fu
     assert(found > 0, 'a ledge-then-gap chain occurred')
 end)
 
+test('levelgen 2.1: critical seeds satisfy the prefix rule over 500 seeds', function()
+    loadGame()
+    for seed = 1, 500 do
+        local data = gen(seed, 1 + seed % #LEVELGEN_DIFFICULTY)
+        local ok, msg = LevelGen.check(data)
+        assert(ok, 'seed ' .. seed .. ': ' .. tostring(msg))
+        local crit, extra = 0, 0
+        for _, p in ipairs(data.pickups) do
+            if p.tier == 'critical' then crit = crit + 1 else extra = extra + 1 end
+        end
+        eq(crit, data.meta.obstacles, 'one critical seed per obstacle')
+        assert(extra >= 1, 'at least one extra')
+        eq(next(data.allotment), nil, 'generated levels start with no seeds')
+        -- seedTypes lists exactly the chain's types
+        local used = {}
+        for _, l in ipairs(data.meta.chain) do used[l.seed] = true end
+        for _, t in ipairs(data.seedTypes) do assert(used[t], 'seedTypes only chain types') end
+    end
+end)
+
+test('levelgen 2.2: a bad candidate is rejected and replaced by a derived seed', function()
+    loadGame()
+    local data = gen(9, 2, {mutate = function(cand, attempt)
+        if attempt == 0 then
+            for i, p in ipairs(cand.pickups) do
+                if p.tier == 'critical' then table.remove(cand.pickups, i) break end
+            end
+        end
+    end})
+    eq(data.meta.attempt, 1, 'second candidate used')
+    assert(data.meta.seed ~= 9, 'derived seed used')
+    assert(LevelGen.check(data))
+    eq(gen(9, 2).meta.attempt, 0, 'unmutated seed passes first time')
+end)
+
+test('levelgen 2.3: Room validates and builds pickups and seedTypes', function()
+    loadGame()
+    local data = gen(3, 2)
+    local room = Room(data)
+    eq(#room.pickups, #data.pickups, 'pickups built')
+    eq(#room.seedTypes, #data.seedTypes, 'seedTypes kept')
+    local function with(change)
+        local d = gen(3, 2)
+        change(d)
+        return Room.validate(d)
+    end
+    assert(not with(function(d) d.pickups[1].seed = 'rock' end), 'unknown pickup seed')
+    assert(not with(function(d) d.pickups[1].tier = 'bonus' end), 'unknown tier')
+    assert(not with(function(d) d.pickups[1].pos = {1, 2} end), 'bad pos')
+    assert(not with(function(d) d.seedTypes = {'rock'} end), 'unknown seedType')
+    assert(not with(function(d) d.seedTypes = 5 end), 'seedTypes not a list')
+    assert(not pcall(Room, (function() local d = gen(3, 2); d.pickups[1].tier = 'x'; return d end)()), 'Room rejects')
+end)
+
+test('levelgen 2.4: walking onto a pickup adds one seed and removes it', function()
+    local back = toBackrooms()
+    local data = gen(3, 2)
+    back.rooms = {data}
+    back:loadRoom(1)
+    local n = #back.room.pickups
+    local p = back.room.pickups[1]
+    local seed = p.seed
+    back.gameData.seeds = {beanstalk = 0, pumpkin = 0, vine = 0}   -- (stock policy is section 4)
+    back.player:setPosition(p.pos[1], p.pos[2], p.pos[3])
+    back:collectPickups()
+    eq(back.gameData.seeds[seed], 1, 'seed added')
+    eq(#back.room.pickups, n - 1, 'pickup removed')
+    assert(back.message and back.message.text:find(SeedName(seed), 1, true), 'message names the seed')
+    back:collectPickups()
+    eq(back.gameData.seeds[seed], 1, 'not collected twice')
+    mock.reset(); love.draw()
+end)
+
+test('levelgen 2.5: visibleSeedTypes uses seedTypes when present', function()
+    local back = toBackrooms()
+    local data = gen(3, 1)
+    data.seedTypes = {'pumpkin', 'vine'}
+    back.rooms = {data}
+    back:loadRoom(1)
+    local v = back:visibleSeedTypes()
+    eq(#v, 2, 'two types'); eq(v[1], 'pumpkin'); eq(v[2], 'vine')
+    back.rooms = {BACKROOMS_ROOMS[2]}
+    back:loadRoom(1)
+    eq(#back:visibleSeedTypes(), 2, 'allotment fallback unchanged')
+end)
+
 realPrint(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)

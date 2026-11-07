@@ -109,15 +109,21 @@ end
 
 -- Seed selection --------------------------------------------------------------
 
--- The seed types the current room uses: those with an allotment above zero,
--- in SEED_TYPES order. The HUD lists only these and the seed keys only select
+-- The seed types the current room uses: its `seedTypes` list when it has one
+-- (generated levels start with no seeds), else those with an allotment above
+-- zero, in SEED_TYPES order. The HUD lists only these and the seed keys only select
 -- these. Other types are still counted in gameData.seeds (carry-over and
 -- reset are unchanged); they just cannot be used here.
 function BackroomsState:visibleSeedTypes()
     local list = {}
     local allotment = self.room and self.room.allotment or {}
+    local declared = {}
+    for _, t in ipairs(self.room and self.room.seedTypes or {}) do declared[t] = true end
+    local useDeclared = self.room and self.room.seedTypes ~= nil
     for _, t in ipairs(SEED_TYPES) do
-        if (allotment[t] or 0) > 0 then list[#list + 1] = t end
+        if (useDeclared and declared[t]) or (not useDeclared and (allotment[t] or 0) > 0) then
+            list[#list + 1] = t
+        end
     end
     return list
 end
@@ -158,6 +164,20 @@ function BackroomsState:cycleSeed()
         local t = visible[(start + k - 1) % #visible + 1]
         if (self.gameData.seeds[t] or 0) > 0 then self.selectedSeed = t; return end
     end
+end
+
+-- Collects the pickup the player stands near, if any: +1 seed, message.
+-- Returns the pickup or nil.
+function BackroomsState:collectPickups()
+    local p = self.room:collectPickup(self.player.x, self.player.y, self.player.z)
+    if not p then return nil end
+    local seeds = self.gameData.seeds
+    seeds[p.seed] = (seeds[p.seed] or 0) + 1
+    if gSounds['plant'] then gSounds['plant']:play() end
+    self:say(string.format('Picked up a %s seed (x%d)', SeedName(p.seed), seeds[p.seed]))
+    if (seeds[self.selectedSeed] or 0) == 0 then self:selectSeed(p.seed) end
+    print(string.format('[backrooms] picked up %s (%s), seeds: %s', p.seed, p.tier, FormatSeeds(seeds)))
+    return p
 end
 
 function BackroomsState:say(text)
@@ -276,6 +296,8 @@ function BackroomsState:update(dt)
 
     local ex, ey, ez = self.player:eyePosition()
     g3d.camera.lookInDirection(ex, ey, ez)
+
+    while self:collectPickups() do end
 
     local pmin, pmax = self.player:bounds()
     if self.room:overlapsExit(pmin, pmax) then

@@ -15,3 +15,26 @@ Run: `love tests/love_runner tests/run.lua` (real LÖVE 11.5 LuaJIT, mocked LÖV
 | 1.4 elevation/ceiling | done | `levelgen 1.4` passes over 300 seeds: ledge raises floor, headroom kept, gap after ledge at ledge height |
 
 Design notes: modules are one 6 m cell; spine along +x, side cells at cy = +-1/+-2; walls are centred on cell boundaries.
+
+## Section 2: Seeds and pickups
+
+Run: `love tests/love_runner tests/run.lua` -> 170 passed, 0 failed (full headless unit file, mocked LÖVE).
+
+| Task | Status | Evidence |
+|------|--------|----------|
+| 2.1 critical/extra seeds, `pickups`, `seedTypes` | done | `levelgen 2.1`: 500 seeds, prefix sufficiency (computed from pickup coordinates against region reachability) and critical seed never behind its own obstacle |
+| 2.2 self-check + derived-seed regeneration | done | `levelgen 2.2`: mutated candidate (critical seed removed) rejected, attempt 1 with derived seed used |
+| 2.3 `Room.validate` / `Room:init` pickups + seedTypes | done | `levelgen 2.3`: bad seed, tier, pos, seedTypes rejected; Room builds pickups |
+| 2.4 pickup billboards + collection | done (mock) | `levelgen 2.4`: +1 seed, pickup removed, message names seed, no double collect, draw runs. Billboards are `seedbag-<type>` bobbing sprites; visual look not screenshotted |
+| 2.5 `visibleSeedTypes` | done | `levelgen 2.5`: pumpkin+vine level lists only those; allotment fallback unchanged |
+
+Targeted physical spot check (not the section 5 sweep): `love tests/love_runner qa/levels/spot_reach.lua`
+(script kept in /workspace/qa/levels/spot_reach.lua), 7 seeds over difficulties 1-3 using `tests/reach.lua`:
+exit unreachable with no crops, reachable with the intended crops, 7/7 ok.
+
+## Not done / pending
+
+- Sections 3 (uproot), 4 (sequence, stock policy, reset, ending), 5 (sweep over hundreds of seeds, check_all, playtest) unchecked.
+- No full check_all.sh, no package build, no autotest, no real-window screenshot run in this pass.
+- Generated levels are not yet wired into the sequence (section 4); `loadRoom(1)` would still apply the tutorial top-up.
+- Atmosphere/visual change not started.

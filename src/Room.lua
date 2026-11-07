@@ -26,6 +26,11 @@
 --                        demo crop is frozen and not usable until a seed of its
 --                        type is planted on its plot, which finishes its growth
 --                        (the tutorial room)
+--   pickups            optional list of {pos = {x,y,z}, seed = <type>, tier = 'critical'|'extra'}:
+--                        collectible seeds (src/LevelGen.lua); walking within
+--                        BACKROOMS_PICKUP_RADIUS adds the seed (BackroomsState)
+--   seedTypes          optional list of the seed types the room uses (HUD and
+--                        seed selection); default: those with an allotment
 --   killZ              optional, default BACKROOMS_KILL_Z
 --
 -- Boxes are always axis-aligned: g3d.collisions ignores model rotation.
@@ -147,6 +152,23 @@ function Room.validate(data)
     for i, b in ipairs(data.billboards or {}) do
         if not isVec3(b.pos) or not b.texture then return fail('billboard ' .. i .. ' needs pos and texture') end
     end
+    local function knownSeed(t)
+        for _, s in ipairs(SEED_TYPES) do if s == t then return true end end
+        return false
+    end
+    if data.seedTypes ~= nil then
+        if type(data.seedTypes) ~= 'table' then return fail('seedTypes must be a list') end
+        for i, t in ipairs(data.seedTypes) do
+            if not knownSeed(t) then return fail('seedTypes ' .. i .. ' unknown seed type ' .. tostring(t)) end
+        end
+    end
+    for i, p in ipairs(data.pickups or {}) do
+        if not isVec3(p.pos) then return fail('pickup ' .. i .. ' needs pos') end
+        if not knownSeed(p.seed) then return fail('pickup ' .. i .. ' unknown seed ' .. tostring(p.seed)) end
+        if p.tier ~= 'critical' and p.tier ~= 'extra' then
+            return fail('pickup ' .. i .. ' tier must be critical or extra')
+        end
+    end
     return true
 end
 
@@ -171,6 +193,15 @@ function Room:init(data)
     self.spawn = {data.spawn[1], data.spawn[2], data.spawn[3], data.spawn[4] or 0}
     self.killZ = data.killZ or BACKROOMS_KILL_Z
     self.allotment = CopySeeds(data.allotment)
+    self.seedTypes = data.seedTypes
+    -- collectible seeds, rebuilt with the room (so reset respawns them)
+    self.pickups = {}
+    for _, p in ipairs(data.pickups or {}) do
+        self.pickups[#self.pickups + 1] = {
+            pos = {p.pos[1], p.pos[2], p.pos[3]}, seed = p.seed, tier = p.tier,
+            billboard = Billboard({texture = 'seedbag-' .. p.seed, pos = p.pos, height = BACKROOMS_PICKUP_HEIGHT}),
+        }
+    end
 
     -- solid geometry
     self.models = {}       -- {model, color} drawn opaque
@@ -228,6 +259,20 @@ function Room:init(data)
         plot.crop = crop
         self.crops[#self.crops + 1] = crop
     end
+end
+
+-- Removes and returns the first pickup within `radius` (horizontally, and
+-- BACKROOMS_PLANT_HEIGHT vertically) of the feet position, or nil.
+function Room:collectPickup(x, y, z, radius)
+    radius = radius or BACKROOMS_PICKUP_RADIUS
+    for i, p in ipairs(self.pickups) do
+        local dx, dy = p.pos[1] - x, p.pos[2] - y
+        if dx * dx + dy * dy <= radius * radius and math.abs(p.pos[3] - z) <= BACKROOMS_PLANT_HEIGHT then
+            table.remove(self.pickups, i)
+            return p
+        end
+    end
+    return nil
 end
 
 function Room:plotById(id)
@@ -327,5 +372,14 @@ function Room:draw(cx, cy)
     for _, crop in ipairs(self.crops) do crop:draw() end
     self.exitModel:draw()
     Billboard.drawAll(self.billboards, cx, cy)
+    -- pickups bob gently; the billboard is lifted, not the pickup position
+    local t = love.timer and love.timer.getTime and love.timer.getTime() or 0
+    local pickupBoards = {}
+    for i, p in ipairs(self.pickups) do
+        local b = p.billboard
+        b.model:setTranslation(p.pos[1], p.pos[2], p.pos[3] + 0.35 + 0.1 * math.sin(t * 3 + i))
+        pickupBoards[i] = b
+    end
+    Billboard.drawAll(pickupBoards, cx, cy)
     love.graphics.setColor(1, 1, 1, 1)
 end

@@ -333,3 +333,7 @@ LEVELGEN_DIFFICULTY = {
     {obstacles = 3, types = {'pit', 'gap', 'ledge'}},
     {obstacles = 4, types = {'pit', 'gap', 'ledge'}},
 }
+
+-- Seed pickups: collected by walking within this horizontal distance (m).
+BACKROOMS_PICKUP_RADIUS = 0.9
+BACKROOMS_PICKUP_HEIGHT = 0.5
