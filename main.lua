@@ -8,7 +8,7 @@ require 'src/Dependencies'
 
 function love.load()
     math.randomseed(os.time())
-    love.window.setTitle('Game Jam')
+    love.window.setTitle('Back to Farming')
 
     push:setupScreen(VIRTUAL_WIDTH, VIRTUAL_HEIGHT, WINDOW_WIDTH, WINDOW_HEIGHT, {
         vsync = true,

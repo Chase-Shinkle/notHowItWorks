@@ -20,7 +20,7 @@ The game runs on LÖVE 11.5 (zlib license), which is not included in the
 |-------|------|--------|
 | "Farming - Crops Pack 017" sprites | `graphics/Farming - Crops Pack 017/` | Supplied by the project owner. **No license file is included in the repository.** Confirm that the pack's license allows redistribution in a game build before a public release. |
 | Backrooms wallpaper, carpet and ceiling-tile textures | `graphics/backrooms/` | Extracted byte-for-byte from the owner-supplied `models/Backrooms.glb` (made with Blender glTF I/O) by `tools/extract_glb_textures.py`. **The model's source and license are not recorded in the repository.** Confirm before a public release. |
-| `SaH1Outline.ttf` display font (title, buttons, ending headline) | `fonts/SaH1Outline.ttf` | Supplied by the project owner. **Licence: UNCONFIRMED. Author: UNCONFIRMED.** Neither the author nor the licence terms are recorded; do not ship publicly until both are confirmed with the supplier and this entry is completed. The game falls back to the built-in font if the file is absent. |
+| `SaH1Outline.ttf` display font (title, buttons, ending headline) | `fonts/SaH1Outline.ttf` | SaH1Outline (fonts/SaH1Outline.ttf), obtained by the author from a free fonts site; author states no licence required |
 
 ## Audio
 

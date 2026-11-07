@@ -114,7 +114,7 @@ local function analyse(name, data)
     local f = io.open(file, 'wb')
     if f then f:write(data:encode('png'):getString()); f:close() end
     check(errBlue / total < 0.3, 'screenshot %s: not the error screen (%.0f%% error blue)', name, 100 * errBlue / total)
-    -- text-only screens (start, ending) are ~99% black, so "not blank" means
+    -- the ending is a mostly black text screen (~99% black); the start screen is a lit farm scene, so "not blank" means
     -- several colours and at least 0.2% lit pixels
     check(ncolors >= 3 and dark / total < 0.998, 'screenshot %s: not blank (%d colours, %.2f%% lit) -> %s',
         name, ncolors, 100 * (1 - dark / total), file)

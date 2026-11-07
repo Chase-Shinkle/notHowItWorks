@@ -3,7 +3,7 @@ function love.conf(t)
     t.identity = 'not-how-it-works'
     t.version = '11.5'
 
-    t.window.title = 'Game Jam'
+    t.window.title = 'Back to Farming'
     t.window.width = 800
     t.window.height = 800
     t.window.resizable = true
