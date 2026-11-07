@@ -27,10 +27,12 @@
 
 ## 5. Dressing
 
-- [ ] 5.1 Add `PROP_CATALOGUE` and room-type tagging; unit test that selection differs between a hall and a filler room.
-- [ ] 5.2 Implement exclusion-zone prop placement (plots, pickups, exit, doorways, module footprints, spawn); property test over many seeds that no prop overlaps an exclusion zone and routes stay clear.
-- [ ] 5.3 Add storytelling groupings and concealing props for secret nooks only; test a generated level contains a grouping and that nook doorways stay walkable.
-- [ ] 5.4 Make dressing deterministic from the level seed in its own RNG stream; test equal seeds give equal props and that adding props leaves layout unchanged.
+- [x] 5.1 Add `PROP_CATALOGUE` and room-type tagging; unit test that selection differs between a hall and a filler room.
+- [x] 5.2 Implement exclusion-zone prop placement (plots, pickups, exit, doorways, module footprints, spawn); property test over many seeds that no prop overlaps an exclusion zone and routes stay clear.
+- [x] 5.3 Add storytelling groupings and concealing props for secret nooks only; test a generated level contains a grouping and that nook doorways stay walkable.
+- [x] 5.4 Make dressing deterministic from the level seed in its own RNG stream; test equal seeds give equal props and that adding props leaves layout unchanged.
+
+Section 5 verification: new `src/Dressing.lua` (PROP_CATALOGUE, room-type tags, exclusion-zone placement on wall-hugging spots, storytelling groups, own RNG seeded from the level seed) hooked at the end of `LevelGen.build`; 4 tests `dressing 5.1-5.4` in tests/run.lua pass (188 passed, 0 failed; log in /workspace/qa/atmos/section5/run.txt). Props are non-solid billboards, no screenshots taken.
 
 ## 6. Review and integration
 
