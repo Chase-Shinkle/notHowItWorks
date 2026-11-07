@@ -343,6 +343,8 @@ LEVELGEN_MAX_ROOMS = 4
 LEVELGEN_NARROW_CHANCE = 0.35        -- straight corridor cells narrowed by side slabs
 LEVELGEN_NARROW_INSET = 0.5          -- m per side (props hug walls at 0.8, so they stay clear)
 LEVELGEN_CEILING_VARIANTS = {-1, -0.5, 0, 0, 0.8, 1.6}   -- added to LEVELGEN_CEILING (non-module cells)
+LEVELGEN_ZONE_CELLS = 10             -- about one zone per this many cells (see openspec backrooms-zones-variety-audio)
+LEVELGEN_MIN_ZONES = 3
 LEVELGEN_BOX_BUDGET = 1500           -- most boxes in one generated level
 -- Difficulty table: chain obstacle count and the obstacle types allowed. The
 -- level sequence (later section) indexes into it.
@@ -397,3 +399,25 @@ BACKROOMS_LIGHT_PRESETS = {
 BACKROOMS_LIGHTING_BY_ROOM_ID = {tutorial = 'bright'}
 BACKROOMS_LIGHTING_DEFAULT_POOL = {'bright', 'dim', 'dim', 'single-bulb', 'near-dark'}
 BACKROOMS_SHADOW_ALPHA = 0.55          -- peak darkness of a contact-shadow blob
+
+-- Zones / room shapes / audio: shared contracts for backrooms-zones-variety-audio.
+-- LevelGen output: data.meta.zones = {{id='z1', theme, lighting, cellCount, adjacent={ids}}, ...};
+-- each data.meta.cells[i].zone = zone id. Later groups add zone ids to boxes/fixtures/props/checkpoints.
+BACKROOMS_ZONE_LIGHTING_POOL = {'bright', 'dim', 'single-bulb', 'near-dark'}   -- keys of BACKROOMS_LIGHT_PRESETS
+BACKROOMS_ZONE_BLEND_DISTANCE = 2.5    -- m over which ambient/fog blend toward the neighbouring zone
+-- Shape contract: a shape declares {name, cells (offsets), removeWalls, ceilingBonus}; stays in one region
+-- and elevation, excludes module/start/exit cells, uses its own RNG stream. Weights 0 = disabled.
+ROOM_SHAPE_NAMES = {'hall', 'room2x2', 'room1x2', 'room2x3', 'roomL', 'pillared', 'atrium', 'gallery', 'closet'}
+ROOM_SHAPE_WEIGHTS = {hall = 1, room2x2 = 1, room1x2 = 1, room2x3 = 0.6, roomL = 0.8, pillared = 0.4, atrium = 0.3, gallery = 0.6, closet = 0.5}
+ROOM_PILLAR_CLEARANCE = 1.2            -- m between a pillar and walls/other pillars
+ROOM_ATRIUM_CEILING_BONUS = 2.5        -- extra ceiling height of a crossroads atrium
+-- Audio (src/BackroomsAudio.lua, owned by the audio group)
+BACKROOMS_HUM_FILE = 'sounds/BackroomsHum.mp3'     -- streamed, looping
+BACKROOMS_FOOTSTEP_FILES = {'sounds/Footsteps Rug 1.wav', 'sounds/Footsteps Rug 2.wav', 'sounds/Footsteps Rug 3.wav',
+    'sounds/Footsteps Rug 4.wav', 'sounds/Footsteps Rug 5.wav'}   -- verify names against sounds/
+BACKROOMS_FOOTSTEP_STRIDE = 1.7        -- m of ground travel per step
+BACKROOMS_FOOTSTEP_PITCH_VARIATION = 0.06
+BACKROOMS_FOOTSTEP_VOLUME_VARIATION = 0.10
+BACKROOMS_HUM_VOLUME = 0.25
+BACKROOMS_FOOTSTEP_VOLUME = 0.7
+BACKROOMS_HUM_FADE = 1.0               -- s

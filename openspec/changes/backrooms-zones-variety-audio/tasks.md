@@ -29,3 +29,8 @@
 
 - [ ] 5.1 Extend the backrooms screenshot script with scenes for zone transitions, each lighting preset in its zone, and each room shape; review and tune zone size, blend distance, shape weights and volumes, and record the findings.
 - [ ] 5.2 Add the new tests to `tests/check_all.sh`, run it green on the real LÖVE runtime, and run a full autotest to the ending recording box count and frame cost for the largest level.
+
+## Foundation (landed, unverified)
+
+- Zone partition (region growing, rooms as units, theme/lighting graph colouring on its own RNG stream) and `meta.zones` / `meta.cells[i].zone` emitted in `LevelGen.build`; per-cell themes replaced by zone themes. Not yet covered by tests (2.1/2.2 still open; doorway snapping and `Room.validate` zones not done).
+- Shared constants added in `src/constants.lua` (zones, shapes, audio). Nothing else implemented; no new tests written.

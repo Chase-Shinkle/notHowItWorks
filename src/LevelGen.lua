@@ -583,18 +583,81 @@ function LevelGen.build(seed, difficulty)
     end
 
     -- 5. boxes ----------------------------------------------------------------
-    local themeRng = LevelGen.rng(seed * 31 + 977)   -- own stream, never the layout rng
-    local themes = {}
-    for _, c in ipairs(list) do themes[c] = themeRng:pick(MATERIAL_THEME_NAMES) end
-    do
-        local allSame = true
-        for _, c in ipairs(list) do if themes[c] ~= themes[list[1]] then allSame = false end end
-        if allSame then
-            local others = {}
-            for _, nme in ipairs(MATERIAL_THEME_NAMES) do if nme ~= themes[list[1]] then others[#others + 1] = nme end end
-            themes[list[#list]] = others[themeRng:int(1, #others)]
+    -- zones: contiguous partition of the connection graph on its own RNG stream (layout untouched).
+    -- Multi-cell rooms are one unit. Zone ids are stable ('z1'..'zK', ordered by seed cell in grid order).
+    local zoneRng = LevelGen.rng(seed * 31 + 977)
+    local unitOf, units = {}, {}
+    for _, c in ipairs(list) do
+        local u = c.room and ('r' .. tostring(c.room)) or key(c.cx, c.cy)
+        if not unitOf[u] then unitOf[u] = {cells = {}, nbrs = {}}; units[#units + 1] = unitOf[u] end
+        local un = unitOf[u]
+        un.cells[#un.cells + 1] = c
+        c.unit = un
+    end
+    for _, c in ipairs(list) do
+        for _, d in ipairs(SIDES) do
+            local nb = cells[key(c.cx + d[1], c.cy + d[2])]
+            if nb and nb.unit ~= c.unit and conn[edgeKey(c, nb)] then c.unit.nbrs[nb.unit] = true end
         end
     end
+    local K = math.max(LEVELGEN_MIN_ZONES, math.floor(#list / LEVELGEN_ZONE_CELLS))
+    K = math.min(K, #units)
+    local order = {}
+    for i, u in ipairs(units) do order[i] = u end
+    for i = #order, 2, -1 do local j = zoneRng:int(1, i); order[i], order[j] = order[j], order[i] end
+    local zoneOf, zoneList, frontier = {}, {}, {}
+    for i = 1, K do
+        local z = {id = 'z' .. i, cells = {}, adj = {}}
+        zoneList[i] = z; zoneOf[order[i]] = z; frontier[#frontier + 1] = order[i]
+    end
+    local assigned = K
+    while assigned < #units do   -- grow a random frontier unit into an unassigned neighbour: zones stay connected
+        local progressed = false
+        for _ = 1, #frontier do
+            local fi = zoneRng:int(1, #frontier)
+            local un, free = frontier[fi], {}
+            for nb in pairs(un.nbrs) do if not zoneOf[nb] then free[#free + 1] = nb end end
+            if #free == 0 then table.remove(frontier, fi)
+            else
+                table.sort(free, function(p, q) return key(p.cells[1].cx, p.cells[1].cy) < key(q.cells[1].cx, q.cells[1].cy) end)
+                local nb = free[zoneRng:int(1, #free)]
+                zoneOf[nb] = zoneOf[un]; frontier[#frontier + 1] = nb; assigned = assigned + 1; progressed = true
+                break
+            end
+        end
+        if not progressed then break end
+    end
+    for _, un in ipairs(units) do
+        for _, c in ipairs(un.cells) do
+            local z = zoneOf[un] or zoneList[1]
+            c.zone = z.id; z.cells[#z.cells + 1] = c
+        end
+    end
+    -- adjacency, then theme and lighting differing from every neighbour where the pools allow
+    local zoneById = {}
+    for _, z in ipairs(zoneList) do zoneById[z.id] = z end
+    for _, c in ipairs(list) do
+        for _, d in ipairs(SIDES) do
+            local nb = cells[key(c.cx + d[1], c.cy + d[2])]
+            if nb and nb.zone ~= c.zone and conn[edgeKey(c, nb)] then zoneById[c.zone].adj[nb.zone] = true end
+        end
+    end
+    local function pickDistinct(pool, field, z)
+        local ok = {}
+        for _, v in ipairs(pool) do
+            local clash = false
+            for nid in pairs(z.adj) do if zoneById[nid][field] == v then clash = true end end
+            if not clash then ok[#ok + 1] = v end
+        end
+        if #ok == 0 then ok = pool end
+        return ok[zoneRng:int(1, #ok)]
+    end
+    for _, z in ipairs(zoneList) do
+        z.theme = pickDistinct(MATERIAL_THEME_NAMES, 'theme', z)
+        z.lighting = pickDistinct(BACKROOMS_ZONE_LIGHTING_POOL, 'lighting', z)
+    end
+    local themes = {}
+    for _, c in ipairs(list) do themes[c] = zoneById[c.zone].theme end
     local boxes, plots, billboards = {}, {}, {}
     local function addBox(kind, x0, x1, y0, y1, z0, z1, theme, obstacle)
         boxes[#boxes + 1] = {kind = kind, pos = {(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2},
@@ -787,7 +850,14 @@ function LevelGen.build(seed, difficulty)
             ceil = c.ceil, k = c.k, module = c.module, dir = c.dir, rot = c.rot, onPath = c.onPath or false,
             pathIndex = c.pathIndex, start = c.start, exit = c.exit, degree = c.degree, room = c.room,
             inset = c.inset, deadEnd = c.deadEnd, nook = c.nook, loop = c.loop,
-            optional = c.optional, shortcut = c.shortcut, opt = c.opt, plotId = c.plotId}
+            optional = c.optional, shortcut = c.shortcut, opt = c.opt, plotId = c.plotId, zone = c.zone}
+    end
+    local metaZones = {}
+    for i, z in ipairs(zoneList) do
+        local adj = {}
+        for id in pairs(z.adj) do adj[#adj + 1] = id end
+        table.sort(adj)
+        metaZones[i] = {id = z.id, theme = z.theme, lighting = z.lighting, cellCount = #z.cells, adjacent = adj}
     end
     local metaPath = {}
     for i, c in ipairs(path) do metaPath[i] = {c.cx, c.cy} end
@@ -809,7 +879,7 @@ function LevelGen.build(seed, difficulty)
         meta = {seed = seed, obstacles = n, chain = chain, cells = metaCells, edges = edges, nooks = nookCount,
             grid = {W, H}, start = {path[1].cx, path[1].cy}, exitCell = {path[L].cx, path[L].cy},
             path = metaPath, pathLength = L, turns = countTurns(path), minPath = minPath, minTurns = minTurns,
-            regions = regionInfo, rooms = rooms, loopEdges = loopEdges, loops = #loopEdges,
+            regions = regionInfo, rooms = rooms, zones = metaZones, loopEdges = loopEdges, loops = #loopEdges,
             fallback = fallback, boxCount = #boxes,
             optional = optional, shortcuts = shortcutList, shortcutsWanted = wantShortcuts, plotCount = #plots},
     }
