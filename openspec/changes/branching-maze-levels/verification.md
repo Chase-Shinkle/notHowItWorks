@@ -53,3 +53,7 @@ Changed:
 - Re-rendered `/workspace/qa/maze/final/` (layout maps d1-d3 x seeds 1-3; L2/L3 pit, exit, junction, turn shots at run seed 1). Images not evaluated by me.
 
 Still unverified: full `tests/check_all.sh` (incomplete since the earlier 10-minute timeout), the four edited assertions, other tests that may depend on old seeds/layouts (maze_*, sweeps, autotest, packaging), whether the new junction/exit shots read well, and whether path fraction at d1 (up to 69%) is acceptable.
+
+## Exit render regression (fixed; tests NOT rerun)
+
+The L2 exit shot (`qa/maze/final/L2-exit-L2.png`) showed a solid beige block instead of a black void. Root cause: the exit frame posts in `Room.lua` were full-width boxes offset along Y, so when the exit is approached along Y (the new exit shot scene follows the real last path step) the near post sat in front of the void and covered it. The frame is now four corner posts plus a lintel ring outside the void's faces, so it cannot occlude the void from any side. Recaptured the same scene (run seed 1, gen-1907137354): interior solid black with a pale frame, look on and `--no-shader` (`L2-exit-L2-plain.png`). Pit scene unchanged. No tests, suite or sweeps were rerun after this change.

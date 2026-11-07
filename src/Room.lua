@@ -349,18 +349,23 @@ function Room:init(data)
     self.exit = {pos = {e.pos[1], e.pos[2], e.pos[3]}, size = {e.size[1], e.size[2], e.size[3]}, min = emin, max = emax}
     self.exitModel = g3d.newModel(NewRoomBoxVerts(e.size[1], e.size[2], e.size[3], ROOM_EXIT_COLOR),
         gTextures['white'] or texture(nil, 'floor'), {e.pos[1], e.pos[2], e.pos[3]})
-    -- render-only pale frame (two posts + lintel) so the black void is findable
+    -- render-only pale frame so the black void is findable from any side: four
+    -- corner posts plus a lintel ring, all OUTSIDE the void's faces (never in
+    -- front of them, whichever axis the exit is approached along)
     self.exitFrame = {}
     do
-        local fw, sx, sy, sz = ROOM_EXIT_FRAME, e.size[1] + 0.04, e.size[2], e.size[3]
+        local fw, sx, sy, sz = ROOM_EXIT_FRAME, e.size[1], e.size[2], e.size[3]
         local wt = gTextures['white'] or texture(nil, 'floor')
-        local function part(dx, dz, w, h)
+        local function part(dx, dy, dz, w, d, h)
             self.exitFrame[#self.exitFrame + 1] = g3d.newModel(
-                NewRoomBoxVerts(sx, w, h, ROOM_EXIT_FRAME_COLOR), wt, {e.pos[1], e.pos[2] + dx, e.pos[3] + dz})
+                NewRoomBoxVerts(w, d, h, ROOM_EXIT_FRAME_COLOR), wt, {e.pos[1] + dx, e.pos[2] + dy, e.pos[3] + dz})
         end
-        part(-(sy / 2 + fw / 2), 0, fw, sz + fw)
-        part(sy / 2 + fw / 2, 0, fw, sz + fw)
-        part(0, sz / 2 + fw / 2, sy, fw)
+        for _, ix in ipairs({-1, 1}) do
+            for _, iy in ipairs({-1, 1}) do
+                part(ix * (sx / 2 + fw / 2), iy * (sy / 2 + fw / 2), 0, fw, fw, sz)
+            end
+        end
+        part(0, 0, sz / 2 + fw / 2, sx + 2 * fw, sy + 2 * fw, fw)
     end
 
     -- fixed plots: flat soil pads just above the surface they sit on
