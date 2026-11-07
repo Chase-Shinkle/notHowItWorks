@@ -328,8 +328,20 @@ LEVELGEN_CEILING = 6                 -- ceiling height above a cell's entry floo
 LEVELGEN_VOID_Z = -4                 -- bottom of pits and gaps
 LEVELGEN_KILL_Z = -0.5
 LEVELGEN_MAX_ATTEMPTS = 20           -- derived-seed retries by the self-check
-LEVELGEN_BRANCH_CHANCE = 0.45        -- per filler cell and side
-LEVELGEN_LOOP_CHANCE = 0.4           -- per filler region with 2+ cells
+LEVELGEN_BRANCH_CHANCE = 0.45        -- (legacy spine generator; unused by the maze)
+LEVELGEN_LOOP_CHANCE = 0.4           -- chance per candidate same-region cell pair to become a loop
+-- Maze (branching-maze-levels sections 1-2). A difficulty row may override
+-- `grid` (number or {w, h}), `minPath` and `minTurns`; section 6 tunes them.
+LEVELGEN_GRID = 6                    -- default grid is LEVELGEN_GRID x LEVELGEN_GRID cells
+LEVELGEN_MIN_PATH = 14               -- critical path length in cells, start and exit included
+LEVELGEN_MIN_TURNS = 3               -- turns on the critical path
+LEVELGEN_CARVE_TRIES = 12            -- carve retries (derived seeds) before the fallback template
+LEVELGEN_ROOM_CHANCE = 0.5           -- per candidate 2x2 block to merge into a large room
+LEVELGEN_MAX_ROOMS = 4
+LEVELGEN_NARROW_CHANCE = 0.35        -- straight corridor cells narrowed by side slabs
+LEVELGEN_NARROW_INSET = 0.5          -- m per side (props hug walls at 0.8, so they stay clear)
+LEVELGEN_CEILING_VARIANTS = {-1, -0.5, 0, 0, 0.8, 1.6}   -- added to LEVELGEN_CEILING (non-module cells)
+LEVELGEN_BOX_BUDGET = 1500           -- most boxes in one generated level
 -- Difficulty table: chain obstacle count and the obstacle types allowed. The
 -- level sequence (later section) indexes into it.
 LEVELGEN_DIFFICULTY = {

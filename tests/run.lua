@@ -3471,6 +3471,25 @@ test('levelgen 1.3: layouts are valid, connected, non-overlapping and determinis
     assert(not LevelGen.check(bad), 'overlap rejected')
 end)
 
+test('maze 1-2: turning branching maze, rooms, straight modules, loops stay in a region (written, not yet run)', function()
+    loadGame()
+    local junctions, rooms = 0, 0
+    for seed = 1, 60 do
+        local d = 1 + seed % #LEVELGEN_DIFFICULTY
+        local data = gen(seed, d)
+        local m = data.meta
+        assert(LevelGen.check(data))
+        assert(m.turns >= 3 and m.pathLength >= m.minPath and m.loops >= 1, 'seed ' .. seed)
+        assert(#data.boxes <= LEVELGEN_BOX_BUDGET, 'box budget')
+        for _, c in ipairs(m.cells) do
+            if c.degree >= 3 then junctions = junctions + 1 end
+            if c.room then rooms = rooms + 1 end
+        end
+        eq(#m.regions, m.obstacles + 1, 'regions R_0..R_n')
+    end
+    assert(junctions > 0 and rooms > 0, 'junctions and 2x2 rooms occur')
+end)
+
 test('levelgen 1.4: elevation and headroom track the chain (ledge then gap)', function()
     loadGame()
     local found = 0

@@ -2,15 +2,21 @@
 
 ## 1. Maze carving
 
-- [ ] 1.1 In `src/LevelGen.lua`, implement the seeded cell-grid carve, longest-path start/exit selection and turn/length acceptance with bounded retries and a fallback template; property test over 300 seeds that every level is a connected tree plus loops, has at least three critical-path turns and meets its minimum length.
-- [ ] 1.2 Merge connected 2x2 blocks into large rooms and vary junction shape, corridor width and ceiling height; test no overlapping geometry and that junctions of degree three or more exist.
-- [ ] 1.3 Emit walls, floors and ceilings with doorways as merged boxes in room format and pass `Room.validate`; test box count stays within the configured budget for the largest level and measure frame cost of drawing and colliding with it.
+- [~] 1.1 In `src/LevelGen.lua`, implement the seeded cell-grid carve, longest-path start/exit selection and turn/length acceptance with bounded retries and a fallback template; property test over 300 seeds that every level is a connected tree plus loops, has at least three critical-path turns and meets its minimum length.
+  - IMPLEMENTED in src/LevelGen.lua (carve, longest path, turn/length acceptance, bounded retries + serpentine fallback); the 300-seed property test is NOT written or run (Chase runs tests).
+- [~] 1.2 Merge connected 2x2 blocks into large rooms and vary junction shape, corridor width and ceiling height; test no overlapping geometry and that junctions of degree three or more exist.
+  - IMPLEMENTED (2x2 rooms, ceiling/width variety, T/X junctions from the tree); dedicated overlap test NOT written, nothing run.
+- [~] 1.3 Emit walls, floors and ceilings with doorways as merged boxes in room format and pass `Room.validate`; test box count stays within the configured budget for the largest level and measure frame cost of drawing and colliding with it.
+  - IMPLEMENTED (merged floors/ceilings, `LEVELGEN_BOX_BUDGET` check in `LevelGen.check`, `Room.validate` called by check); frame-cost measurement NOT done.
 
 ## 2. Obstacles, regions and elevation
 
-- [ ] 2.1 Define module footprints (1 or 2 cells, straight, rotatable) from the measured pit, ledge and gap, rotating plot positions and directions; test each module in all four rotations against crop sizes.
-- [ ] 2.2 Place critical modules on straight degree-2 path stretches, compute regions R_0..R_n and per-region elevation and ceiling height; test the exit is unreachable without crops and the elevation changes only at ledge modules.
-- [ ] 2.3 Add loops only between same-region, same-elevation cells; test no loop bypasses an obstacle.
+- [~] 2.1 Define module footprints (1 or 2 cells, straight, rotatable) from the measured pit, ledge and gap, rotating plot positions and directions; test each module in all four rotations against crop sizes.
+  - IMPLEMENTED (`LevelGen.frame`, rotated modules, 1-cell footprints only; `footprint` field ready for 2-cell modules); per-rotation crop test NOT written or run.
+- [~] 2.2 Place critical modules on straight degree-2 path stretches, compute regions R_0..R_n and per-region elevation and ceiling height; test the exit is unreachable without crops and the elevation changes only at ledge modules.
+  - IMPLEMENTED (modules on straight degree-2 cells, regions, elevation, checks in `LevelGen.check`); unreachable-without-crops is asserted by `check`, not separately run.
+- [~] 2.3 Add loops only between same-region, same-elevation cells; test no loop bypasses an obstacle.
+  - IMPLEMENTED (loops/rooms only within same region and elevation, enforced in `check`); not run.
 
 ## 3. Branch plots
 
