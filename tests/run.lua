@@ -1956,8 +1956,8 @@ test('planting: E plants the selected seed on the plot in range and only that co
     eq(back:targetPlot().id, 'pit')
     mock.reset(); love.draw()
     local texts = table.concat(printedTexts(), '\n')
-    assert(texts:find('[2 pumpkin x2]', 1, true), 'HUD shows the selected type and its count')
-    assert(texts:find(' 3 corn x2 ', 1, true), 'HUD shows the other counts (vine reads as corn)')
+    eq(Hotbar.last.selected, 'pumpkin', 'hotbar marks the selected type')
+    eq(table.concat(Hotbar.last.counts, ','), '0,2,2', 'hotbar shows every type with its count')
     assert(texts:find('E / click: plant pumpkin', 1, true), 'planting prompt near a plot')
     press('e')
     eq(FormatSeeds(back.gameData.seeds), 'beanstalk=0 pumpkin=1 vine=2', 'one pumpkin consumed')
@@ -1965,7 +1965,7 @@ test('planting: E plants the selected seed on the plot in range and only that co
     assert(crop and crop.type == 'pumpkin' and not crop.grown, 'pumpkin growing on the pit plot')
     eq(#back.timers, 1, 'growth runs on the state timer group')
     mock.reset(); love.draw()
-    assert(table.concat(printedTexts(), '\n'):find('[2 pumpkin x1]', 1, true), 'HUD count updated')
+    eq(table.concat(Hotbar.last.counts, ','), '0,1,2', 'HUD count updated')
     assert(find(mock.printed, '[backrooms] planted pumpkin on plot pit'), 'planting logged')
     -- growth is driven once per frame (the state group is not also the default group)
     run(CROP_DEFS.pumpkin.growTime * 0.75)
@@ -2061,10 +2061,13 @@ end)
 
 -- backrooms HUD (polish M4, backrooms) ---------------------------------------------
 local function hudSeedLabels(back)
+    -- the hotbar always shows every type; usable ones are full brightness
     mock.reset(); love.draw()
     local labels = {}
-    for _, c in ipairs(mock.calls) do
-        if c.name == 'print' and type(c.args[1]) == 'string' and c.args[3] == 32 then labels[#labels + 1] = c.args[1] end
+    for i, t in ipairs(SEED_TYPES) do
+        if Hotbar.last.usable[i] then
+            labels[#labels + 1] = (t == Hotbar.last.selected and '[' or ' ') .. i .. ' ' .. t .. ' x' .. Hotbar.last.counts[i] .. (t == Hotbar.last.selected and ']' or '')
+        end
     end
     return table.concat(labels, '|')
 end
@@ -2085,11 +2088,11 @@ test('hud: visible seed types follow the room allotment (room 1 beanstalk; room 
     eq(FormatSeeds(back.gameData.seeds), 'beanstalk=3 pumpkin=5 vine=4', 'hidden counts still tracked')
     back:advance()
     eq(table.concat(back:visibleSeedTypes(), ','), 'pumpkin,vine')
-    eq(hudSeedLabels(back), '[2 pumpkin x2]| 3 corn x2 ', 'room 2 HUD: pumpkin and vine (shown as corn), no beanstalk')
+    eq(hudSeedLabels(back), '[2 pumpkin x2]| 3 vine x2', 'room 2 HUD: pumpkin and vine (shown as corn), no beanstalk')
     eq(hudHasCoins(), nil)
     back:advance()
     eq(table.concat(back:visibleSeedTypes(), ','), 'beanstalk,pumpkin,vine')
-    eq(hudSeedLabels(back), ' 1 beanstalk x2 |[2 pumpkin x2]| 3 corn x2 ', 'room 3 HUD: all three')
+    eq(hudSeedLabels(back), ' 1 beanstalk x2|[2 pumpkin x2]| 3 vine x2', 'room 3 HUD: all three')
     eq(hudHasCoins(), nil)
 end)
 

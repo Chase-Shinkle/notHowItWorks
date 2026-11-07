@@ -57,6 +57,10 @@ function love.mousepressed(x, y, button)
     love.mouse.buttonsPressed[button] = true
 end
 
+function love.wheelmoved(dx, dy)
+    love.mouse.wheelDelta = (love.mouse.wheelDelta or 0) + dy
+end
+
 function love.mouse.wasPressed(button)
     return love.mouse.buttonsPressed[button] or false
 end
@@ -67,6 +71,7 @@ function love.update(dt)
 
     love.keyboard.keysPressed = {}
     love.mouse.buttonsPressed = {}
+    love.mouse.wheelDelta = 0
 end
 
 function love.draw()
