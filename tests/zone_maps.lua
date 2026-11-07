@@ -79,6 +79,40 @@ local function render(meta, data, name)
             end
         end
     end
+    -- boundary audit: zone borders by connection type (should be door/open-at-threshold, never inside a room)
+    do
+        local n = {}
+        for _, c in ipairs(meta.cells) do
+            for _, d in ipairs({{1, 0}, {0, 1}}) do
+                local nb = byKey[(c.cx + d[1]) .. ',' .. (c.cy + d[2])]
+                local e = nb and edge(c, nb)
+                if e and nb.zone ~= c.zone then
+                    local inRoom = (c.room and c.room == nb.room) and 'MIDROOM' or 'ok'
+                    local k = e .. '/' .. inRoom
+                    n[k] = (n[k] or 0) + 1
+                end
+            end
+        end
+        local parts = {}
+        for k, v in pairs(n) do parts[#parts + 1] = k .. '=' .. v end
+        table.sort(parts)
+        local shapes = {}
+        for k, v in pairs(meta.shapeCounts or {}) do shapes[#shapes + 1] = k .. '=' .. v end
+        table.sort(shapes)
+        local byId, clash, nozone = {}, 0, 0
+        for _, z in ipairs(meta.zones) do byId[z.id] = z end
+        for _, z in ipairs(meta.zones) do
+            for _, o in ipairs(z.adjacent) do
+                if byId[o].theme == z.theme or byId[o].lighting == z.lighting then clash = clash + 1 end
+            end
+        end
+        for _, list in ipairs({data.boxes or {}, data.plots or {}, data.pickups or {}, data.checkpoints or {}}) do
+            for _, e in ipairs(list) do if not e.zone then nozone = nozone + 1 end end
+        end
+        for _, b in ipairs(data.billboards or {}) do if not b.zone then nozone = nozone + 1 end end
+        print('[zone-maps] ' .. name .. ' neighbor-clash=' .. clash .. ' entities-without-zone=' .. nozone)
+        print('[zone-maps] ' .. name .. ' borders: ' .. table.concat(parts, ' ') .. ' | shapes: ' .. table.concat(shapes, ' '))
+    end
     -- path
     love.graphics.setColor(1, 1, 1, 0.8); love.graphics.setLineWidth(2)
     for i = 2, #meta.path do

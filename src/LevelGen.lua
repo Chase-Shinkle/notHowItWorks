@@ -790,10 +790,25 @@ function LevelGen.build(seed, difficulty)
             for nid in pairs(z.adj) do if zoneById[nid][field] == v then clash = true end end
             if not clash then ok[#ok + 1] = v end
         end
-        if #ok == 0 then ok = pool end
+        if #ok == 0 then   -- every value clashes with some neighbour: take the least-shared ones
+            local best, bestN = {}, math.huge
+            for _, v in ipairs(pool) do
+                local n = 0
+                for nid in pairs(z.adj) do if zoneById[nid][field] == v then n = n + 1 end end
+                if n < bestN then best, bestN = {v}, n elseif n == bestN then best[#best + 1] = v end
+            end
+            ok = best
+        end
         return ok[zoneRng:int(1, #ok)]
     end
-    for _, z in ipairs(zoneList) do
+    local colourOrder = {}   -- most-connected zones first (Welsh-Powell) so the small pools rarely run out
+    for i, z in ipairs(zoneList) do
+        local deg = 0; for _ in pairs(z.adj) do deg = deg + 1 end
+        colourOrder[i] = {z = z, deg = deg, i = i}
+    end
+    table.sort(colourOrder, function(a, b) if a.deg ~= b.deg then return a.deg > b.deg end return a.i < b.i end)
+    for _, o in ipairs(colourOrder) do
+        local z = o.z
         z.theme = pickDistinct(MATERIAL_THEME_NAMES, 'theme', z)
         z.lighting = pickDistinct(BACKROOMS_ZONE_LIGHTING_POOL, 'lighting', z)
     end
