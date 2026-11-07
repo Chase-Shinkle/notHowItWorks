@@ -41,8 +41,8 @@
 
 ## 6. Level size and sequence
 
-- [ ] 6.1 Configure grid sizes (6x6 up to 9x9), minimum path lengths and branch counts per level index in `src/constants.lua`; test levels never shrink and the last exceeds the first.
-- [ ] 6.2 Wire the longer levels into the level sequence and the autotest; run the full flow to the ending and record time per level.
+- [ ] 6.1 (implemented, unverified) Configure grid sizes (6x6 up to 9x9), minimum path lengths and branch counts per level index in `src/constants.lua`; test levels never shrink and the last exceeds the first.
+- [ ] 6.2 (implemented, unverified; autotest adaptation pending) Wire the longer levels into the level sequence and the autotest; run the full flow to the ending and record time per level.
 
 ## 7. Verification and review
 

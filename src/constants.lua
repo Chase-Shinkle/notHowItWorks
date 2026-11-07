@@ -345,9 +345,12 @@ LEVELGEN_BOX_BUDGET = 1500           -- most boxes in one generated level
 -- Difficulty table: chain obstacle count and the obstacle types allowed. The
 -- level sequence (later section) indexes into it.
 LEVELGEN_DIFFICULTY = {
-    {obstacles = 2, types = {'pit', 'gap'}},
-    {obstacles = 3, types = {'pit', 'gap', 'ledge'}},
-    {obstacles = 4, types = {'pit', 'gap', 'ledge'}},
+    -- grid / minPath / minTurns are read by LevelGen.build; `branches` is the
+    -- minimum optional-branch count (read by the later branch sections).
+    -- Rows never shrink in grid area, minPath or branches.
+    {obstacles = 2, types = {'pit', 'gap'},           grid = 6, minPath = 14, minTurns = 3, branches = 2},
+    {obstacles = 3, types = {'pit', 'gap', 'ledge'},  grid = 8, minPath = 20, minTurns = 4, branches = 3},
+    {obstacles = 4, types = {'pit', 'gap', 'ledge'},  grid = 9, minPath = 26, minTurns = 5, branches = 4},
 }
 
 -- Level sequence: the authored tutorial, then one generated level per
