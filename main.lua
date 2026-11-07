@@ -103,3 +103,9 @@ end
 for _, a in ipairs(arg or {}) do
     if a == '--farm-shots' then require 'tests/farm_shots' end
 end
+
+-- `love . --backrooms-shots`: deterministic backrooms screenshots and frame
+-- timing (tests/backrooms_shots.lua, development only; not in the package).
+for _, a in ipairs(arg or {}) do
+    if a == '--backrooms-shots' then require 'tests/backrooms_shots' end
+end

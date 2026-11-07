@@ -245,6 +245,6 @@ function Crop:remove()
     self.removed = true
 end
 
-function Crop:draw()
-    self.model:draw()
+function Crop:draw(shader)
+    self.model:draw(shader)
 end

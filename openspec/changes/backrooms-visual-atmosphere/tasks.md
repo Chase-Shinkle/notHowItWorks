@@ -2,15 +2,15 @@
 
 ## 1. Look pipeline and fallback
 
-- [ ] 1.1 Add `src/BackroomsLook.lua` with pcall-wrapped shader/canvas setup, `--no-shader`, quality setting and once-only logging; tests with a forced compile failure confirm it stays disabled and the backrooms still render.
-- [ ] 1.2 Add `shaders/backrooms.glsl` (ambient, up to N point lights, fog) and apply it to room geometry; verify it compiles on the real LÖVE runtime and a screenshot shows falloff around a fixture.
-- [ ] 1.3 Add `BackroomsLook.flicker(mode, t, phase)` for steady/flicker/buzz/dead; unit tests cover variation over time and zero output for dead.
+- [x] 1.1 Add `src/BackroomsLook.lua` with pcall-wrapped shader/canvas setup, `--no-shader`, quality setting and once-only logging; tests with a forced compile failure confirm it stays disabled and the backrooms still render.
+- [x] 1.2 Add `shaders/backrooms.glsl` (ambient, up to N point lights, fog) and apply it to room geometry; verify it compiles on the real LÖVE runtime and a screenshot shows falloff around a fixture.
+- [x] 1.3 Add `BackroomsLook.flicker(mode, t, phase)` for steady/flicker/buzz/dead; unit tests cover variation over time and zero output for dead.
 
 ## 2. Lighting
 
-- [ ] 2.1 Accept `lights` and `lighting` on room data (validate in `Room.validate`) and upload the nearest N lights per frame; test validation and nearest-N selection.
-- [ ] 2.2 Add lighting presets (bright, dim, single-bulb, near-dark) with an ambient floor and unlit gameplay tints for plots, pickups, crops and the exit; screenshot review in the near-dark preset confirms they stay visible.
-- [ ] 2.3 Add soft contact-shadow blobs under billboards, crops and pickups; verify in a screenshot.
+- [x] 2.1 Accept `lights` and `lighting` on room data (validate in `Room.validate`) and upload the nearest N lights per frame; test validation and nearest-N selection.
+- [x] 2.2 Add lighting presets (bright, dim, single-bulb, near-dark) with an ambient floor and unlit gameplay tints for plots, pickups, crops and the exit; screenshot review in the near-dark preset confirms they stay visible.
+- [x] 2.3 Add soft contact-shadow blobs under billboards, crops and pickups; verify in a screenshot.
 
 ## 3. Atmosphere
 

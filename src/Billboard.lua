@@ -94,15 +94,17 @@ function Billboard:facing()
     return math.cos(self.yaw), math.sin(self.yaw), 0
 end
 
-function Billboard:draw()
+-- `shader` overrides the alpha-discard shader (the backrooms look shader
+-- discards transparent texels itself).
+function Billboard:draw(shader)
     love.graphics.setColor(self.color)
-    self.model:draw(getAlphaShader())
+    self.model:draw(shader or getAlphaShader())
     love.graphics.setColor(1, 1, 1, 1)
 end
 
 -- Face every billboard in `list` towards the camera and draw them far to
 -- near, after the opaque room geometry (see Room:draw).
-function Billboard.drawAll(list, cx, cy)
+function Billboard.drawAll(list, cx, cy, shader)
     for _, b in ipairs(list) do
         b:faceCamera(cx, cy)
         b.distanceSq = (b.x - cx) ^ 2 + (b.y - cy) ^ 2
@@ -110,5 +112,5 @@ function Billboard.drawAll(list, cx, cy)
     local sorted = {}
     for i, b in ipairs(list) do sorted[i] = b end
     table.sort(sorted, function(a, b) return a.distanceSq > b.distanceSq end)
-    for _, b in ipairs(sorted) do b:draw() end
+    for _, b in ipairs(sorted) do b:draw(shader) end
 end

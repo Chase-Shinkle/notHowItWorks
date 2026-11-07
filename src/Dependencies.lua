@@ -13,6 +13,7 @@ require 'src/GameData'
 require 'src/Farm'
 require 'src/Fx'
 require 'src/FarmShader'
+require 'src/BackroomsLook'
 require 'src/PlayerController'
 require 'src/Billboard'
 require 'src/Crop'
@@ -32,14 +33,17 @@ require 'src/states/game/EndingState'
 --   `love . --debug` turns on DEBUG_MODE (F1 skip, debug HUD text); it is off
 --   otherwise, including in the packaged release.
 --   `love . --run-seed=N` fixes the run seed of the generated backrooms levels.
---   `love . --no-shader` draws the farm without its post-process pass (the
---   same path as a shader that fails to compile).
+--   `love . --no-shader` draws the farm without its post-process pass and the
+--   backrooms without lighting/fog (the same paths as a shader that fails to
+--   compile). `love . --quality=low` drops backrooms light flicker.
 for _, a in ipairs(arg or {}) do
     if a == '--placeholder-assets' then Assets.forcePlaceholders = true end
     if a == '--debug' then DEBUG_MODE = true end
     local runSeed = a:match('^%-%-run%-seed=(%d+)$')
     if runSeed then BACKROOMS_RUN_SEED = tonumber(runSeed) end
-    if a == '--no-shader' then FarmShader.forceOff = true end
+    if a == '--no-shader' then FarmShader.forceOff = true; BackroomsLook.forceOff = true end
+    local quality = a:match('^%-%-quality=(%a+)$')
+    if quality then BackroomsLook.setQuality(quality) end
 end
 
 local FARM_PACK = 'graphics/Farming - Crops Pack 017/'

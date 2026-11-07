@@ -349,3 +349,32 @@ BACKROOMS_RUN_SEED = nil
 -- Seed pickups: collected by walking within this horizontal distance (m).
 BACKROOMS_PICKUP_RADIUS = 0.9
 BACKROOMS_PICKUP_HEIGHT = 0.5
+
+-- Backrooms look (src/BackroomsLook.lua, shaders/backrooms.glsl) ---------------
+-- Purely visual: nothing here touches collision, plots, pickups or layout.
+BACKROOMS_LOOK_MAX_LIGHTS = 8          -- nearest fixtures uploaded per frame (matches MAX_LIGHTS in the shader)
+BACKROOMS_LOOK_QUALITIES = {'high', 'medium', 'low'}   -- low: no flicker; (shafts/bloom arrive in later sections)
+BACKROOMS_LIGHT_COLOR = {1.0, 0.93, 0.70}    -- warm off-white fluorescent
+BACKROOMS_LIGHT_RADIUS = 6.0                 -- m, falls to zero at this distance
+BACKROOMS_LIGHT_SPACING = 5.5                -- m between auto-placed ceiling fixtures
+BACKROOMS_FIXTURE_SIZE = {1.2, 0.6}          -- recessed panel, m
+-- Lighting presets: ambient (rgb, the floor of the lighting on room surfaces),
+-- fog colour/density (exp), fixture intensity, one fixture in `litEvery` is lit
+-- (the rest are dead panels), the mix of the lit ones, and `gameplayFloor`:
+-- the minimum light on plots, crops, pickups and the exit, so they stay
+-- readable in every preset.
+BACKROOMS_LIGHT_PRESETS = {
+    ['bright'] = {ambient = {0.62, 0.58, 0.36}, fogColor = {0.58, 0.52, 0.28}, fogDensity = 0.022,
+        intensity = 1.6, litEvery = 1, flicker = 0.08, buzz = 0.08, gameplayFloor = 0.7},
+    ['dim'] = {ambient = {0.34, 0.31, 0.19}, fogColor = {0.30, 0.26, 0.13}, fogDensity = 0.040,
+        intensity = 1.7, litEvery = 1, flicker = 0.30, buzz = 0.15, gameplayFloor = 0.62},
+    ['single-bulb'] = {ambient = {0.20, 0.18, 0.10}, fogColor = {0.17, 0.14, 0.07}, fogDensity = 0.055,
+        intensity = 2.0, litEvery = 4, flicker = 0.45, buzz = 0.2, gameplayFloor = 0.58},
+    ['near-dark'] = {ambient = {0.16, 0.14, 0.08}, fogColor = {0.07, 0.06, 0.03}, fogDensity = 0.075,
+        intensity = 1.6, litEvery = 5, flicker = 0.4, buzz = 0.2, gameplayFloor = 0.55},
+}
+-- default preset for a room with no `lighting`: picked from its id by hash
+-- (so the same level always looks the same), except these fixed ones
+BACKROOMS_LIGHTING_BY_ROOM_ID = {tutorial = 'bright'}
+BACKROOMS_LIGHTING_DEFAULT_POOL = {'bright', 'dim', 'dim', 'single-bulb', 'near-dark'}
+BACKROOMS_SHADOW_ALPHA = 0.55          -- peak darkness of a contact-shadow blob

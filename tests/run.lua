@@ -3751,5 +3751,204 @@ test('sequence 4.3: reset rebuilds the same level: layout equal, pickups back, c
     near(back.player.x, s[1], 1e-6)
 end)
 
+
+-- backrooms look (backrooms-visual-atmosphere sections 1-2) ----------------------
+-- A fake shader that records uniform sends, to test what the look uploads.
+local function fakeShader()
+    local sh = {sent = {}}
+    function sh:hasUniform() return true end
+    function sh:send(name, ...) self.sent[name] = {...} end
+    return sh
+end
+
+local function lookRoom(extra)
+    local data = {id = 'look-test', spawn = {0, 0, 0}, exit = {pos = {9, 0, 1}, size = {1, 1, 1}}, allotment = {},
+        boxes = Room.joinBoxes(Room.shellBoxes(24, 4, 3, 0.2))}
+    for k, v in pairs(extra or {}) do data[k] = v end
+    return Room(data)
+end
+
+test('look 1.1: a forced compile failure keeps the look off, logs once, and rooms still build and draw', function()
+    loadGame()
+    BackroomsLook.reset()
+    love.filesystem.read = function() return 'stub glsl' end
+    love.graphics.newShader = function() error('0:1: syntax error (forced)') end
+    local printed = {}
+    print = function(...) printed[#printed + 1] = table.concat({...}, ' ') end
+    for _ = 1, 3 do BackroomsLook.init() end
+    local room = lookRoom()
+    room:draw(0, 0)
+    print = realPrint
+    eq(BackroomsLook.enabled, false)
+    assert(tostring(BackroomsLook.reason):find('compile failed', 1, true), BackroomsLook.reason)
+    local n = 0
+    for _, l in ipairs(printed) do if l:find('[backrooms-look]', 1, true) then n = n + 1 end end
+    eq(n, 1, 'reason logged exactly once')
+    eq(#room.fixtures, 0, 'no fixture models without the look')
+    eq(BackroomsLook.begin(room, 0, 0, 1, 0), nil)
+end)
+
+test('look 1.1: --no-shader and a missing source also leave it off; quality setting validates', function()
+    loadGame({'--no-shader'})
+    eq(BackroomsLook.forceOff, true)
+    eq(BackroomsLook.init(), false)
+    assert(BackroomsLook.reason:find('--no-shader', 1, true))
+    BackroomsLook.reset(); BackroomsLook.forceOff = false
+    love.filesystem.read = function() return nil end
+    eq(BackroomsLook.init(), false)
+    assert(BackroomsLook.reason:find('cannot read', 1, true))
+    eq(BackroomsLook.setQuality('low'), true); eq(BackroomsLook.quality, 'low')
+    eq(BackroomsLook.setQuality('ultra'), false); eq(BackroomsLook.quality, 'low')
+end)
+
+test('look 1.1: --quality=NAME sets the quality at launch', function()
+    loadGame({'--quality=medium'})
+    eq(BackroomsLook.quality, 'medium')
+end)
+
+test('look 1.2: shaders/backrooms.glsl declares the uniforms the look uploads', function()
+    local f = assert(io.open('shaders/backrooms.glsl'))
+    local src = f:read('a'); f:close()
+    for _, name in ipairs({'camPos', 'ambient', 'lightCount', 'lightPos', 'lightColor', 'lightRadius',
+        'fogColor', 'fogDensity', 'litFloor', 'emissive'}) do
+        assert(src:find('uniform [%w ]+ ' .. name .. '[%[;]'), 'uniform ' .. name)
+    end
+    assert(src:find('#define MAX_LIGHTS ' .. 8, 1, true))
+    loadGame()
+    eq(BACKROOMS_LOOK_MAX_LIGHTS, 8, 'matches MAX_LIGHTS')
+end)
+
+test('look 1.3: flicker is steady / varies over time / buzzes, dead is exactly zero; pure and deterministic', function()
+    loadGame()
+    local F = BackroomsLook.flicker
+    for t = 0, 5, 0.37 do
+        eq(F('dead', t, 0.3), 0); eq(F('steady', t, 0.3), 1)
+    end
+    for _, mode in ipairs({'flicker', 'buzz'}) do
+        for _, phase in ipairs({0, 0.25, 0.6, 0.93}) do
+            local lo, hi = 9, -9
+            for i = 0, 300 do
+                local v = F(mode, i / 60, phase)
+                assert(v >= 0 and v <= 1, mode .. ' in [0, 1]')
+                lo, hi = math.min(lo, v), math.max(hi, v)
+                eq(v, F(mode, i / 60, phase), 'deterministic')
+            end
+            assert(hi - lo > 0.1, mode .. ' varies over 5 s (phase ' .. phase .. ')')
+        end
+    end
+    BackroomsLook.setQuality('low')
+    local l = {mode = 'flicker', intensity = 2, phase = 0}
+    for i = 0, 300 do eq(BackroomsLook.activeIntensity(l, i / 60), 2, 'low quality: no flicker') end
+    eq(BackroomsLook.activeIntensity({mode = 'dead', intensity = 2}, 1), 0, 'dead stays dead at low')
+end)
+
+test('look 2.1: Room.validate checks lights and lighting', function()
+    loadGame()
+    local function bad(extra, needle)
+        local ok, err = pcall(lookRoom, extra)
+        assert(not ok and tostring(err):find(needle, 1, true), needle .. ': ' .. tostring(err))
+    end
+    bad({lights = 5}, 'lights must be a list')
+    bad({lights = {{}}}, 'light 1 needs pos')
+    bad({lights = {{pos = {0, 0, 2}, mode = 'strobe'}}}, 'unknown mode')
+    bad({lights = {{pos = {0, 0, 2}, radius = -1}}}, 'radius must be positive')
+    bad({lights = {{pos = {0, 0, 2}, intensity = 0}}}, 'intensity must be positive')
+    bad({lighting = 'moonlit'}, 'unknown lighting preset')
+    bad({lighting = 7}, 'lighting must be')
+    local room = lookRoom({lights = {{pos = {0, 0, 2.8}, mode = 'buzz'}}, lighting = {preset = 'dim', fogDensity = 0.2}})
+    eq(#room.lights, 1); eq(room.lighting.name, 'dim'); eq(room.lighting.fogDensity, 0.2)
+    near(room.lighting.ambient[1], BACKROOMS_LIGHT_PRESETS['dim'].ambient[1], 1e-12, 'preset kept where not overridden')
+end)
+
+test('look 2.1: nearest-N selection (nearest first, dead skipped, capped) and the per-frame upload', function()
+    loadGame()
+    local lights = {}
+    for i = 1, 12 do lights[i] = {pos = {i * 2, 0, 3}, mode = (i == 2) and 'dead' or 'steady'} end
+    local picked = BackroomsLook.nearestLights(lights, 0, 0, 1, 8)
+    eq(#picked, 8)
+    eq(picked[1], 1); eq(picked[2], 3, 'dead light 2 skipped'); eq(picked[8], 9)
+    picked = BackroomsLook.nearestLights(lights, 25, 0, 1, 3)
+    eq(picked[1], 12); eq(picked[2], 11); eq(picked[3], 10)
+    eq(#BackroomsLook.nearestLights({{pos = {0, 0, 0}}}, 0, 0, 0, 8), 1)
+
+    -- upload with a fake compiled shader
+    BackroomsLook.reset()
+    local sh = fakeShader()
+    love.filesystem.read = function() return 'stub glsl' end
+    love.graphics.newShader = function() return sh end
+    local room = lookRoom({lights = lights, lighting = 'bright'})
+    eq(BackroomsLook.enabled, true)
+    local used = BackroomsLook.begin(room, 0, 0, 1, 0)
+    eq(used, sh)
+    eq(sh.sent.lightCount[1], 8)
+    eq(#sh.sent.lightPos, 8)
+    eq(sh.sent.lightPos[1][1], 2)
+    eq(sh.sent.fogDensity[1], BACKROOMS_LIGHT_PRESETS['bright'].fogDensity)
+    eq(sh.sent.litFloor[1], 0)
+end)
+
+test('look 2.2: presets are complete, ambient/gameplay floors guarantee readability, defaults reproducible', function()
+    loadGame()
+    for _, name in ipairs({'bright', 'dim', 'single-bulb', 'near-dark'}) do
+        local p = BACKROOMS_LIGHT_PRESETS[name]
+        assert(p, name)
+        for _, k in ipairs({'ambient', 'fogColor', 'fogDensity', 'intensity', 'litEvery', 'flicker', 'buzz', 'gameplayFloor'}) do
+            assert(p[k] ~= nil, name .. ' has ' .. k)
+        end
+        assert(p.gameplayFloor >= 0.5, name .. ' keeps plots/crops/pickups/exit visible')
+        assert(p.ambient[1] >= 0.1 and p.ambient[2] >= 0.1, name .. ' has an ambient floor')
+    end
+    eq(BackroomsLook.defaultPresetName('tutorial'), 'bright')
+    local seen = {}
+    for i = 1, 40 do
+        local a = BackroomsLook.defaultPresetName('gen-' .. i * 7919)
+        eq(a, BackroomsLook.defaultPresetName('gen-' .. i * 7919), 'same id, same preset')
+        seen[a] = true
+    end
+    local kinds = 0
+    for _ in pairs(seen) do kinds = kinds + 1 end
+    assert(kinds >= 3, 'generated levels differ: ' .. kinds .. ' presets over 40 ids')
+    -- auto fixtures: reproducible, under the ceiling, single-bulb leaves most dead, near-dark is not all lit
+    local boxes = Room.shellBoxes(24, 4, 3, 0.2)
+    local single = BackroomsLook.resolveLighting('single-bulb', 'x')
+    local a, b = BackroomsLook.autoLights(boxes, single, 'x'), BackroomsLook.autoLights(boxes, single, 'x')
+    eq(#a, #b); assert(#a >= 3)
+    local live = 0
+    for i, l in ipairs(a) do
+        eq(l.mode, b[i].mode); eq(l.pos[1], b[i].pos[1])
+        assert(l.pos[3] < 3, 'below the ceiling')
+        if l.mode ~= 'dead' then live = live + 1 end
+    end
+    assert(live >= 1 and live < #a, 'single-bulb: some lit, most dead')
+    local bright = BackroomsLook.autoLights(boxes, BackroomsLook.resolveLighting('bright', 'x'), 'x')
+    local dead = 0
+    for _, l in ipairs(bright) do if l.mode == 'dead' then dead = dead + 1 end end
+    eq(dead, 0, 'bright: every fixture lit')
+end)
+
+test('look 2.2/2.3: with the look on, gameplay objects get the readability floor and shadow blobs are drawn', function()
+    loadGame()
+    BackroomsLook.reset()
+    local sh = fakeShader()
+    love.filesystem.read = function() return 'stub glsl' end
+    love.graphics.newShader = function() return sh end
+    love.graphics.newImage = function() return {setFilter = function() end} end
+    love.image.newImageData = function() return {mapPixel = function() end} end
+    local room = lookRoom({lighting = 'near-dark', billboards = {{texture = 'sacks', pos = {2, 0, 0}, height = 1}},
+        pickups = {{pos = {4, 0, 0}, seed = 'pumpkin', tier = 'extra'}}})
+    assert(#room.fixtures >= 3, 'fixture panels built')
+    local blobsBefore = #room.blobs
+    eq(blobsBefore, 1, 'one blob per billboard at build')
+    local floors = {}
+    local setShader = sh.send
+    sh.send = function(self, name, v) if name == 'litFloor' then floors[#floors + 1] = v end return setShader(self, name, v) end
+    room:draw(0, 0)
+    assert(#room.blobs == 2, 'pickup blob added: ' .. #room.blobs)
+    local sawFloor = false
+    for _, v in ipairs(floors) do if v == BACKROOMS_LIGHT_PRESETS['near-dark'].gameplayFloor then sawFloor = true end end
+    assert(sawFloor, 'gameplay objects drawn with the near-dark readability floor')
+    eq(floors[#floors], 0, 'floor reset after the gameplay objects')
+end)
+
 realPrint(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)

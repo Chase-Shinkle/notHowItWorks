@@ -32,6 +32,10 @@
 --   seedTypes          optional list of the seed types the room uses (HUD and
 --                        seed selection); default: those with an allotment
 --   killZ              optional, default BACKROOMS_KILL_Z
+--   lights, lighting   optional look data (src/BackroomsLook.lua): ceiling
+--                        fixtures and a lighting preset. Absent: fixtures on a
+--                        grid under the ceiling and a preset picked from `id`.
+--                        Purely visual; never read by gameplay.
 --
 -- Boxes are always axis-aligned: g3d.collisions ignores model rotation.
 
@@ -169,7 +173,7 @@ function Room.validate(data)
             return fail('pickup ' .. i .. ' tier must be critical or extra')
         end
     end
-    return true
+    return BackroomsLook.validate(data)
 end
 
 local function bounds(pos, size)
@@ -259,6 +263,73 @@ function Room:init(data)
         plot.crop = crop
         self.crops[#self.crops + 1] = crop
     end
+
+    self:setLighting(data.lighting)
+end
+
+-- Look data (visual only): resolves the lighting preset, the fixture list
+-- (the room's `lights`, or ceiling fixtures placed by BackroomsLook.autoLights)
+-- and, when the look shader is on, the fixture panel and contact-shadow models.
+-- `lighting` is a preset name, an override table or nil (the room's default).
+function Room:setLighting(lighting)
+    BackroomsLook.init()
+    self.lighting = BackroomsLook.resolveLighting(lighting, self.id)
+    self.lights = self.data.lights or BackroomsLook.autoLights(self.data.boxes, self.lighting, self.id)
+    self.fixtures, self.blobs = {}, {}
+    if not BackroomsLook.enabled then return end
+    local white = gTextures['white'] or texture(nil, 'floor')
+    for _, l in ipairs(self.lights) do
+        local mode = l.mode or 'steady'
+        local color = mode == 'dead' and {0.32, 0.31, 0.27, 1} or {1, 0.97, 0.82, 1}
+        local z = (l.panelZ or l.pos[3] + 0.12) - 0.02
+        self.fixtures[#self.fixtures + 1] = {
+            light = l,
+            model = g3d.newModel(NewBoxVerts(BACKROOMS_FIXTURE_SIZE[1], BACKROOMS_FIXTURE_SIZE[2], 0.04, color),
+                white, {l.pos[1], l.pos[2], z}),
+        }
+    end
+    -- contact shadows under floor-standing billboards (pickups and crops are
+    -- handled each frame in drawShadows)
+    for _, b in ipairs(self.billboards) do
+        self:addBlob(b, b.x, b.y, b.z + 0.012, math.max(0.5, b.width * 1.1))
+    end
+end
+
+-- One shadow blob (a thin textured quad) keyed by `key`; no-op without the image.
+function Room:addBlob(key, x, y, z, size)
+    local img = BackroomsLook.shadowImage
+    if not img then return nil end
+    local blob = {key = key, size = size,
+        model = g3d.newModel(NewBoxVerts(size, size, 0.002, {1, 1, 1, 1}), img, {x, y, z})}
+    self.blobs[#self.blobs + 1] = blob
+    return blob
+end
+
+-- Soft shadows on the floor under billboards, pickups and crops: drawn after
+-- the opaque geometry, depth-tested but not depth-writing, before the sprites.
+function Room:drawShadows()
+    if not BackroomsLook.shadowImage then return end
+    local have = {}
+    for _, b in ipairs(self.blobs) do have[b.key] = true end
+    for _, p in ipairs(self.pickups) do
+        if not have[p] then self:addBlob(p, p.pos[1], p.pos[2], p.pos[3] + 0.015, 0.55); have[p] = true end
+    end
+    for _, c in ipairs(self.crops) do
+        if not have[c] and c.plot then
+            self:addBlob(c, c.plot.pos[1], c.plot.pos[2], c.plot.pos[3] + 0.03, 1.1); have[c] = true
+        end
+    end
+    love.graphics.setDepthMode('lequal', false)
+    love.graphics.setColor(1, 1, 1, 1)
+    local live = {}
+    for _, b in ipairs(self.blobs) do
+        local key = b.key
+        local alive = true
+        if key.pos and key.seed then alive = false; for _, p in ipairs(self.pickups) do if p == key then alive = true end end
+        elseif key.plot and key.type then alive = key.plot.crop == key end
+        if alive then b.model:draw() end
+    end
+    love.graphics.setDepthMode('lequal', true)
 end
 
 -- Removes and returns the first pickup within `radius` (horizontally, and
@@ -404,23 +475,42 @@ function Room:overlapsExit(min, max)
     return PlayerController.boxesOverlap(min, max, self.exit.min, self.exit.max)
 end
 
--- Opaque geometry first, then plots, crops and the exit marker, then billboards
--- sorted far to near (camera at cx, cy).
+-- Opaque geometry first, then (look on) fixture panels, plots, crops and the
+-- exit marker, shadow blobs, then billboards sorted far to near (camera at cx,
+-- cy). With the look shader on, room surfaces are lit and fogged; plots,
+-- crops, pickups and the exit get BackroomsLook's `gameplayFloor` minimum
+-- light so they stay readable in every preset. With it off this is the plain
+-- unlit render.
 function Room:draw(cx, cy)
     love.graphics.setColor(1, 1, 1, 1)
-    for _, model in ipairs(self.models) do model:draw() end
-    for _, plot in ipairs(self.plots) do plot.model:draw() end
-    for _, crop in ipairs(self.crops) do crop:draw() end
-    self.exitModel:draw()
-    Billboard.drawAll(self.billboards, cx, cy)
+    local cam = g3d.camera and g3d.camera.position
+    local t = BackroomsLook.now()
+    local look = BackroomsLook.begin(self, cx, cy, cam and cam[3] or 0, t)
+    for _, model in ipairs(self.models) do model:draw(look) end
+    if look then
+        for _, f in ipairs(self.fixtures) do
+            local mode = f.light.mode or 'steady'
+            BackroomsLook.set('emissive', mode == 'dead' and 0 or math.min(1, BackroomsLook.activeIntensity(
+                {mode = mode, intensity = 1, phase = f.light.phase}, t)))
+            f.model:draw(look)
+        end
+        BackroomsLook.set('emissive', 0)
+        BackroomsLook.set('litFloor', self.lighting.gameplayFloor)
+    end
+    for _, plot in ipairs(self.plots) do plot.model:draw(look) end
+    for _, crop in ipairs(self.crops) do crop:draw(look) end
+    self.exitModel:draw(look)
+    if look then self:drawShadows() end
+    Billboard.drawAll(self.billboards, cx, cy, look)
     -- pickups bob gently; the billboard is lifted, not the pickup position
-    local t = love.timer and love.timer.getTime and love.timer.getTime() or 0
+    local clock = love.timer and love.timer.getTime and love.timer.getTime() or 0
     local pickupBoards = {}
     for i, p in ipairs(self.pickups) do
         local b = p.billboard
-        b.model:setTranslation(p.pos[1], p.pos[2], p.pos[3] + 0.35 + 0.1 * math.sin(t * 3 + i))
+        b.model:setTranslation(p.pos[1], p.pos[2], p.pos[3] + 0.35 + 0.1 * math.sin(clock * 3 + i))
         pickupBoards[i] = b
     end
-    Billboard.drawAll(pickupBoards, cx, cy)
+    Billboard.drawAll(pickupBoards, cx, cy, look)
+    if look then BackroomsLook.set('litFloor', 0) end
     love.graphics.setColor(1, 1, 1, 1)
 end
