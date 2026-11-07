@@ -73,8 +73,10 @@ requests a 24-bit depth buffer for the window.
 
 ## Debug / testing
 
-- `F1` (when `DEBUG_MODE` is on in `src/constants.lua`) advances
-  start -> farm -> backrooms -> start. From the farm it skips the break but
+- Debug mode is off by default (including in the packaged `.love`). Launch
+  with `love . --debug` to turn it on; then `F1` advances
+  start -> farm -> backrooms -> start and the HUDs show a debug line. From
+  the farm it skips the break but
   uses the same seeds-only hand-off (`CarryOverGameData`). In the backrooms it
   skips the current room (the last skip shows the ending); on the ending it
   returns to start.

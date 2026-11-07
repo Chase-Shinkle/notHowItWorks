@@ -8,10 +8,10 @@
 
 ## 2. Release config (M2)
 
-- [ ] 2.1 Set `DEBUG_MODE` default to `false` and add a `--debug` launch flag that enables it, handled with the existing launch flags; verify `love . --debug` shows F1 skip and the debug HUD text and `love .` shows neither.
-- [ ] 2.2 Update `tests/autotest.lua`, mocks and any script that presses F1 or reads `DEBUG_MODE` to opt in explicitly; verify `sh tests/check_all.sh` passes.
-- [ ] 2.3 Update `RELEASE.md` (debug section, controls) and the F1 mentions in `openspec/changes/farm-to-backrooms-crop-escape/verification.md`; verify no doc claims debug is on by default.
-- [ ] 2.4 Rebuild with `sh tools/package.sh`, confirm the sha256 is stable across two builds, and verify on the packaged `.love` that F1 does nothing and the HUDs show no debug text.
+- [x] 2.1 Set `DEBUG_MODE` default to `false` and add a `--debug` launch flag that enables it, handled with the existing launch flags; verify `love . --debug` shows F1 skip and the debug HUD text and `love .` shows neither.
+- [x] 2.2 Update `tests/autotest.lua`, mocks and any script that presses F1 or reads `DEBUG_MODE` to opt in explicitly; verify `sh tests/check_all.sh` passes.
+- [x] 2.3 Update `RELEASE.md` (debug section, controls) and the F1 mentions in `openspec/changes/farm-to-backrooms-crop-escape/verification.md`; verify no doc claims debug is on by default.
+- [x] 2.4 Rebuild with `sh tools/package.sh`, confirm the sha256 is stable across two builds, and verify on the packaged `.love` that F1 does nothing and the HUDs show no debug text.
 
 ## 3. Pit-plot reach (M3)
 

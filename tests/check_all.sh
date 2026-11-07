@@ -61,6 +61,11 @@ for mode in "" "--placeholder-assets"; do
     grep -E 'FAIL|ERROR|checks,' /tmp/check_pkg_autotest.txt
 done
 
+step "artifact playthrough with the debug opt-in: love dist/not-how-it-works.love --autotest --debug"
+(cd /tmp && AUTOTEST_OUT="/tmp/autotest-artifact--debug" xvfb-run -a -s '-screen 0 1024x1024x24' timeout 300 \
+    love "$ART" --autotest --debug) > /tmp/check_pkg_autotest_debug.txt 2>&1 || fail=1
+grep -E 'FAIL|ERROR|debug|checks,' /tmp/check_pkg_autotest_debug.txt
+
 echo
 if [ $fail -eq 0 ]; then echo "ALL CHECKS PASSED"; else echo "SOME CHECKS FAILED"; fi
 exit $fail

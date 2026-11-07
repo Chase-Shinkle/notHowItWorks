@@ -30,6 +30,25 @@ love.keyboard.isDown = function(...)
     return realIsDown(...)
 end
 
+-- Text drawn in the last frame (love.graphics.print / printf), to check that
+-- no debug text reaches the screen unless --debug is given.
+local frameTexts, lastFrameTexts = {}, {}
+for _, fname in ipairs({'print', 'printf'}) do
+    local real = love.graphics[fname]
+    love.graphics[fname] = function(text, ...)
+        if type(text) == 'string' then frameTexts[#frameTexts + 1] = text end
+        return real(text, ...)
+    end
+end
+local function debugTextOnScreen()
+    for _, t in ipairs(lastFrameTexts) do
+        if t:find('debug', 1, true) or t:find('fps', 1, true) or t == DEBUG_ADVANCE_KEY then return t end
+    end
+    return nil
+end
+local debugFlag = false
+for _, a in ipairs(arg or {}) do if a == '--debug' then debugFlag = true end end
+
 local checks, failures = 0, 0
 local frame = 0
 local pendingShots = {}
@@ -166,12 +185,25 @@ local function script()
     end
     log('sounds: %d of %d are silent placeholders', silent, totalSounds)
     check(silent == missingSounds, 'every missing sound is a silent placeholder (%d)', silent)
+    -- release config (polish M2): debug mode only with --debug
+    check(DEBUG_MODE == debugFlag, 'debug mode %s (--debug %s)', tostring(DEBUG_MODE), tostring(debugFlag))
+    if not debugFlag then
+        press('f1'); press('f1')
+        check(is(StartState), 'release: F1 does nothing at the start screen')
+    end
     shot('01-start')
     press('return')
     check(is(FarmState), 'Enter -> farm')
     local farm = state()
     wait(0.3)
     shot('02-farm', {0, 0, 400, 250, 3})        -- HUD text, seed bags, hero, plots
+    if not debugFlag then
+        press('f1')
+        check(state() == farm, 'release: F1 does nothing on the farm')
+        check(debugTextOnScreen() == nil, 'release: no debug text on the farm HUD (%s)', tostring(debugTextOnScreen()))
+    else
+        check(debugTextOnScreen() ~= nil, 'debug: F1 marker on the farm HUD')
+    end
 
     -- plant on the plot above the start tile (3,5), wait, harvest
     local seedsBefore = Farm.totalSeeds(farm.gameData)
@@ -210,6 +242,13 @@ local function script()
     wait(0.3)
     check(Billboard.getAlphaShader() ~= nil, 'billboard alpha-discard shader compiled (no fallback)')
     shot('06-room1-arrival', {0, 0, 400, 70, 3}) -- Room 1 HUD text and seed list
+    if not debugFlag then
+        press('f1')
+        check(state() == back and back.roomIndex == 1, 'release: F1 does not skip room 1')
+        check(debugTextOnScreen() == nil, 'release: no debug text on the backrooms HUD (%s)', tostring(debugTextOnScreen()))
+    else
+        check(debugTextOnScreen() ~= nil, 'debug: debug line on the backrooms HUD (%s)', tostring(debugTextOnScreen()))
+    end
 
     -- mouse look: turn right then back
     local d0 = g3d.camera.getDirectionPitch()
@@ -313,6 +352,8 @@ local function script()
     love.resize(640, 480)
     wait(0.1)
     shot('16-start-resized')
+    -- the F1 skip is a debug feature: this check opts in explicitly
+    DEBUG_MODE = true
     press('f1'); press('f1')
     check(is(BackroomsState), 'F1 x2: start -> farm -> backrooms after resize')
     wait(0.3)
@@ -343,7 +384,9 @@ function love.run()
         love.update(DT)
         love.graphics.origin()
         love.graphics.clear(love.graphics.getBackgroundColor())
+        frameTexts = {}
         love.draw()
+        lastFrameTexts = frameTexts
         for _, pending in ipairs(pendingShots) do
             love.graphics.captureScreenshot(function(data)
                 analyse(pending.name, data)

@@ -36,3 +36,42 @@ from the `.love`, and two package builds with the same sha256.
   `love.load`, the headless suite gave `105 passed, 2 failed` (both filtering
   tests) and the autotest gave `98 checks, 13 failed` (every sprite and font).
   The change was then restored.
+
+## 2. Release config (M2)
+
+- 2.1 `DEBUG_MODE = false` in `src/constants.lua`. `--debug` is parsed in
+  `src/Dependencies.lua` with `--placeholder-assets`, and `--autotest` is still
+  handled in `main.lua`. `xvfb-run -a timeout 8 love . --debug` kept running
+  with no errors (exit 124). Autotest from source with `--debug`: 101 checks,
+  0 failed. These include "debug: F1 marker on the farm HUD" and "debug: debug
+  line on the backrooms HUD (f1: debug skip room fps: ...)", with the F1 skip
+  used. Without the flag: 104 checks, 0 failed. These include F1 doing nothing
+  at the start screen, on the farm and in Room 1, and no debug text being
+  drawn on the farm or backrooms HUD. The autotest wraps
+  `love.graphics.print`/`printf` and inspects the text actually drawn each frame.
+- 2.2 Every headless test that presses F1 now loads with `{'--debug'}`. That
+  is 9 tests, including the break input-lock test, so F1 is live there and is
+  still shown to be ignored. Two new tests were added: `release: debug mode is
+  off by default; F1 changes no state and no debug text is drawn` (start, farm,
+  backrooms and ending) and `release: --debug opts in to F1 skip and the debug
+  HUD text`. The autotest sets `DEBUG_MODE = true` explicitly before its
+  F1 x2 resize step. `tests/reachability.lua` does not use F1. `check_all.sh`
+  gained an artifact playthrough with `--debug`. Full `sh tests/check_all.sh`:
+  ALL CHECKS PASSED (109 headless tests, 84 reachability assignments with 0
+  unexpected, autotest 104 real / 96 placeholder from source and artifact, and
+  101 for the artifact with `--debug`).
+- 2.3 `RELEASE.md` now says that debug mode is off in the build and that only
+  `--debug` turns it on, and that `package.sh` never does. `README.md` is
+  updated the same way. In
+  `openspec/changes/farm-to-backrooms-crop-escape/verification.md`, a note at
+  the top marks every F1 mention as debug-only. The "DEBUG_MODE is still on in
+  the package" item and the publishing to-do are marked as resolved. Historical
+  text is otherwise kept. A grep of the docs finds no claim that debug is on
+  by default.
+- 2.4 `sh tools/package.sh` was run twice with the same sha256
+  (`6264ac91...d45b` at this point; the hash changes in later sections because
+  the tree changes). `tools/package.sh` is unchanged. The packaged
+  `src/constants.lua` has `DEBUG_MODE = false` and the packaged `RELEASE.md`
+  has the new debug section. Artifact playthrough without the flag: F1 does
+  nothing at start, on the farm and in Room 1, and no debug text is drawn
+  (104 checks, 0 failed). With `--debug`: 101 checks, 0 failed.

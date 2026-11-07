@@ -95,7 +95,7 @@ test('push states render through push with depth disabled', function()
 end)
 
 test('backrooms opts out of push and draws g3d with depth then HUD without', function()
-    loadGame()
+    loadGame({'--debug'})
     mock.press('f1'); step()          -- start -> farm
     mock.press('f1'); step()          -- farm -> backrooms
     mock.reset()
@@ -119,7 +119,7 @@ end)
 
 -- 1.2 states and debug transitions -------------------------------------------
 test('start -> farm -> backrooms rooms -> ending -> start via debug key', function()
-    loadGame()
+    loadGame({'--debug'})
     assert(gStateMachine.current.usesPush ~= false, 'start uses push')
     mock.press('f1'); step()
     eq(gStateMachine.current.usesPush, true, 'farm state')
@@ -139,12 +139,62 @@ test('start -> farm -> backrooms rooms -> ending -> start via debug key', functi
 end)
 
 test('debug key is ignored when DEBUG_MODE is off', function()
-    loadGame()
+    loadGame({'--debug'})
     DEBUG_MODE = false
     mock.press('f1'); step()
     assert(gStateMachine.current.usesPush == nil, 'still at start')
     mock.press('return'); step()
     eq(gStateMachine.current.usesPush, true, 'enter still starts the farm')
+end)
+
+-- release config (polish M2) ---------------------------------------------------
+local function debugTexts()
+    local found = {}
+    for _, c in ipairs(mock.calls) do
+        local t = (c.name == 'print' or c.name == 'printf') and c.args[1]
+        if type(t) == 'string' and (t:find('debug', 1, true) or t:find('fps', 1, true) or t == DEBUG_ADVANCE_KEY) then
+            found[#found + 1] = t
+        end
+    end
+    return found
+end
+
+test('release: debug mode is off by default; F1 changes no state and no debug text is drawn', function()
+    loadGame({'.'})
+    eq(DEBUG_MODE, false, 'default off')
+    mock.press('f1'); step()
+    assert(isState(gStateMachine.current, StartState), 'F1 ignored at start')
+    mock.press('return'); step()
+    local farm = gStateMachine.current
+    mock.press('f1'); step()
+    eq(gStateMachine.current, farm, 'F1 ignored on the farm')
+    mock.reset(); love.draw()
+    eq(#debugTexts(), 0, 'no farm debug text: ' .. table.concat(debugTexts(), ' | '))
+    gStateMachine:change('backrooms', CarryOverGameData(farm.gameData))
+    local back = gStateMachine.current
+    mock.press('f1'); step()
+    eq(gStateMachine.current, back, 'F1 ignored in the backrooms')
+    eq(back.roomIndex, 1, 'F1 does not skip the room')
+    mock.reset(); love.draw()
+    eq(#debugTexts(), 0, 'no backrooms debug text: ' .. table.concat(debugTexts(), ' | '))
+    back:advance(); back:advance(); back:advance()
+    assert(isState(gStateMachine.current, EndingState), 'ending')
+    mock.press('f1'); step()
+    assert(isState(gStateMachine.current, EndingState), 'F1 ignored on the ending')
+end)
+
+test('release: --debug opts in to F1 skip and the debug HUD text', function()
+    loadGame({'.', '--debug'})
+    eq(DEBUG_MODE, true, '--debug turns it on')
+    mock.press('f1'); step()
+    local farm = gStateMachine.current
+    eq(farm.usesPush, true, 'F1: start -> farm')
+    mock.reset(); love.draw()
+    assert(#debugTexts() > 0, 'farm F1 marker drawn')
+    mock.press('f1'); step()
+    eq(gStateMachine.current.usesPush, false, 'F1: farm -> backrooms')
+    mock.reset(); love.draw()
+    assert(find(debugTexts(), 'debug skip'), 'backrooms debug line drawn')
 end)
 
 -- 1.3 shared game data --------------------------------------------------------
@@ -163,7 +213,7 @@ test('new game data has seeds, coins, crops, hasSold', function()
 end)
 
 test('debug farm -> backrooms carries seeds only (via CarryOverGameData) and prints them', function()
-    loadGame()
+    loadGame({'--debug'})
     mock.press('f1'); step()
     local farmData = gStateMachine.current.gameData
     farmData.seeds.vine = 7
@@ -201,7 +251,7 @@ test('existing files load for real', function()
 end)
 
 test('game launches with every asset forced to placeholders', function()
-    loadGame({'.', '--placeholder-assets'})
+    loadGame({'.', '--placeholder-assets', '--debug'})
     eq(Assets.forcePlaceholders, true)
     for _, key in ipairs({'grass', 'soil', 'hero', 'wall', 'floor'}) do
         assert(gTextures[key], 'texture ' .. key)
@@ -545,7 +595,7 @@ test('farm: first plant -> harvest -> sell cycle by keyboard finishes well under
 end)
 
 test('farm: growth timers are owned by the farm and cleared on exit', function()
-    local farm = toFarm()
+    local farm = toFarm({'--debug'})
     press('e')
     eq(#farm.timers, 1)
     eq(#Timer.defaultGroup, 0, 'growth not on the global group')
@@ -579,7 +629,7 @@ test('farm: crop art loads from the pack when present', function()
 end)
 
 test('farm: seeds spent on the farm stay spent in the backrooms (debug skip)', function()
-    local farm = toFarm()
+    local farm = toFarm({'--debug'})
     press('e')                                          -- spend one beanstalk seed
     mock.press('f1'); step()
     local back = gStateMachine.current
@@ -692,7 +742,7 @@ test('break: over-sell by mouse click also starts the break', function()
 end)
 
 test('break: input is locked while the glitch sequence plays', function()
-    local farm = farmAtVillager({hasSold = true, seeds = {beanstalk = 2}})
+    local farm = farmAtVillager({hasSold = true, seeds = {beanstalk = 2}}, {'--debug'})   -- F1 live too
     -- a mature crop the player could otherwise harvest by click
     local plot = farm:plotAt(FARM_PLOTS.col, FARM_PLOTS.row)
     plot.state, plot.seedType, plot.stage = PLOT_MATURE, 'beanstalk', FARM_GROWTH_STAGES
@@ -1382,7 +1432,7 @@ test('seeds: Room 1 keeps the farm seeds topped up to its allotment; later rooms
 end)
 
 test('seeds: FIRST_ROOM_MIN_SEEDS matches Room 1 allotment, so farm and backrooms agree', function()
-    loadGame()
+    loadGame({'--debug'})
     eq(FormatSeeds(FIRST_ROOM_MIN_SEEDS), FormatSeeds(BACKROOMS_ROOMS[1].allotment))
     -- a zero-seed farm arrival via the debug skip is topped up too
     mock.press('return'); step()

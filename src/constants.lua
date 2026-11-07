@@ -6,9 +6,12 @@ VIRTUAL_WIDTH = 320
 VIRTUAL_HEIGHT = 320
 
 -- Debug helpers: when enabled, DEBUG_ADVANCE_KEY jumps to the next state
--- (start -> farm -> backrooms -> start) so the flow can be checked without
--- playing through it.
-DEBUG_MODE = true
+-- (start -> farm -> backrooms rooms -> ending -> start) and the HUDs show a
+-- debug line, so the flow can be checked without playing through it.
+-- Off by default, so the packaged release never has them; development runs
+-- opt in with the `--debug` launch flag (`love . --debug`), parsed in
+-- src/Dependencies.lua with the other launch flags.
+DEBUG_MODE = false
 DEBUG_ADVANCE_KEY = 'f1'
 
 -- Seed types shared by the farm and the backrooms, in display order.

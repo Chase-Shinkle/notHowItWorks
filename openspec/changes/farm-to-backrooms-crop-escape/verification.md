@@ -4,6 +4,13 @@ Checked tasks in `tasks.md` mean **the code is written**. Each task's
 "verify ..." step is tracked here and is only marked done once it has
 actually been performed.
 
+> **Debug mode update (change `polish-rendering-release-playfeel-seed-shop`,
+> section 2):** `DEBUG_MODE` is now **off by default**, in the source tree
+> and in the packaged `.love`. F1 and the debug HUD text exist only when the
+> game is launched with `--debug` (e.g. `love . --debug`). Every F1 mention
+> below describes a debug run. The headless tests and the autotest opt in
+> to it explicitly where they use F1.
+
 ## Current status (2026-11-07, section 6 run)
 
 `sh tests/check_all.sh` (all on LÖVE 11.5 / LuaJIT 2.1, Xvfb + Mesa llvmpipe):
@@ -30,7 +37,7 @@ is printed by the script and is only stable for an unchanged tree.
 |------|---------------|--------------------|---------------------------------------|
 | 6.1 graphics + sounds | Backrooms wallpaper, carpet and ceiling-tile textures copied byte-for-byte from the supplied `models/Backrooms.glb` into `graphics/backrooms/` by `tools/extract_glb_textures.py` (reproducible). Rooms use a light tint on real textures and keep the flat colours for placeholders. The exit marker is untextured green. Farm props (well, bucket, sacks) added as backrooms billboards. `Assets.isPlaceholder` added. Found and fixed: `backrooms-hum` was loaded but never played. It now loops while in the backrooms, and a unit test checks every loaded sound is used in the code. | 0 image placeholders and real `wall/floor/ceiling/grass/hero/villager/plot/well` asserted in the real-asset playthrough, from the source tree and from the `.love`. Placeholder mode still passes the full playthrough. The new unit tests check the tint switch. Screenshots looked at by eye (llvmpipe). | **Audio: no sound files exist** (`sounds/` is absent). All 7 hooked sounds are silent placeholders, so nothing has been heard. 6.1 stays unchecked until files are supplied. Art licenses are not recorded (see `THIRD_PARTY_NOTICES.md`). |
 | 6.2 full flow, blockers | Full flow start -> farm -> break -> rooms 1-3 -> ending -> start, including a wasted seed, a fall + respawn and an R reset in room 2, covered by the autotest. No soft-lock or blocker found. Readability fixes: the backrooms hint splits into two whole lines when it does not fit (it wrapped mid-phrase at 640 px). Translucent bands sit behind the HUD text (white text was hard to read on the pale wallpaper). The Room 1 crop billboard is smaller (1.2 -> 0.7 m) and moved to the side wall (it filled the right of the view at the spawn). The well now stands next to the ledge, not the spawn. No gameplay values changed. | 55.7 s simulated scripted run (fixed 1/60 s steps, perfect input). Reachability unchanged (billboards do not collide). | **Real player time (target under about 15 min) and "no soft-locks" in free play are not human-verified.** The 55.7 s is a scripted best case, not a playtest. |
-| 6.3 package | `tools/package.sh` builds `dist/not-how-it-works.love`: sorted entries, fixed 1980 timestamps and permissions, so it is reproducible. It refuses credential-like file names. It includes `tests/autotest.lua` and no other test file, so the exact artifact can be verified with `--autotest` (the file only loads with that flag). `RELEASE.md` has run instructions and controls. | Launch + playthrough on the artifact, see the table above. | A run on Windows/macOS and on a real GPU. `DEBUG_MODE` (F1 skip) is still on in the package; whether to turn it off for release is the owner's call. |
+| 6.3 package | `tools/package.sh` builds `dist/not-how-it-works.love`: sorted entries, fixed 1980 timestamps and permissions, so it is reproducible. It refuses credential-like file names. It includes `tests/autotest.lua` and no other test file, so the exact artifact can be verified with `--autotest` (the file only loads with that flag). `RELEASE.md` has run instructions and controls. | Launch + playthrough on the artifact, see the table above. | A run on Windows/macOS and on a real GPU. *(Resolved later: `DEBUG_MODE` is off in the package and only `--debug` turns it on; see the polish change.)* |
 
 ### Still needs a human (updated for section 6)
 
@@ -41,8 +48,8 @@ Everything in the section 5 list below still applies, plus:
 - Look at the new wallpaper/carpet/ceiling texture scale (2 m per repeat) on a
   real GPU, and the HUD bands at several window sizes.
 - Before publishing: licenses for the farm pack, the Backrooms model and
-  knife (`THIRD_PARTY_NOTICES.md`), the window title (still "Game Jam") and
-  `DEBUG_MODE`.
+  knife (`THIRD_PARTY_NOTICES.md`) and the window title (still "Game Jam").
+  (`DEBUG_MODE` has since been turned off by default; see the note at the top.)
 
 ## Previous status (2026-11-07, section 5 review run)
 
@@ -98,7 +105,7 @@ Harness notes:
 
 The autotest playthrough covers: start -> Enter -> farm; plant, wait 12.5 s,
 harvest, walk to the villager, sell; over-sell starts the break; E and F1 are
-ignored during it; the break ends in the backrooms with no coins; mouse look
+ignored during it (F1 is also ignored outside debug mode, which is now the default); the break ends in the backrooms with no coins; mouse look
 turns and returns; Esc frees the mouse and a click recaptures without
 planting; Room 1 (half-grown demo not climbable, demo plot refuses a
 pumpkin, one beanstalk seed finishes it, climb and walk to the exit); Room 2
@@ -106,7 +113,8 @@ pumpkin, one beanstalk seed finishes it, climb and walk to the exit); Room 2
 and respawns; R restores seeds and clears crops; pumpkin then vine reaches
 the exit); Room 3 (allotment 2/2/2; pumpkin, beanstalk climb onto the ledge,
 vine, exit -> ending); Enter on the ending returns to start; a 640x480 window
-resize, then F1 x2 into the backrooms still renders.
+resize, then F1 x2 into the backrooms still renders (the autotest now turns
+debug mode on explicitly for this step).
 
 I looked at the screenshots: walls, floor, ceiling, ledge, pits, crops,
 plots, billboards and the green exit marker draw with correct depth; the
@@ -139,7 +147,7 @@ rest is still pending a human.
 | Task | Automated (tests/run.lua) | Manual (run the game) | Status |
 |------|---------------------------|-----------------------|--------|
 | 1.1 push opt-out | push/native render-path tests | Backrooms cubes intersect cleanly (depth OK), start screen still scaled by push, window resize | automated: passed; autotest screenshots (llvmpipe) show correct depth, push-scaled start/farm/ending and a working 640x480 resize; human check on a real GPU pending |
-| 1.2 state stubs | debug-key transition tests (updated in section 4) | F1 cycles start -> farm -> backrooms room 1 -> 2 -> 3 -> ending -> start | automated: passed; manual: pending |
+| 1.2 state stubs | debug-key transition tests (updated in section 4) | F1 cycles start -> farm -> backrooms room 1 -> 2 -> 3 -> ending -> start (debug runs only, `--debug`) | automated: passed; manual: pending |
 | 1.3 shared data | game-data test; debug hand-off test (updated in section 4: now seeds-only via `CarryOverGameData`) | console shows `[backrooms] seeds received: ...` | automated: passed; autotest log shows `[backrooms] seeds received: ...` after the real break |
 | 1.4 placeholders | fallback / forced-placeholder tests | `love . --placeholder-assets` launches and every state draws | automated: passed; `love . --placeholder-assets` launch + full autotest playthrough pass, every state drawn |
 | 2.1 grid, avatar, input | movement, hold-repeat, highlight and mouse tests | farmer walks the field and is blocked by plots, villager and edges; yellow outline on the faced tile; white outline on hovered plot/villager; clicks work after a window resize (push letterbox) | automated: passed; manual: pending |
@@ -229,7 +237,8 @@ Decisions the code and tests encode (check in play):
   The capsule does not step up ledges either: in the tests a 1 m ledge blocks.
   Small steps are untested.
 - F1 in the backrooms now skips the current room (the last skip shows the
-  ending), and F1 on the ending returns to start.
+  ending), and F1 on the ending returns to start. (Debug runs only: since the
+  polish change, F1 needs `--debug`.)
 - Falling below `BACKROOMS_KILL_Z` respawns the player at the room spawn
   without resetting seeds.
 - The ending ignores Enter for its first 0.5 s, so a key held while reaching

@@ -37,9 +37,12 @@ Backrooms (3D, first person):
   or gap puts you back at the room start.
 - **Esc**: free the mouse; click to capture it again.
 
-Debug: **F1** skips ahead (farm -> backrooms -> next room -> ending -> start)
-because `DEBUG_MODE` is on in `src/constants.lua`. Set it to `false` before
-a public release if skipping should not be possible.
+Debug mode is **off** in this build: F1 does nothing and the HUDs show no
+debug text. It is for development only and is turned on with an explicit
+launch flag, `--debug` (for example `love . --debug` from the source tree, or
+`love not-how-it-works.love --debug`). With it, **F1** skips ahead (start ->
+farm -> backrooms -> next room -> ending -> start) and the HUDs show a debug
+line. `tools/package.sh` never turns it on.
 
 ## Building the package
 
