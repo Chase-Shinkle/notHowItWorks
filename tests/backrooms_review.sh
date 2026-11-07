@@ -45,8 +45,10 @@ fallback)
           badshader) envv="BR_BAD_SHADER=1" ;;
           noshader) args="--no-shader" ;;
         esac
-        env $envv BR_MODE=shots BR_WARMUP=30 BR_LEVELS=2 BR_POSES=spawn-hall BR_SCENES=plot-crop,exit \
-          BR_OUT=$d BR_SUFFIX=-$v love_run "$d/log-$v.txt" --run-seed=2026 $args
+        (   [ -n "$envv" ] && export $envv
+            export BR_MODE=shots BR_WARMUP=30 BR_LEVELS=2 BR_POSES=spawn-hall BR_SCENES=plot-crop,exit \
+              BR_OUT=$d BR_SUFFIX=-$v
+            love_run "$d/log-$v.txt" --run-seed=2026 $args )
     done
     echo "byte compare (expect: badshader == noshader; badpost != full):"
     for f in "$d"/L2-*-badshader.png; do
@@ -66,8 +68,11 @@ perf)
               plain) args="--no-shader" ;;
               high-nopost) envv="BR_BAD_POST=1"; args="--quality=high" ;;
             esac
-            env $envv BR_MODE=perf BR_LEVELS=2 BR_POSES=spawn-hall,mid-hall,ceiling BR_SCENES=plot-crop,exit \
-              BR_OUT=$d BR_SUFFIX=-$v-r$rep love_run "$d/log-$v-r$rep.txt" --run-seed=2026 $args
+            (   [ -n "$envv" ] && export $envv
+                export BR_MODE=perf BR_LEVELS=2 BR_POSES=spawn-hall,mid-hall,ceiling BR_SCENES=plot-crop,exit \
+                  BR_OUT=$d BR_SUFFIX=-$v-r$rep
+                love_run "$d/log-$v-r$rep.txt" --run-seed=2026 $args )
+            sleep 3
         done
     done
     # mean ms/frame over the poses, per config and rep
