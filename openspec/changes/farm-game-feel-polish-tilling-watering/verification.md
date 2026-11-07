@@ -193,3 +193,20 @@ The owner handed the shader/look review to the orchestrator. Round 1 found: flat
   - the stall price label stays sharp when the stall is out of focus;
   - the focus band follows the farmer, so plots 2–3 rows away soften slightly;
   - the blur is computed at 160/80 px, so up close it shows as soft blocks after push's nearest 2.5x upscale.
+
+### Task 5.4: tuning (scripted, after the look pass)
+
+Defaults changed: `FARM_FX_GLIMMER` 0.5 → 0.4, harvest burst 14 → 12 particles, water burst 12 → 10, `FARM_SFX_VOLUME` 0.6 → 0.5. These were unchanged: bloom 0.55 at threshold 0.66, shafts 0.30, `FARM_DAY_LENGTH` 90 s (a first loop runs into dusk). Look values: see constants.
+
+Crispness was measured on real LÖVE captures of `farm-start-daylight`, comparing shader on and `--no-shader`. The metric is mean horizontal luminance edge energy over each window-pixel region (on / off):
+
+| Region | On / off |
+|---|---|
+| HUD top bar | 1.00 (identical) |
+| Hint bar | 1.00 (identical) |
+| Farmer (focus band) | 0.94 |
+| Villager (focus band) | 0.98 |
+| Barn (background) | 0.32, softened on purpose |
+| Bottom row (foreground) | 0.52, softened on purpose |
+
+The small drop inside the focus band comes from the grade (vignette, warm multiply), not from blur. Captures are in `/workspace/qa/farmfeel/final/final-tuned-5.4-*`. Unit tests: 161 passed, 0 failed. Shots: 9 checks, 0 failed on each of on and off. The volume is set by value only; nobody listened to it, so it is not human-verified.

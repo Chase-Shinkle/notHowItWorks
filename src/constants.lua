@@ -156,10 +156,10 @@ FX_BURSTS = {
     plant = {count = 8, speed = {12, 30}, life = {0.3, 0.55}, gravity = 90, size = 1, jitter = 3,
         angle = -math.pi / 2, spread = 1.2,
         colors = {{0.55, 0.85, 0.35, 1}, {0.85, 0.75, 0.45, 1}}},
-    water = {count = 12, speed = {15, 40}, life = {0.3, 0.55}, gravity = 140, size = 1, jitter = 6,
+    water = {count = 10, speed = {15, 40}, life = {0.3, 0.55}, gravity = 140, size = 1, jitter = 6,
         angle = -math.pi / 2, spread = 1.3,
         colors = {{0.55, 0.8, 1, 1}, {0.8, 0.95, 1, 1}, {0.35, 0.6, 0.95, 1}}},
-    harvest = {count = 14, speed = {20, 55}, life = {0.4, 0.7}, gravity = 120, size = 2, jitter = 4,
+    harvest = {count = 12, speed = {20, 55}, life = {0.4, 0.7}, gravity = 120, size = 2, jitter = 4,
         colors = {{0.55, 0.9, 0.35, 1}, {1, 0.9, 0.35, 1}, {0.9, 1, 0.7, 1}}},
     sell = {count = 12, speed = {20, 50}, life = {0.4, 0.7}, gravity = 110, size = 1, jitter = 4,
         angle = -math.pi / 2, spread = 1.2, shape = 'spark',
@@ -182,7 +182,7 @@ FX_FLY_ARC = 24             -- flight arc height (px)
 FX_TICKER_RATE = 6          -- coin ticker: fraction of the gap closed per second
 FX_TICKER_MIN_SPEED = 8     -- coin ticker: minimum coins per second
 FX_COIN_TICK_INTERVAL = 0.06 -- minimum seconds between coin tick sounds
-FARM_SFX_VOLUME = 0.6       -- volume of the generated farm sound effects
+FARM_SFX_VOLUME = 0.5       -- volume of the generated farm sound effects
 
 -- Farm day cycle ---------------------------------------------------------------
 -- A day lasts FARM_DAY_LENGTH seconds of farm time (paused during the break)
@@ -206,7 +206,10 @@ FARM_DAY_TINTS = {
 
 -- Farm look pipeline (shaders/farm.glsl + farm_blur.glsl via src/FarmShader.lua)
 -- Every strength is a uniform, so the look is tuned here, not in the GLSL.
--- Setting one to 0 removes that effect only.
+-- Setting one to 0 removes that effect only. Tuned (task 5.4) after the look
+-- review: the in-focus band stays pixel-identical in sharpness to the pass
+-- off (measured on real captures, see verification.md); FARM_DAY_LENGTH
+-- stays 90 s so a first plant-harvest-sell loop sees dusk.
 FARM_FX_SUN = 0.10                      -- warm multiply toward FARM_FX_SUN_COLOR (by day)
 FARM_FX_SUN_COLOR = {1.0, 0.86, 0.58}   -- golden
 FARM_FX_SUN_GLOW = 0.30                 -- warm glow from the sun corner (by day)
@@ -215,7 +218,7 @@ FARM_FX_SHAFT = 0.30                    -- diagonal light shafts fanning from th
 FARM_FX_SHAFT_SPEED = 0.05              -- shaft drift speed
 FARM_FX_BLOOM = 0.55                    -- soft glow from bright / strongly coloured areas
 FARM_FX_BLOOM_THRESHOLD = 0.66          -- brightness where bloom starts
-FARM_FX_GLIMMER = 0.5                   -- sparkle on very bright pixels (ripe crops, pond)
+FARM_FX_GLIMMER = 0.4                   -- sparkle on very bright pixels (ripe crops, pond)
 FARM_FX_GLIMMER_THRESHOLD = 0.8         -- luminance where glimmer starts
 FARM_FX_TILT = 0.8                      -- tilt-shift depth of field (0 = all sharp)
 FARM_FX_FOCUS_HALF = 0.22               -- sharp band half height around the farmer (uv)

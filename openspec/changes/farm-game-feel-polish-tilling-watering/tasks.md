@@ -32,7 +32,7 @@
 - [x] 5.1 Add the day cycle (`FARM_DAY_LENGTH`, keyframed tint, counter increments at dawn, paused during the break, starts in daylight, fallback tint overlay when no shader); verify headless tests for rollover, break pause, day 1 start, and that growth timing is identical across a day boundary.
 - [x] 5.2 Write `shaders/farm.glsl` and `src/FarmShader.lua` (single pass: day tint, sun and light shaft, thresholded bloom, glimmer, with `FARM_FX_*` uniforms, canvas owned by the farm, `pcall` compile and canvas creation, one-time log on failure); verify it compiles on the real LÖVE runtime under xvfb and that forcing a compile failure still renders and plays the farm.
 - [x] 5.3 Keep the break correct under the shader (tint and bloom zeroed, corruption and fade fully visible) and the backrooms untouched; verify by screenshots at the start, mid-break and fade, and that `--placeholder-assets` still launches and plays.
-- [ ] 5.4 Tune defaults conservatively (bloom, shaft, glimmer, day length, particle counts, sound level); verify by comparing screenshots with the pass on and off that sprites and text stay crisp.
+- [x] 5.4 Tune defaults conservatively (bloom, shaft, glimmer, day length, particle counts, sound level); verify by comparing screenshots with the pass on and off that sprites and text stay crisp.
 
 ## 6. Integration
 
