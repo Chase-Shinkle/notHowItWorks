@@ -3309,12 +3309,12 @@ test('shader: the scene goes into the farm canvas and through the pass; text and
             and n.args[2] == 0 and n.args[3] == 0 and n.args[4] == VIRTUAL_WIDTH then opaqueBar = true end
     end
     assert(opaqueBar, 'opaque HUD bar drawn after the pass')
-    -- the downsampled chain ran: six blur steps into the buffers, bloom thresholded
+    -- the downsampled chain ran: ten blur steps into the buffers, bloom thresholded
     local blurDraws = 0
     for _, c in ipairs(mock.calls) do
         if c.name == 'setCanvas' then for _, b in ipairs(FarmShader.buffers) do if c.args[1] == b then blurDraws = blurDraws + 1 end end end
     end
-    eq(blurDraws, 6, 'six blur steps')
+    eq(blurDraws, 10, 'ten blur steps')
     -- uniforms come from the constants and the day tint
     local u = shader.sent
     eq(u.bloomStrength, FARM_FX_BLOOM); eq(u.sunStrength, FARM_FX_SUN); eq(u.shaftStrength, FARM_FX_SHAFT)

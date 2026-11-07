@@ -281,7 +281,7 @@ capture. No human playtested anything. Audio and real-GPU look are manual.
 | farm-hud | Divider present; Dim and restore; Coin counter; Initial day; Large counts | pass, scripted (`hud:` tests, real-font layout check, `hud-three-digit-counts` captures) |
 | farm-plot-care | all 11 scenarios (till, plant, replant, water, already watered, lost on harvest, both timings, mid-growth, hint match, after first sale) | pass, scripted (`plot care:` tests) |
 | farm-world-dressing | Landmarks visible; barn blocks; path walkable; reachability; stable layout; idle motion; three soil looks | pass, scripted (`decor:` tests, BFS, `soil-three-looks` capture). Manual: barn roof showing under the top bar was fixed in round 1 by an opaque bar |
-| farm-shaders | Pass active; Compile failure; Placeholder-assets launch; Break visible | pass, scripted (real LÖVE 11.5 under xvfb, `compile-failure-fallback`, `--placeholder-assets` runs). The unit test for the pass order (six steps) now fails as a stale expectation, see above |
+| farm-shaders | Pass active; Compile failure; Placeholder-assets launch; Break visible | pass, scripted (real LÖVE 11.5 under xvfb, `compile-failure-fallback`, `--placeholder-assets` runs). The unit test for the pass order expected six blur steps; the pass now has ten (intended), and the assertion was corrected, see "Stale assertion fix" |
 | farm-shaders | Tuning; Crisp sprites | pass by measurement (edge-energy table in 5.4: HUD 1.00, farmer 0.94, villager 0.98). **Manual-check note:** the subjective look on a real GPU was reviewed by the orchestrator from captures only |
 | farm-day-cycle | Day rolls over; Night readable; Growth unaffected; Frozen during the break; Start of run | pass, scripted (`day:` tests, `day-dusk/night/dawn` captures) |
 | farm-characters | Told apart in a screenshot; Player look; Tool changes with state; Sale reaction | pass, scripted (`characters:` tests, villager and tool captures) |
@@ -306,3 +306,14 @@ fallback: `final/final-compile-failure-fallback-*`, `*-placeholder*`; break:
 - check_all was run once as instructed, so no second run confirms a fix.
 - The before images for the blur fix were corrected as described above.
 - Audio and the real-GPU look were not human-checked. Nothing is archived.
+
+## Stale assertion fix (followup)
+
+- `tests/run.lua` (shader pass test) expected 6 blur steps. `src/FarmShader.lua`
+  runs 10 (`blurStep` x10: near H/V, far H/V twice, bloom H/V twice), because of
+  the intentional extra Gaussian rounds. The assertion now expects 10. No
+  implementation change.
+- Unit runner after the fix: `love tests/love_runner tests/run.lua` gives
+  **161 passed, 0 failed**.
+- **The full suite (`check_all.sh`) was NOT rerun after this fix.** Task 6.2
+  stays pending: there is no clean full-suite execution on record.
