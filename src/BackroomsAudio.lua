@@ -35,14 +35,12 @@ function BackroomsAudio:reset()
     self.lastX, self.lastY = nil, nil
 end
 
--- Picks a footstep index that differs from the previous one.
+-- Cycles the footsteps 1..n in order (no randomness).
 function BackroomsAudio:pickIndex()
     local n = #self.footsteps
     if n <= 1 then return 1 end
-    local i = self.rng(1, n - 1)
-    if self.lastIndex and i >= self.lastIndex then i = i + 1 end
-    self.lastIndex = i
-    return i
+    self.lastIndex = (self.lastIndex or 0) % n + 1
+    return self.lastIndex
 end
 
 function BackroomsAudio:playStep()
@@ -72,10 +70,20 @@ function BackroomsAudio:update(dt, player)
     local lx, ly = self.lastX, self.lastY
     self.lastX, self.lastY = x, y
     if not lx then return end
-    if not player.grounded or player.climbing then
-        self.walked = 0           -- airborne, falling or climbing: no steps, no banked distance
+    if player.climbing then
+        self.walked, self.airTime = 0, 0
         return
     end
+    -- PlayerController clears `grounded` every frame and only re-sets it when a
+    -- floor contact is resolved, so it drops for single frames while walking
+    -- (collider seams, tiny gravity drop). Those flickers neither play steps
+    -- nor wipe the banked distance; only sustained air time resets it.
+    if not player.grounded then
+        self.airTime = (self.airTime or 0) + dt
+        if self.airTime > BACKROOMS_FOOTSTEP_AIR_GRACE then self.walked = 0 end
+        return
+    end
+    self.airTime = 0
     local d = math.sqrt((x - lx) ^ 2 + (y - ly) ^ 2)
     if d > BACKROOMS_FOOTSTEP_STRIDE then return end   -- teleport (respawn/new room), not walking
     self.walked = self.walked + d

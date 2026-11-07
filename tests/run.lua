@@ -111,7 +111,7 @@ test('backrooms opts out of push and draws g3d with depth then HUD without', fun
     love.draw()
     eq(mock.count('push.apply'), 0, 'push bypassed')
     local room = gStateMachine.current.room
-    eq(#room.exitFrame, 3, 'exit frame is two posts and a lintel')
+    eq(#room.exitFrame, 5, 'exit frame is four corner posts and a lintel (black door, all orientations)')
     eq(mock.count('model.draw'), #room.models + #room.plots + #room.crops + 1 + #room.exitFrame + #room.billboards,
         'room boxes, plots, crops, exit marker, exit frame and billboards drawn')
     assert(#room.crops >= 1, 'room 1 draws its demo crop')
@@ -309,8 +309,19 @@ test('every loaded sound is hooked into the game code', function()
                         'src/states/game/StartState.lua', 'src/states/game/EndingState.lua'}) do
         local fh = assert(io.open(f, 'r')); code = code .. fh:read('*a'); fh:close()
     end
+    -- footstep-N keys are wired dynamically: BackroomsAudio builds gSounds['footstep-' .. i] for
+    -- 1..#BACKROOMS_FOOTSTEP_FILES, and BackroomsState creates and updates it.
+    local fa = assert(io.open('src/BackroomsAudio.lua', 'r')); local audioCode = fa:read('*a'); fa:close()
+    assert(audioCode:find("gSounds%['footstep%-' %.%. i%]", 1, false), 'BackroomsAudio loads footstep-i dynamically')
+    assert(audioCode:find('for i = 1, #BACKROOMS_FOOTSTEP_FILES', 1, true), 'all footstep files are loaded')
+    assert(code:find('BackroomsAudio.new()', 1, true) and code:find('self.audio:update(', 1, true),
+        'BackroomsState creates and updates BackroomsAudio')
     for key in pairs(gSounds) do
+      if not key:match('^footstep%-%d+$') then
         assert(code:find("gSounds%['" .. key:gsub('%-', '%%-') .. "'%]"), 'sound ' .. key .. ' is never used')
+      else
+        assert(tonumber(key:match('%d+')) <= #BACKROOMS_FOOTSTEP_FILES, key .. ' is outside the dynamic footstep range')
+      end
     end
 end)
 

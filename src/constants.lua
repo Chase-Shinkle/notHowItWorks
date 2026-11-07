@@ -425,8 +425,9 @@ BACKROOMS_HUM_FILE = 'sounds/BackroomsHum.mp3'     -- streamed, looping
 BACKROOMS_FOOTSTEP_FILES = {'sounds/Footsteps Rug 1.wav', 'sounds/Footsteps Rug 2.wav', 'sounds/Footsteps Rug 3.wav',
     'sounds/Footsteps Rug 4.wav', 'sounds/Footsteps Rug 5.wav'}   -- verify names against sounds/
 BACKROOMS_FOOTSTEP_STRIDE = 1.7        -- m of ground travel per step
-BACKROOMS_FOOTSTEP_PITCH_VARIATION = 0.06
-BACKROOMS_FOOTSTEP_VOLUME_VARIATION = 0.10
-BACKROOMS_HUM_VOLUME = 0.25
-BACKROOMS_FOOTSTEP_VOLUME = 0.7
+BACKROOMS_FOOTSTEP_PITCH_VARIATION = 0.02
+BACKROOMS_FOOTSTEP_VOLUME_VARIATION = 0.02
+BACKROOMS_HUM_VOLUME = 0.5
+BACKROOMS_FOOTSTEP_AIR_GRACE = 0.2    -- s of !grounded tolerated (contact flicker) before the stride bank resets
+BACKROOMS_FOOTSTEP_VOLUME = 0.35
 BACKROOMS_HUM_FADE = 1.0               -- s
