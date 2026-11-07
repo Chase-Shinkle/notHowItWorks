@@ -84,11 +84,12 @@ local function moduleScene(name)
     return function(room)
         for _, c in ipairs(room.data.meta and room.data.meta.cells or {}) do
             if c.module == name then
-                local x0 = c.cx * CELL
-                -- from the cell before the module, eyes level with its start, so
-                -- the obstacle and the approach are both in frame
-                local back = name == 'ledge' and 4.5 or 0.4
-                return x0 - back + (name == 'ledge' and 0 or 0), c.cy * CELL, c.elev, 0, -0.18
+                -- modules are rotated: stand `back` metres before the cell centre along the
+                -- travel direction, looking along it
+                local mx, my = c.cx * CELL + CELL / 2, c.cy * CELL
+                local back = (name == 'ledge' and 4.5 or 0.4) + CELL / 2
+                local dx, dy = c.dir[1], c.dir[2]
+                return mx - dx * back, my - dy * back, c.elev, math.atan2(dy, dx), -0.18
             end
         end
     end

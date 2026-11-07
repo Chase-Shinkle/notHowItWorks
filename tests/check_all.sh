@@ -18,6 +18,20 @@ step "generated-level physical sweep (tests/levels_sweep.sh: seeds 1..70 x diffi
 sh tests/levels_sweep.sh 1 70 > /tmp/check_sweep.txt 2>&1 || fail=1
 tail -12 /tmp/check_sweep.txt
 
+step "maze layout dump (tests/maze_layout.lua): ASCII + PNG for review, generation only, no assertions"
+MAZE_SEEDS=1,2 MAZE_DIFFS=1,2,3 MAZE_OUT=/tmp/check_maze xvfb-run -a love tests/love_runner tests/maze_layout.lua > /tmp/check_maze.txt 2>&1 || fail=1
+tail -1 /tmp/check_maze.txt
+
+# Dedicated maze test files from the parallel branches (branch plots, refund, checkpoints,
+# scaling). Each runs as soon as it exists in the tree; none is skipped once merged.
+for t in maze_branches maze_refund maze_checkpoints maze_scaling; do
+    if [ -f "tests/$t.lua" ]; then
+        step "tests/$t.lua"
+        love tests/love_runner "tests/$t.lua" > "/tmp/check_$t.txt" 2>&1 || fail=1
+        grep -E '^FAIL|^ERROR|error' "/tmp/check_$t.txt"; tail -1 "/tmp/check_$t.txt"
+    fi
+done
+
 step "pit-rim measurement (tests/rim.lua): pit plots plantable over >= 2.5 m of floor"
 love tests/love_runner tests/rim.lua > /tmp/check_rim.txt 2>&1 || fail=1
 grep -E '^room|FAIL|rim:' /tmp/check_rim.txt
