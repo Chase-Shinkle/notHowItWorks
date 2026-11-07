@@ -22,10 +22,10 @@
 
 ## 4. Sequence and reset
 
-- [ ] 4.1 Add the level sequence (tutorial, then generated levels with the difficulty table and run-seed derivation, logging and override) in constants and `BackroomsState`; test the sequence order and per-level seeds.
-- [ ] 4.2 Apply the seed-stock policy (zero start, no carry between levels, tutorial unchanged) in `GameData.lua`; test starting stocks for tutorial and generated levels.
-- [ ] 4.3 Make reset rebuild from the same seed, restore starting seeds, respawn pickups and clear crops; test layout equality and pickup restoration after reset.
-- [ ] 4.4 Wire the ending after the last generated level; run the full flow in `tests/autotest.lua` and confirm it reaches the ending.
+- [x] 4.1 Add the level sequence (tutorial, then generated levels with the difficulty table and run-seed derivation, logging and override) in constants and `BackroomsState`; test the sequence order and per-level seeds.
+- [x] 4.2 Apply the seed-stock policy (zero start, no carry between levels, tutorial unchanged) in `GameData.lua`; test starting stocks for tutorial and generated levels.
+- [x] 4.3 Make reset rebuild from the same seed, restore starting seeds, respawn pickups and clear crops; test layout equality and pickup restoration after reset.
+- [x] 4.4 Wire the ending after the last generated level; run the full flow in `tests/autotest.lua` and confirm it reaches the ending.
 
 ## 5. Solvability verification
 

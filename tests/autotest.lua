@@ -21,6 +21,9 @@ local OUT = os.getenv('AUTOTEST_OUT') or '/tmp/autotest'
 os.execute('mkdir -p "' .. OUT .. '"')
 io.stdout:setvbuf('line')
 
+-- fixed run seed so the generated backrooms levels are the same every run
+BACKROOMS_RUN_SEED = tonumber(os.getenv('AUTOTEST_RUN_SEED')) or 4242
+
 local held = {}
 local realIsDown = love.keyboard.isDown
 love.keyboard.isDown = function(...)
@@ -355,69 +358,100 @@ local function script()
     check(back.room:plotById('demo').crop.grown, 'room 1: demo fully grown')
     local reached = holdUntil('w', function() return back.roomIndex == 2 end, 8)
     check(reached, 'room 1: climb the beanstalk and walk to the exit -> room 2')
-    check(seeds() == FormatSeeds({pumpkin = 2, vine = 2}), 'room 2 allotment: %s', seeds())
+    local function totalSeeds() local g = back.gameData.seeds; return g.beanstalk + g.pumpkin + g.vine end
+    -- (a pickup lying within reach of the spawn is collected on arrival)
+    local function nearSpawn(data)
+        local n, s = 0, data.spawn
+        for _, pk in ipairs(data.pickups) do
+            local dx, dy = pk.pos[1] - s[1], pk.pos[2] - s[2]
+            if dx * dx + dy * dy <= BACKROOMS_PICKUP_RADIUS ^ 2 and math.abs(pk.pos[3] - s[3]) <= BACKROOMS_PLANT_HEIGHT then n = n + 1 end
+        end
+        return n
+    end
+    check(back.room.data.generated and FormatSeeds(back.roomStartSeeds) == 'beanstalk=0 pumpkin=0 vine=0'
+        and totalSeeds() == nearSpawn(back.room.data), 'level 2 is generated and starts with no seeds (%s)', seeds())
     wait(0.3)
-    shot('09-room2-arrival', {290, 380, 120, 80, 5}) -- billboard sprite edges
-    hudText = table.concat(lastFrameTexts, ' | ')
-    check(hudText:find('pumpkin x', 1, true) and hudText:find('corn x', 1, true) and not hudText:find('beanstalk', 1, true)
-        and not hudText:find('vine', 1, true), 'room 2 HUD lists pumpkin and vine (as corn) only (%s)', hudText)
 
-    -- Room 2: wrong type in the pit, then reset, then the right solution
-    p = back.player
-    local function pitTargeted() local t = back:targetPlot(); return t ~= nil and t.id == 'pit' end
-    holdUntil('w', pitTargeted, 3)
-    check(pitTargeted() and p.x < -5.5 and math.abs(p.z) < 0.05,
-        'room 2: pit plot in range from well back on the floor (x=%.2f, %.2f m from the rim)', p.x, -4 - p.x)
-    shot('09b-room2-pit-prompt', {200, 400, 400, 120, 2})
-    press('3'); press('e')
-    check(back.gameData.seeds.vine == 1, 'room 2: wrong seed (vine) planted in the pit')
-    wait(CROP_DEFS.vine.growTime + 0.3)
-    holdUntil('w', function() return p.x > -1.4 or p.z < -0.3 end, 3)
-    wait(0.5)
-    check(p.x < -4, 'room 2: a vine in the pit does not get you across (fell and respawned, x=%.2f)', p.x)
-    press('r')
-    check(seeds() == FormatSeeds({pumpkin = 2, vine = 2}) and #back.room.crops == 0, 'room 2: R restores seeds and clears crops')
-    holdUntil('w', pitTargeted, 3)
-    check(p.x < -5.5, 'room 2: after the reset, planting the pumpkin from x=%.2f', p.x)
-    press('2'); press('e')
-    wait(CROP_DEFS.pumpkin.growTime + 0.3)
-    shot('10-room2-pumpkin')
-    holdUntil('w', function() return p.x > 0.8 end, 4)
-    check(math.abs(p.z) < 0.05, 'room 2: walked over the pumpkin at floor level (z=%.2f)', p.z)
-    check(back:targetPlot() and back:targetPlot().id == 'edge', 'room 2: edge plot in range')
-    press('3'); press('e')
-    wait(CROP_DEFS.vine.growTime + 0.3)
-    shot('11-room2-vine')
-    reached = holdUntil('w', function() return back.roomIndex == 3 end, 6)
-    check(reached, 'room 2: cross the vine to the exit -> room 3')
-    check(seeds() == FormatSeeds({beanstalk = 2, pumpkin = 2, vine = 2}), 'room 3 allotment: %s', seeds())
-    wait(0.3)
-    shot('12-room3-arrival', {0, 0, 450, 70, 3})
-    hudText = table.concat(lastFrameTexts, ' | ')
-    check(hudText:find('beanstalk x', 1, true) and hudText:find('pumpkin x', 1, true) and hudText:find('corn x', 1, true),
-        'room 3 HUD lists all three types (%s)', hudText)
-
-    -- Room 3: pumpkin, beanstalk, vine
-    p = back.player
-    holdUntil('w', function() return p.x > -7.6 end, 3)     -- ~1.6 m back from the rim at x = -6
-    press('2'); press('e')
-    check(back.room:plotById('pit').crop ~= nil, 'room 3: pumpkin planted in the pit from x=%.2f (%.2f m from the rim)',
-        p.x, -6 - p.x)
-    wait(CROP_DEFS.pumpkin.growTime + 0.3)
-    holdUntil('w', function() return p.x > -1.35 end, 4)
-    wait(0.2)
-    check(back:targetPlot() and back:targetPlot().id == 'foot', 'room 3: foot plot in range at the ledge (x=%.2f)', p.x)
-    press('1'); press('e')
-    wait(CROP_DEFS.beanstalk.growTime + 0.3)
-    shot('13-room3-beanstalk')
-    holdUntil('w', function() return p.x > 0.8 and p.z > 2.5 end, 6)
-    check(p.z > 2.5 and p.z < 2.7, 'room 3: climbed onto the ledge (x=%.2f z=%.2f)', p.x, p.z)
-    check(back:targetPlot() and back:targetPlot().id == 'lip', 'room 3: lip plot in range on the ledge')
-    press('3'); press('e')
-    wait(CROP_DEFS.vine.growTime + 0.3)
-    shot('14-room3-vine')
-    reached = holdUntil('w', function() return is(EndingState) end, 6)
-    check(reached, 'room 3: cross the vine to the exit -> ending')
+    -- Generated levels (run seed fixed above): pickups are visible, reset
+    -- respawns them, then each level is solved in chain order. Scripted hook:
+    -- the player is teleported to pickups and to the foot of each obstacle
+    -- (the 200+ seed physical search is tests/reachability.lua), but planting,
+    -- growth, climbing, crossing, collision and the exit are all real.
+    local function faceAndShot(name, pickup, dist)
+        local px, py, pz = pickup.pos[1], pickup.pos[2], pickup.pos[3]
+        local cellX0 = math.floor(px / LEVELGEN_CELL) * LEVELGEN_CELL
+        local sx = math.max(cellX0 + 0.6, px - dist)
+        back.player:setPosition(sx, py, pz)
+        wait(0.3)
+        local target = math.atan2(py - back.player.y, px - back.player.x)
+        local cur = g3d.camera.getDirectionPitch()
+        local turn = (cur - target)
+        turn = (turn + math.pi) % (2 * math.pi) - math.pi
+        love.mousemoved(400, 400, turn * 300, 0); coroutine.yield()
+        love.mousemoved(400, 400, 0, PICKUP_SHOT_PITCH_DY); coroutine.yield()
+        shot(name)
+    end
+    PICKUP_SHOT_PITCH_DY = tonumber(os.getenv('PICKUP_SHOT_DY')) or 40
+    local function solveLevel(idx)
+        local data = back.room.data
+        local nPick = #back.room.pickups
+        check(nPick + totalSeeds() == #data.pickups and #data.pickups >= data.meta.obstacles, 'level %d: %d pickups placed (%d by the spawn)', idx, #data.pickups, totalSeeds())
+        -- pickups visible in the real runtime (task 2.4 gap)
+        local firstCrit
+        for _, live in ipairs(back.room.pickups) do if live.tier == 'critical' and not firstCrit then firstCrit = live end end
+        firstCrit = firstCrit or back.room.pickups[1]
+        faceAndShot(string.format('16-level%d-pickup-a', idx), firstCrit, 2.0)
+        faceAndShot(string.format('16-level%d-pickup-b', idx), firstCrit, 1.2)
+        -- collect one by walking onto it, then reset: pickups back, stock empty
+        back.player:setPosition(firstCrit.pos[1], firstCrit.pos[2], firstCrit.pos[3])
+        wait(0.2)
+        local gained = totalSeeds() - (#data.pickups - nPick)
+        check(gained >= 1 and gained == nPick - #back.room.pickups, 'level %d: pickup collected (+%d seed, %d left)', idx, gained, #back.room.pickups)
+        shot(string.format('17-level%d-collected', idx))
+        press('r')
+        wait(0.1)
+        check(totalSeeds() == nearSpawn(data) and #back.room.pickups + totalSeeds() == #data.pickups and back.room.data == data
+            and FormatSeeds(back.roomStartSeeds) == 'beanstalk=0 pumpkin=0 vine=0',
+            'level %d: R respawns pickups, empties the stock and keeps the layout', idx)
+        for k, link in ipairs(data.meta.chain) do
+            for _, pk in ipairs(data.pickups) do
+                if pk.tier == 'critical' and pk.obstacle == k then
+                    back.player:setPosition(pk.pos[1], pk.pos[2], pk.pos[3])
+                    wait(0.15)
+                end
+            end
+            local plot = back.room:plotById(link.plot)
+            local pit = link.module == 'pit'
+            back.player:setPosition(plot.pos[1] - (pit and 2.0 or 0.6), plot.pos[2], plot.pos[3] + (pit and 1.0 or 0))
+            wait(0.4)
+            local slot
+            for i, t in ipairs(SEED_TYPES) do if t == link.seed then slot = i end end
+            press(tostring(slot))
+            check(back.selectedSeed == link.seed and back.gameData.seeds[link.seed] >= 1,
+                'level %d obstacle %d (%s): %s selected and held', idx, k, link.module, link.seed)
+            press('e')
+            check(plot.crop ~= nil, 'level %d obstacle %d: %s planted', idx, k, link.seed)
+            wait(CROP_DEFS[link.seed].growTime + 0.4)
+            if k == 1 then shot(string.format('18-level%d-first-crop', idx)) end
+            local endX = (link.cell + 1) * LEVELGEN_CELL + 0.4
+            local crossed = holdUntil('w', function() return back.player.x > endX end, 10)
+            check(crossed, 'level %d obstacle %d (%s) crossed (x=%.2f z=%.2f)', idx, k, link.module, back.player.x, back.player.z)
+            if not crossed then return false end
+        end
+        local expect = idx + 1
+        return holdUntil('w', function() return back.roomIndex == expect or is(EndingState) end, 15)
+    end
+    local ok = true
+    local last = back:levelCount()
+    for idx = 2, last do
+        check(back.roomIndex == idx, 'now in level %d (%s)', idx, back.room.name)
+        wait(0.3)
+        shot(string.format('15-level%d-arrival', idx), {0, 0, 450, 70, 3})
+        ok = solveLevel(idx)
+        check(ok, 'level %d: exit reached', idx)
+        if not ok then break end
+    end
+    check(ok and is(EndingState), 'last generated level exit -> ending')
     wait(0.8)
     shot('15-ending')
     press('return')

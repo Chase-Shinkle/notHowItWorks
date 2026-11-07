@@ -307,6 +307,7 @@ function LevelGen.build(seed, difficulty)
         exit = exit,
         plots = plots,
         allotment = {},
+        generated = true,       -- starts with no seeds (RoomStartingSeeds)
         billboards = billboards,
         pickups = pickups,
         seedTypes = seedTypes,

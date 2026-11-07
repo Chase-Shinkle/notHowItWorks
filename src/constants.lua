@@ -338,6 +338,14 @@ LEVELGEN_DIFFICULTY = {
     {obstacles = 4, types = {'pit', 'gap', 'ledge'}},
 }
 
+-- Level sequence: the authored tutorial, then one generated level per
+-- LEVELGEN_DIFFICULTY row (level i uses row i - 1), then the ending.
+BACKROOMS_GENERATED_LEVELS = #LEVELGEN_DIFFICULTY
+-- Run seed for the generated levels: nil picks a random one per run (logged
+-- as "[backrooms] run seed N"). `love . --run-seed=N` sets it so a run can be
+-- replayed; level seeds are LevelGen.levelSeed(run seed, level index).
+BACKROOMS_RUN_SEED = nil
+
 -- Seed pickups: collected by walking within this horizontal distance (m).
 BACKROOMS_PICKUP_RADIUS = 0.9
 BACKROOMS_PICKUP_HEIGHT = 0.5

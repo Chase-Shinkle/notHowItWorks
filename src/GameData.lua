@@ -67,11 +67,14 @@ end
 --   * Room 1, first entry: the seeds carried over from the farm are kept and
 --     each type is topped up to Room 1's allotment, which acts as the minimum
 --     (seed-carryover: "holds the seeds they had at the break").
+--   * Generated levels (`generated = true`, src/LevelGen.lua): no seeds at all,
+--     whatever was carried; the level's pickups are its only supply.
 --   * Rooms 2+: seeds are exactly that room's fixed allotment. Leftovers from
 --     the previous room do not carry forward.
 -- Resetting a room restores the seeds recorded when it was entered (for
 -- Room 1 that is the topped-up farm seeds, not the bare allotment).
 function RoomStartingSeeds(roomData, index, carriedSeeds)
+    if roomData and roomData.generated then return CopySeeds({}) end
     local allotment = (roomData and roomData.allotment) or {}
     if index == 1 then
         local seeds = CopySeeds(carriedSeeds)

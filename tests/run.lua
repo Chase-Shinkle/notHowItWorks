@@ -26,6 +26,10 @@ local function loadGame(args)
     arg = args or {}
     dofile('main.lua')
     love.load()
+    -- the pre-sequence puzzle rooms stay the default for the older tests; the
+    -- sequence tests (section 4 of procedural-backrooms-levels) clear it
+    BackroomsState.roomsOverride = BACKROOMS_ROOMS
+    BACKROOMS_RUN_SEED = nil
 end
 
 local function step()
@@ -3645,6 +3649,106 @@ test('uproot 3.2: refused for the demo crop and while standing on or in the crop
     eq(back:uproot(), false)
     back.player:setPosition(-4.6, 0, 0)
     eq(back:uproot(), true, 'removable once clear (at the rim)')
+end)
+
+-- 4. level sequence, stock policy, reset ----------------------------------------------
+-- Enters the real sequence (no room override) with run seed `runSeed`.
+local function toSequence(runSeed, seeds)
+    local back = toBackrooms(seeds)          -- loads the game; then re-enter without the override
+    BackroomsState.roomsOverride = nil
+    BACKROOMS_RUN_SEED = runSeed
+    gStateMachine:change('backrooms', CarryOverGameData(NewGameData(seeds and {seeds = seeds} or nil)))
+    return gStateMachine.current
+end
+
+test('sequence 4.1: tutorial, then generated levels with rising difficulty, per-level seeds, then the ending', function()
+    local back = toSequence(777)
+    eq(back:levelCount(), 1 + BACKROOMS_GENERATED_LEVELS)
+    eq(back.runSeed, 777)
+    assert(find(mock.printed, 'run seed 777'), 'run seed logged')
+    eq(back.roomIndex, 1); eq(back.room.id, 'tutorial')
+    assert(back.room:plotById('demo').crop.demo, 'tutorial keeps its half-grown demo crop')
+    local obstacles, ids = {}, {}
+    for i = 2, back:levelCount() do
+        back:advance()
+        eq(back.roomIndex, i)
+        assert(back.room.data.generated, 'level ' .. i .. ' is generated')
+        eq(back.room.data.meta.seed, LevelGen.levelSeed(777, i) , 'level seed from run seed + index (no retry on this seed)')
+        eq(back.levelSeeds[i], LevelGen.levelSeed(777, i))
+        obstacles[#obstacles + 1] = back.room.data.meta.obstacles
+        ids[#ids + 1] = back.room.id
+    end
+    for i = 2, #obstacles do assert(obstacles[i] >= obstacles[i - 1], 'non-decreasing obstacles') end
+    assert(obstacles[#obstacles] > obstacles[1], 'last has more obstacles than the first')
+    local changes = countChanges()
+    back:advance()
+    eq(#changes, 1); eq(changes[1], 'ending')
+
+    -- the same run seed gives the same levels; another run seed does not
+    local again = toSequence(777)
+    again:advance()
+    eq(again.room.id, ids[1]); eq(#again.room.data.boxes, #back.levels[2].boxes)
+    for i, p in ipairs(back.levels[2].pickups) do
+        eq(again.room.data.pickups[i].seed, p.seed); near(again.room.data.pickups[i].pos[1], p.pos[1], 1e-12)
+    end
+    local other = toSequence(778)
+    other:advance()
+    assert(other.room.id ~= ids[1], 'different run seed, different level')
+    -- the debug skip walks the same sequence and the default run seed is random but logged
+    BACKROOMS_RUN_SEED = nil
+    gStateMachine:change('backrooms', CarryOverGameData(NewGameData()))
+    assert(gStateMachine.current.runSeed >= 1, 'random run seed')
+end)
+
+test('sequence 4.2: starting stocks: tutorial topped up, generated levels start empty, nothing carries', function()
+    local back = toSequence(5, {beanstalk = 0, pumpkin = 3, vine = 0})
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=1 pumpkin=3 vine=0', 'tutorial: carry-over and top-up unchanged')
+    back.gameData.seeds.pumpkin = 9           -- leftovers
+    back:advance()
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=0 pumpkin=0 vine=0', 'level 2 starts empty')
+    eq(FormatSeeds(back.roomStartSeeds), 'beanstalk=0 pumpkin=0 vine=0')
+    back.gameData.seeds.vine = 4
+    back:advance()
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=0 pumpkin=0 vine=0', 'nothing carried to level 3')
+    eq(FormatSeeds(RoomStartingSeeds(back.room.data, 1, {beanstalk = 5, pumpkin = 5, vine = 5})), 'beanstalk=0 pumpkin=0 vine=0',
+        'even as a first room')
+    -- the HUD still lists the level's seed types
+    assert(#back:visibleSeedTypes() >= 1)
+end)
+
+test('sequence 4.3: reset rebuilds the same level: layout equal, pickups back, crops gone, stock restored', function()
+    local back = toSequence(31)
+    back:advance(); back:advance()           -- level 3 (three obstacles)
+    local data = back.room.data
+    local nBoxes, nPick, oldRoom = #back.room.colliders, #back.room.pickups, back.room
+    assert(nPick >= 3, 'critical + extra pickups')
+    local exit0 = {back.room.exit.pos[1], back.room.exit.pos[2], back.room.exit.pos[3]}
+    -- collect everything
+    local all = {}
+    for i, p in ipairs(back.room.pickups) do all[i] = p end
+    for _, p in ipairs(all) do
+        back.player:setPosition(p.pos[1], p.pos[2], p.pos[3]); back:collectPickups()
+    end
+    eq(#back.room.pickups, 0, 'all collected')
+    local total = 0
+    for _, t in ipairs(SEED_TYPES) do total = total + back.gameData.seeds[t] end
+    eq(total, nPick, 'one seed per pickup')
+    -- plant something on the first plot
+    local plot = back.room.plots[1]
+    local t = back.room.data.meta.chain[1].seed
+    back.player:setPosition(plot.pos[1] - 0.5, plot.pos[2], plot.pos[3] + (t == 'pumpkin' and 1 or 0))
+    back.selectedSeed = t
+    assert(back:plant()); assert(#back.room.crops == 1)
+    back:resetRoom()
+    assert(back.room ~= oldRoom, 'rebuilt')
+    eq(back.levels[3], data, 'same level data (same seed)')
+    eq(#back.room.colliders, nBoxes, 'same layout'); eq(#back.room.pickups, nPick, 'pickups respawned')
+    eq(#back.room.crops, 0, 'crops cleared'); eq(back.room.plots[1].crop, nil)
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=0 pumpkin=0 vine=0', 'starting stock restored')
+    for i = 1, 3 do near(back.room.exit.pos[i], exit0[i], 1e-12, 'exit') end
+    eq(back.roomIndex, 3)
+    local s = back.room.spawn
+    near(back.player.x, s[1], 1e-6)
 end)
 
 realPrint(string.format('\n%d passed, %d failed', passed, failed))
