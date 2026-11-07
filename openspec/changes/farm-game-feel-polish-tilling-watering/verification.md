@@ -1,10 +1,11 @@
 # Verification: farm-game-feel-polish-tilling-watering
 
-**Status: reviewer checkpoint after task 5.3.** Sections 1-4 and tasks
-5.1-5.3 are implemented and checked. **Task 5.4 (tuning) and all of section 6
-are not started.** They wait for the shader and look review by Chase. No
-reviewer approval has been given or is claimed here. The change is not
-archived.
+**Status (final, run 2): tasks 1.1-6.1 are done. Task 6.2 is NOT satisfied:
+`sh tests/check_all.sh` ran once and reported SOME CHECKS FAILED (one stale
+unit assertion, see "Final results"). Task 6.3 is recorded here. The change is
+not archived.** The sections below up to "Look pass" are the earlier reviewer
+checkpoint after task 5.3 and are kept as history. The look pass, tuning and
+blur fix are recorded after them. All code was written by Claude Code.
 
 Starting commit: `a428d0d` on `feature/farm-to-backrooms`. All code was
 written by Claude Code.
@@ -43,8 +44,10 @@ The commit that adds this file comes after these.
 | 5.1 Day cycle | done | `day:` tests (day 1 daylight start, rollover at dawn, tint keyframes, night >= 0.65 brightness, growth same across a boundary, frozen in the break); fallback overlay test |
 | 5.2 Shader | done | Compiles on real LÖVE 11.5 under xvfb (Mesa llvmpipe, OpenGL 4.5), also from the packaged .love; a real GLSL compile error falls back with one log line and the farm plays (till, plant, water by real input); `shader:` headless tests (pipeline order, uniforms from constants, zeroing one constant changes only that uniform) |
 | 5.3 Break under the pass | done | `shader: during the break the pass is plain and corruption and the fade are drawn on top of it`; `shader: the backrooms never uses the farm pass`; screenshots of mid-break and fade (pass on and off); `--placeholder-assets` launch and autotest pass |
-| **5.4 Tuning** | **pending reviewer** | Not started. Defaults in `src/constants.lua` (`FARM_FX_*`, `FARM_DAY_LENGTH`, `FX_BURSTS`, `FARM_SFX_VOLUME`) are first values only |
-| **6.1-6.3** | **pending reviewer** | Not started |
+| 5.4 Tuning | done | See "Task 5.4" below: defaults changed, crispness measured on real captures; volume not human-verified |
+| 6.1 Autotest farm run | done | `tests/autotest.lua` full farm run (128 checks from source, 120 with `--debug` off paths); debug features off in the package |
+| **6.2 check_all and package twice** | **FAILED (open)** | check_all: 1 unit failure; package hash stable. See "Final results" |
+| 6.3 Record results | done (this file) | Scenario table below |
 
 ## Test results (exact, from the last runs)
 
@@ -210,3 +213,96 @@ Crispness was measured on real LÖVE captures of `farm-start-daylight`, comparin
 | Bottom row (foreground) | 0.52, softened on purpose |
 
 The small drop inside the focus band comes from the grade (vignette, warm multiply), not from blur. Captures are in `/workspace/qa/farmfeel/final/final-tuned-5.4-*`. Unit tests: 161 passed, 0 failed. Shots: 9 checks, 0 failed on each of on and off. The volume is set by value only; nobody listened to it, so it is not human-verified.
+
+## Blur fix (commit `b8c80a0`) and its review
+
+The second look pass blurred the top/background and bottom too little and
+unevenly. `b8c80a0` adds a second Gaussian round, a 4-tap upsample and a
+smootherstep focus falloff.
+
+- **Orchestrator review (not a fresh inspection by Claude):** the orchestrator
+  reviewed the AFTER capture against
+  `final/final-tuned-5.4-farm-start-daylight-shader-on.png`: top/background and
+  bottom blur smoother, focus sprites and HUD crisp, golden shafts preserved.
+  Accepted, no further visual tuning.
+- **Correction on the before images:** the run 1 "before" images were made
+  from `baseline-577d3e6` (before the HD-2D look pass), not from the commit
+  just before the blur fix. In `/workspace/qa/farmfeel/blurfix/`,
+  `before-farm-start-daylight.png` and `before-blurred-top-zoom.png` /
+  `before-blurred-bottom-zoom.png` were replaced in run 2 with the real
+  pre-blur-fix frame, `final/final-tuned-5.4-farm-start-daylight-shader-on.png`
+  (a copy, and 2x nearest-neighbour crops at the same geometry as the after
+  zooms: top = x0 y16 400x224, bottom = x0 y576 400x208, both 800 px wide).
+  Crop geometry was found by exact pixel match against the after zooms. No game
+  launch was needed. Statements in run 1 notes that the baseline was the
+  pre-blur-fix state are wrong.
+- **Reference images:** the orchestrator read the reference photos in an
+  earlier round. Claude's round 1 note above says they were not on this
+  machine and the look followed the orchestrator's description. Both are true:
+  Claude did not see them.
+
+## Final results (run 2, at `b8c80a0` plus this file)
+
+`sh tests/check_all.sh` was run exactly once and not rerun:
+**SOME CHECKS FAILED.**
+
+- Unit / headless (`tests/run.lua`): **160 passed, 1 failed.** Failing test:
+  `shader: the scene goes into the farm canvas and through the pass; text and
+  HUD are drawn after it`, `tests/run.lua:3317: six blur steps: got 10, want
+  6`. Cause (not debugged further): the blur fix added a second Gaussian round,
+  so the assertion that expects six blur steps is stale and the chain now makes
+  ten. This is a test expectation to update to the new design, not shown to be
+  a rendering defect. It is NOT fixed here, because the instruction was to run
+  the suite once and not start debugging.
+- Reachability sweep: 84 assignments searched, 0 unexpected.
+- Pit-rim measurement: ok (room 2 span 2.53 m, room 3 span 2.54 m).
+- Plain launch, 8 s: ok.
+- Autotest: source **128 checks, 0 failed**; `--placeholder-assets` **120, 0
+  failed**; packaged artifact 128 and 120, 0 failed; artifact with `--debug`
+  **125, 0 failed** (3521 frames).
+- `sh tools/package.sh` twice: 296 files, 2,117,424 bytes, identical sha256
+  `7968aa1d8985c70dcac257b8cde2b1d7d05af92037e71c0de592c11b266a641b`
+  (hash stable).
+- Backrooms visuals and carry-over: the backrooms autotest checks (rooms 1-3
+  HUD, screenshots 07-17, carry-over, ending) all passed, and the shader test
+  `the backrooms never uses the farm pass` passed. No backrooms files changed.
+  Compared by checks, not by a human.
+- **6.2 stays unchecked** until the stale assertion is updated and a clean
+  check_all run is recorded.
+
+## Scenario-by-scenario result
+
+"scripted" means a headless test, real-runtime scripted run or scripted
+capture. No human playtested anything. Audio and real-GPU look are manual.
+
+| Spec | Scenarios | Result |
+|---|---|---|
+| crop-display-names | Hint and popups; HUD and shop; Backrooms HUD; Data unaffected | pass, scripted (`names:` tests, autotest room 2/3 HUD lines) |
+| farm-hud | Divider present; Dim and restore; Coin counter; Initial day; Large counts | pass, scripted (`hud:` tests, real-font layout check, `hud-three-digit-counts` captures) |
+| farm-plot-care | all 11 scenarios (till, plant, replant, water, already watered, lost on harvest, both timings, mid-growth, hint match, after first sale) | pass, scripted (`plot care:` tests) |
+| farm-world-dressing | Landmarks visible; barn blocks; path walkable; reachability; stable layout; idle motion; three soil looks | pass, scripted (`decor:` tests, BFS, `soil-three-looks` capture). Manual: barn roof showing under the top bar was fixed in round 1 by an opaque bar |
+| farm-shaders | Pass active; Compile failure; Placeholder-assets launch; Break visible | pass, scripted (real LÖVE 11.5 under xvfb, `compile-failure-fallback`, `--placeholder-assets` runs). The unit test for the pass order (six steps) now fails as a stale expectation, see above |
+| farm-shaders | Tuning; Crisp sprites | pass by measurement (edge-energy table in 5.4: HUD 1.00, farmer 0.94, villager 0.98). **Manual-check note:** the subjective look on a real GPU was reviewed by the orchestrator from captures only |
+| farm-day-cycle | Day rolls over; Night readable; Growth unaffected; Frozen during the break; Start of run | pass, scripted (`day:` tests, `day-dusk/night/dawn` captures) |
+| farm-characters | Told apart in a screenshot; Player look; Tool changes with state; Sale reaction | pass, scripted (`characters:` tests, villager and tool captures) |
+| farm-juice | Harvest burst; Effects clean up; Fly and count; Sale ticks up; Spending ticks down; Stage change; Missing sound; Break plays cleanly | pass, scripted (`fx:` and `sound:` tests, autotest farm run) |
+| farm-juice | Distinct cues | **manual-check note:** nine distinct WAVs are generated and each action plays its own file (scripted). Whether they sound distinct and at a good level was not heard by anyone |
+
+## Screenshots per requirement area
+
+All under `/workspace/qa/farmfeel/` (area: files): world dressing and look:
+`final/final-farm-start-daylight-*`, `final/final-focus-follows-farmer-*`,
+`blurfix/*`; day cycle: `final/final-day-{dawn,dusk,night}-*`; shaders and
+fallback: `final/final-compile-failure-fallback-*`, `*-placeholder*`; break:
+`final/final-break-*`, `final/final-backrooms-after-break-*`; HUD:
+`final/final-hud-three-digit-counts-*`; characters and tools: `tool-*`,
+`villager-*`; soil: `soil-three-looks-*`; juice (ripe markers, pond):
+`ripe-crops-*`, `pond-closeup-*`. All captures are scripted. Effects in motion
+(bursts, flying pickups) are covered by tests, not stills.
+
+## Deviations (this run)
+
+- 6.2 is not complete: one stale unit assertion fails (see above).
+- check_all was run once as instructed, so no second run confirms a fix.
+- The before images for the blur fix were corrected as described above.
+- Audio and the real-GPU look were not human-checked. Nothing is archived.
