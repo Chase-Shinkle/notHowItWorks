@@ -1737,6 +1737,79 @@ test('planting: E plants the selected seed on the plot in range and only that co
     eq(crop.grown, true); eq(crop.active, true)
 end)
 
+-- pit reach (polish M3) --------------------------------------------------------
+test('pit reach: per-plot reach is used, defaults to the global range, and the nearest plot still wins', function()
+    loadGame()
+    local room = Room({
+        id = 'reach', spawn = {0, 0, 0}, allotment = {},
+        boxes = Room.shellBoxes(20, 10, 6),
+        exit = {pos = {0, 0, -50}, size = {1, 1, 1}},
+        plots = {{id = 'far', pos = {-3, 0, -1}, reach = 3.8}, {id = 'near', pos = {1, 0, 0}},
+            {id = 'high', pos = {-3, 0, 2.6}, reach = 3.8}},
+    })
+    eq(room:plotById('near').reach, BACKROOMS_PLANT_RANGE, 'default reach')
+    eq(room:plotById('far').reach, 3.8)
+    eq(room:nearestPlot(-6.7, 0, 0).id, 'far', 'inside the long reach')
+    eq(room:nearestPlot(-6.9, 0, 0), nil, 'outside the long reach')
+    eq(room:nearestPlot(2.7, 0, 0).id, 'near', 'default reach unchanged')
+    eq(room:nearestPlot(2.9, 0, 0), nil, 'default reach unchanged (outside)')
+    eq(room:nearestPlot(0.1, 0, 0).id, 'near', 'both in reach: the nearer plot wins')
+    eq(room:nearestPlot(-0.9, 0, 0).id, 'far', 'both in reach: the nearer plot wins')
+    eq(room:nearestPlot(-3, 0, 0).id, 'far', 'the high plot (3.6 m above) is out of height reach')
+    local ok, err = Room.validate({id = 'bad', spawn = {0, 0, 0}, allotment = {}, boxes = Room.shellBoxes(4, 4, 3),
+        exit = {pos = {0, 0, -50}, size = {1, 1, 1}}, plots = {{pos = {0, 0, 0}, reach = -1}}})
+    eq(ok, false); assert(err:find('reach'), err)
+end)
+
+test('pit reach: a pumpkin is planted from the spawn-side floor 1.0 m and 2.0 m back from the rim (rooms 2 and 3)', function()
+    -- geometric pit rims on the spawn side (src/rooms.lua): room 2 x = -4, room 3 x = -6
+    for _, case in ipairs({{room = 2, rim = -4}, {room = 3, rim = -6}}) do
+        for _, back in ipairs({1.0, 2.0}) do
+            local r = toRoom(case.room)
+            local x = case.rim - back
+            r.player:setPosition(x, 0, 0); run(0.3)
+            local where = string.format('room %d, %.1f m back (x=%.2f)', case.room, back, x)
+            near(r.player.z, 0, 0.01, where .. ': standing on the floor')
+            local plot = r:targetPlot()
+            eq(plot and plot.id, 'pit', where .. ': pit is the target')
+            press('2')
+            mock.reset(); love.draw()
+            assert(table.concat(printedTexts(), '\n'):find('E / click: plant pumpkin', 1, true), where .. ': prompt shown')
+            local before = r.gameData.seeds.pumpkin
+            press('e')
+            eq(r.gameData.seeds.pumpkin, before - 1, where .. ': one pumpkin used')
+            local crop = r.room:plotById('pit').crop
+            assert(crop and crop.type == 'pumpkin', where .. ': pumpkin growing in the pit')
+            run(CROP_DEFS.pumpkin.growTime + 0.2)
+            assert(crop.grown and crop.active, where .. ': pumpkin grown and solid')
+            near(r.player.z, 0, 0.01, where .. ': never fell')
+        end
+    end
+end)
+
+test('pit reach: walking from the room 2 spawn, the plant prompt appears well before the rim', function()
+    local r = toRoom(2)
+    local p = r.player
+    holdUntil('w', function() local t = r:targetPlot(); return t and t.id == 'pit' end, 3)
+    assert(r:targetPlot() and r:targetPlot().id == 'pit', 'pit targeted while walking')
+    assert(p.x < -5.9, string.format('pit targeted at least 1.9 m back from the rim (x=%.2f)', p.x))
+    near(p.z, 0, 0.01, 'on the floor')
+end)
+
+test('pit reach: room 3 neighbours still resolve (foot at the ledge, lip on the ledge, pit from the start floor)', function()
+    local r = toRoom(3)
+    local function at(x, z)
+        r.player:setPosition(x, 0, z); run(0.2)
+        local t = r:targetPlot()
+        return t and t.id or 'none'
+    end
+    eq(at(-8, 0), 'pit', 'from the spawn')
+    eq(at(-1.35, 0), 'foot', 'at the ledge face')
+    eq(at(-2.6, 0), 'foot', 'middle of floor B')
+    eq(at(1.0, 2.6), 'lip', 'on the ledge')
+    eq(at(-0.5, 2.6), 'lip', 'ledge back edge: lip, not the pit 3.6 m below')
+end)
+
 test('planting: away from plots nothing is planted and no seed is used', function()
     local back = toRoom(2)
     run(0.2)

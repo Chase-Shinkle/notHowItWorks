@@ -21,6 +21,9 @@
 --   Room 3  beanstalk + pumpkin + vine. A pit (pumpkin), a 2.6 m ledge
 --           (beanstalk), then a 4 m gap at ledge height (vine).
 --
+-- Pit plots have a larger planting `reach` (BACKROOMS_PIT_PLANT_RANGE), so
+-- a pumpkin can be planted from well back on the floor without risking a fall.
+--
 -- Pits and gaps are voids: falling below the room's killZ (-0.5) respawns
 -- the player at the spawn, keeping the room's crops and seeds, so a fall is
 -- never a soft-lock. Pit plots sit on decorative (non-solid) soil columns.
@@ -124,7 +127,7 @@ BACKROOMS_ROOMS = {
         }),
         exit = exitAt(9.7, 0, 0),
         plots = {
-            {id = 'pit', pos = {-2.7, 0, -1.0}, dir = '+x'},
+            {id = 'pit', pos = {-2.7, 0, -1.0}, dir = '+x', reach = BACKROOMS_PIT_PLANT_RANGE},
             {id = 'edge', pos = {1.2, 0, 0}, dir = '+x'},
         },
         allotment = {pumpkin = 2, vine = 2},
@@ -158,7 +161,7 @@ BACKROOMS_ROOMS = {
         }),
         exit = exitAt(9.7, 0, 2.6),
         plots = {
-            {id = 'pit', pos = {-4.7, 0, -1.0}, dir = '+x'},
+            {id = 'pit', pos = {-4.7, 0, -1.0}, dir = '+x', reach = BACKROOMS_PIT_PLANT_RANGE},
             {id = 'foot', pos = {-1.8, 0, 0}, dir = '+y'},
             {id = 'lip', pos = {1.2, 0, 2.6}, dir = '+x'},
         },

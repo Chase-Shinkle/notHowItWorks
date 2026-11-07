@@ -14,10 +14,11 @@
 --                        collide = false (optional, decorative only)}
 --   exit               {pos = {x,y,z}, size = {sx,sy,sz}}: trigger volume; drawn as a
 --                        glowing marker, never collides
---   plots              list of {id, pos = {x,y,z}, dir = '+x'|'-x'|'+y'|'-y'} (optional):
+--   plots              list of {id, pos = {x,y,z}, dir = '+x'|'-x'|'+y'|'-y', reach = m} (optional):
 --                        fixed planting plots, drawn as soil pads; `pos` is the
 --                        surface the crop grows from, `dir` (default '+x') is the
---                        way a vine grows (src/Crop.lua)
+--                        way a vine grows (src/Crop.lua), `reach` (default
+--                        BACKROOMS_PLANT_RANGE) the horizontal planting distance
 --   allotment          {beanstalk = n, pumpkin = n, vine = n}: the room's seeds
 --   billboards         list of Billboard defs (optional)
 --   demoCrops          optional list of {plot = <plot id>, seed = <type>, progress = 0..1}:
@@ -123,6 +124,9 @@ function Room.validate(data)
     local plotIds = {}
     for i, p in ipairs(data.plots or {}) do
         if not isVec3(p.pos) then return fail('plot ' .. i .. ' needs pos') end
+        if p.reach ~= nil and (type(p.reach) ~= 'number' or p.reach <= 0) then
+            return fail('plot ' .. i .. ' reach must be a positive number')
+        end
         if p.dir ~= nil and not CROP_DIRECTIONS[p.dir] then
             return fail('plot ' .. i .. ' unknown dir ' .. tostring(p.dir))
         end
@@ -203,6 +207,7 @@ function Room:init(data)
             {p.pos[1], p.pos[2], p.pos[3] + 0.011})
         self.plots[#self.plots + 1] = {
             id = p.id or ('plot' .. i), pos = {p.pos[1], p.pos[2], p.pos[3]}, dir = p.dir or '+x',
+            reach = p.reach or BACKROOMS_PLANT_RANGE,
             model = model, crop = nil,
         }
     end
@@ -233,14 +238,16 @@ function Room:plotById(id)
 end
 
 -- The plot the player at feet position (x, y, z) can plant on: the nearest
--- plot within BACKROOMS_PLANT_RANGE horizontally and BACKROOMS_PLANT_HEIGHT
--- vertically, or nil. Fixed plots only: there is no planting anywhere else.
+-- plot within its own `reach` (default BACKROOMS_PLANT_RANGE) horizontally
+-- and BACKROOMS_PLANT_HEIGHT vertically, or nil. When several are in reach
+-- the nearest wins, whatever their reaches. Fixed plots only: there is no
+-- planting anywhere else.
 function Room:nearestPlot(x, y, z)
     local best, bestD
     for _, plot in ipairs(self.plots) do
         local dx, dy = plot.pos[1] - x, plot.pos[2] - y
         local d = math.sqrt(dx * dx + dy * dy)
-        if d <= BACKROOMS_PLANT_RANGE and math.abs(plot.pos[3] - z) <= BACKROOMS_PLANT_HEIGHT
+        if d <= plot.reach and math.abs(plot.pos[3] - z) <= BACKROOMS_PLANT_HEIGHT
             and (not bestD or d < bestD) then
             best, bestD = plot, d
         end

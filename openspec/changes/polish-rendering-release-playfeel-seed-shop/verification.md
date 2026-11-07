@@ -75,3 +75,52 @@ from the `.love`, and two package builds with the same sha256.
   has the new debug section. Artifact playthrough without the flag: F1 does
   nothing at start, on the farm and in Room 1, and no debug text is drawn
   (104 checks, 0 failed). With `--debug`: 101 checks, 0 failed.
+
+## 3. Pit-plot reach (M3)
+
+**Deviation from design.md decision 3 (reach value).** The design suggests
+about 2.6 m. Measured with the real controller (`tests/rim.lua`), the
+player's feet fall off the spawn-side rim at x = -3.96 (Room 2) and -5.96
+(Room 3). That is 1.26 m from the pit plot centre, because the plot sits in
+the middle of the 2.6 m wide pit. Reach is measured from the plot centre, so:
+
+| reach | plantable floor span | 1.0 m back from rim | 2.0 m back from rim |
+|-------|----------------------|---------------------|---------------------|
+| 1.8 (before) | 0.53 m | no | no |
+| 2.6 (design) | ~1.34 m | yes | **no** (3.26 m from the plot) |
+| 3.8 (chosen) | 2.53 m (Room 2), 2.54 m (Room 3) | yes | yes |
+
+Task 3.1 (plant from 2.0 m back) and task 3.3 (span of at least 2.5 m)
+cannot both be met at 2.6 m, so the pit reach is
+`BACKROOMS_PIT_PLANT_RANGE = 3.8`. This meets the spec's "within at least
+2.5 m" and "1.0 m or more back from the rim". Pit geometry is unchanged. In
+Room 3 the whole 3 m spawn floor can now reach the pit, including the spawn
+itself.
+
+- 3.1 Plots take an optional `reach` (validated as a positive number,
+  default `BACKROOMS_PLANT_RANGE`), used by `Room:nearestPlot`. Only the Room 2
+  and Room 3 `pit` plots set it. New headless tests:
+  - Per-plot reach and default reach; the nearest plot wins when both are in
+    reach; the height limit still applies; an invalid reach is rejected.
+  - Through `BackroomsState` in Rooms 2 and 3, standing at 1.0 m and 2.0 m
+    back from the rim: on the floor, pit targeted, "E / click: plant pumpkin"
+    prompt drawn, E plants a pumpkin (one seed used), it grows solid and the
+    player never falls.
+  - Walking from the Room 2 spawn, the pit is targeted before x = -5.9.
+  - Room 3 neighbours: spawn gives pit, the ledge face and mid floor B give
+    foot, the ledge gives lip (not the pit 3.6 m below).
+- 3.2 `tests/reachability.lua`: 84 assignments searched, 0 unexpected. Every
+  room is solvable only with its intended combination, which is unchanged.
+  The extra reach changes only where a seed can be planted from, not where
+  crops grow, and the reachability search covers every crop assignment. The
+  floor-B strip of Room 3 at x < -3.25, where the pit is nearer than foot,
+  already targeted the pit with the old 1.8 m range, so foot and lip resolve
+  as before. The autotest now plants the Room 2 pit from 2.47 m back from the
+  rim (twice, around the reset) and the Room 3 pit from 1.53 m back. The full
+  playthrough passes (107 checks, 0 failed); screenshot
+  `09b-room2-pit-prompt.png` shows the prompt from there.
+- 3.3 `tests/rim.lua` is new (no `scripts/rim.lua` existed in the repo) and
+  runs in `check_all.sh`. Room 2: stands up to x = -3.96, pit plantable over
+  x = [-6.49, -3.96] (2.53 m). Room 3: up to x = -5.96, plantable over
+  [-8.50, -5.96] (2.54 m). The pit is targeted at 1.0 m and 2.0 m back in
+  both rooms. No pit geometry was changed.

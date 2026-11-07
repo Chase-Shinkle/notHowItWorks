@@ -15,9 +15,9 @@
 
 ## 3. Pit-plot reach (M3)
 
-- [ ] 3.1 Add an optional per-plot `reach` (default `BACKROOMS_PLANT_RANGE`) used by `Room:nearestPlot`, and set it to about 2.6 m on the Room 2 and Room 3 `pit` plots; verify a headless test plants a pumpkin from the spawn-side floor at 1.0 m and 2.0 m back from the rim in both rooms.
-- [ ] 3.2 Rerun the reachability checks and the playthrough; verify all rooms are still solvable with their allotments and not solvable without the required seed types, and the nearest-plot rule still resolves `foot`/`lip` in Room 3.
-- [ ] 3.3 Re-measure with `scripts/rim.lua` (or equivalent) and verify the plantable floor span is at least 2.5 m wide, with no change needed to the pit geometry.
+- [x] 3.1 Add an optional per-plot `reach` (default `BACKROOMS_PLANT_RANGE`) used by `Room:nearestPlot`, and set it to about 2.6 m on the Room 2 and Room 3 `pit` plots; verify a headless test plants a pumpkin from the spawn-side floor at 1.0 m and 2.0 m back from the rim in both rooms.
+- [x] 3.2 Rerun the reachability checks and the playthrough; verify all rooms are still solvable with their allotments and not solvable without the required seed types, and the nearest-plot rule still resolves `foot`/`lip` in Room 3.
+- [x] 3.3 Re-measure with `scripts/rim.lua` (or equivalent) and verify the plantable floor span is at least 2.5 m wide, with no change needed to the pit geometry.
 
 ## 4. Seed stall (M4, farm)
 

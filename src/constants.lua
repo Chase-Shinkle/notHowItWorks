@@ -133,6 +133,12 @@ BACKROOMS_CLIMB_MARGIN = 0.05
 -- distance of the player's feet, and within this height difference.
 BACKROOMS_PLANT_RANGE = 1.8
 BACKROOMS_PLANT_HEIGHT = 1.6
+-- Pit plots (Rooms 2 and 3) set their own, larger `reach` so they can be
+-- planted from well back on the floor instead of a thin strip at the rim.
+-- The feet fall off the rim 1.26 m from the pit plot's centre (measured by
+-- tests/rim.lua), so 3.8 m gives a plantable floor span of about 2.5 m,
+-- including positions 2.0 m back from the rim. The height limit still applies.
+BACKROOMS_PIT_PLANT_RANGE = 3.8
 
 -- Key bindings (any key in a list works). Mouse look uses love.mousemoved.
 BACKROOMS_KEYS = {

@@ -14,6 +14,10 @@ step "reachability sweep (tests/reachability.lua)"
 love tests/love_runner tests/reachability.lua > /tmp/check_reach.txt 2>&1 || fail=1
 grep -v '^ok ' /tmp/check_reach.txt | tail -5
 
+step "pit-rim measurement (tests/rim.lua): pit plots plantable over >= 2.5 m of floor"
+love tests/love_runner tests/rim.lua > /tmp/check_rim.txt 2>&1 || fail=1
+grep -E '^room|FAIL|rim:' /tmp/check_rim.txt
+
 for mode in "" "--placeholder-assets"; do
     step "plain launch, 8 s: love . $mode"
     xvfb-run -a timeout 8 love . $mode > /tmp/check_launch.txt 2>&1

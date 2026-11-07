@@ -295,8 +295,11 @@ local function script()
 
     -- Room 2: wrong type in the pit, then reset, then the right solution
     p = back.player
-    holdUntil('w', function() return p.x > -4.5 end, 3)
-    check(back:targetPlot() and back:targetPlot().id == 'pit', 'room 2: pit plot in range from the rim (x=%.2f)', p.x)
+    local function pitTargeted() local t = back:targetPlot(); return t ~= nil and t.id == 'pit' end
+    holdUntil('w', pitTargeted, 3)
+    check(pitTargeted() and p.x < -5.5 and math.abs(p.z) < 0.05,
+        'room 2: pit plot in range from well back on the floor (x=%.2f, %.2f m from the rim)', p.x, -4 - p.x)
+    shot('09b-room2-pit-prompt', {200, 400, 400, 120, 2})
     press('3'); press('e')
     check(back.gameData.seeds.vine == 1, 'room 2: wrong seed (vine) planted in the pit')
     wait(CROP_DEFS.vine.growTime + 0.3)
@@ -305,7 +308,8 @@ local function script()
     check(p.x < -4, 'room 2: a vine in the pit does not get you across (fell and respawned, x=%.2f)', p.x)
     press('r')
     check(seeds() == FormatSeeds({pumpkin = 2, vine = 2}) and #back.room.crops == 0, 'room 2: R restores seeds and clears crops')
-    holdUntil('w', function() return p.x > -4.5 end, 3)
+    holdUntil('w', pitTargeted, 3)
+    check(p.x < -5.5, 'room 2: after the reset, planting the pumpkin from x=%.2f', p.x)
     press('2'); press('e')
     wait(CROP_DEFS.pumpkin.growTime + 0.3)
     shot('10-room2-pumpkin')
@@ -323,9 +327,10 @@ local function script()
 
     -- Room 3: pumpkin, beanstalk, vine
     p = back.player
-    holdUntil('w', function() return p.x > -6.4 end, 3)
+    holdUntil('w', function() return p.x > -7.6 end, 3)     -- ~1.6 m back from the rim at x = -6
     press('2'); press('e')
-    check(back.room:plotById('pit').crop ~= nil, 'room 3: pumpkin planted in the pit')
+    check(back.room:plotById('pit').crop ~= nil, 'room 3: pumpkin planted in the pit from x=%.2f (%.2f m from the rim)',
+        p.x, -6 - p.x)
     wait(CROP_DEFS.pumpkin.growTime + 0.3)
     holdUntil('w', function() return p.x > -1.35 end, 4)
     wait(0.2)
