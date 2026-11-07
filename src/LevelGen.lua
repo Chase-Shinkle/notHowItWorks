@@ -767,26 +767,53 @@ function LevelGen.build(seed, difficulty)
     for i = #order, 2, -1 do local j = zoneRng:int(1, i); order[i], order[j] = order[j], order[i] end
     local zoneOf, zoneList, frontier = {}, {}, {}
     for i = 1, K do
-        local z = {id = 'z' .. i, cells = {}, adj = {}}
+        local z = {id = 'z' .. i, cells = {}, adj = {}, n = #order[i].cells}
         zoneList[i] = z; zoneOf[order[i]] = z; frontier[#frontier + 1] = order[i]
     end
     local assigned = K
-    while assigned < #units do   -- grow a random frontier unit into an unassigned neighbour: zones stay connected
-        local progressed = false
-        for _ = 1, #frontier do
-            local fi = zoneRng:int(1, #frontier)
-            local un, free = frontier[fi], {}
-            for nb in pairs(un.nbrs) do if not zoneOf[nb] then free[#free + 1] = nb end end
-            if #free == 0 then table.remove(frontier, fi)
+    -- balanced growth: always extend the smallest zone that still has a free neighbour (random tie-break)
+    while assigned < #units do
+        local cand, minN = {}, math.huge
+        for fi = #frontier, 1, -1 do
+            local un, has = frontier[fi], false
+            for nb in pairs(un.nbrs) do if not zoneOf[nb] then has = true; break end end
+            if not has then table.remove(frontier, fi)
             else
-                table.sort(free, function(p, q) return key(p.cells[1].cx, p.cells[1].cy) < key(q.cells[1].cx, q.cells[1].cy) end)
-                local nb = free[zoneRng:int(1, #free)]
-                zoneOf[nb] = zoneOf[un]; frontier[#frontier + 1] = nb; assigned = assigned + 1; progressed = true
-                break
+                local n = zoneOf[un].n
+                if n < minN then minN = n; cand = {} end
+                if n == minN then cand[#cand + 1] = un end
             end
         end
-        if not progressed then break end
+        if #cand == 0 then break end
+        table.sort(cand, function(p, q) return key(p.cells[1].cx, p.cells[1].cy) < key(q.cells[1].cx, q.cells[1].cy) end)
+        local un, free = cand[zoneRng:int(1, #cand)], {}
+        for nb in pairs(un.nbrs) do if not zoneOf[nb] then free[#free + 1] = nb end end
+        table.sort(free, function(p, q) return key(p.cells[1].cx, p.cells[1].cy) < key(q.cells[1].cx, q.cells[1].cy) end)
+        local nb = free[zoneRng:int(1, #free)]
+        zoneOf[nb] = zoneOf[un]; zoneOf[un].n = zoneOf[un].n + #nb.cells
+        frontier[#frontier + 1] = nb; assigned = assigned + 1
     end
+    -- min size: a zone under LEVELGEN_ZONE_MIN_CELLS merges into its smallest adjacent zone (smallest first),
+    -- never dropping below LEVELGEN_MIN_ZONES zones; units stay whole so rooms/modules/thresholds are untouched.
+    while #zoneList > LEVELGEN_MIN_ZONES do
+        local small
+        for _, z in ipairs(zoneList) do if z.n < LEVELGEN_ZONE_MIN_CELLS and (not small or z.n < small.n) then small = z end end
+        if not small then break end
+        local target
+        for _, un in ipairs(units) do
+            if zoneOf[un] == small then
+                for nb in pairs(un.nbrs) do
+                    local t = zoneOf[nb]
+                    if t and t ~= small and (not target or t.n < target.n) then target = t end
+                end
+            end
+        end
+        if not target then break end
+        for _, un in ipairs(units) do if zoneOf[un] == small then zoneOf[un] = target end end
+        target.n = target.n + small.n
+        for i, z in ipairs(zoneList) do if z == small then table.remove(zoneList, i); break end end
+    end
+    for i, z in ipairs(zoneList) do z.id = 'z' .. i end
     for _, un in ipairs(units) do
         for _, c in ipairs(un.cells) do
             local z = zoneOf[un] or zoneList[1]

@@ -345,6 +345,7 @@ LEVELGEN_NARROW_INSET = 0.5          -- m per side (props hug walls at 0.8, so t
 LEVELGEN_CEILING_VARIANTS = {-1, -0.5, 0, 0, 0.8, 1.6}   -- added to LEVELGEN_CEILING (non-module cells)
 LEVELGEN_ZONE_CELLS = 10             -- about one zone per this many cells (see openspec backrooms-zones-variety-audio)
 LEVELGEN_MIN_ZONES = 3
+LEVELGEN_ZONE_MIN_CELLS = 4            -- zones smaller than this merge into their smallest neighbour (keeps >= MIN_ZONES)
 LEVELGEN_BOX_BUDGET = 1500           -- most boxes in one generated level
 -- Difficulty table: chain obstacle count and the obstacle types allowed. The
 -- level sequence (later section) indexes into it.
