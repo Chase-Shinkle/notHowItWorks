@@ -72,7 +72,13 @@ FARM_DECOR = {
     -- ground variation: fixed seed, chance per free grass tile
     groundSeed = 1337,
     tuftChance = 0.45,
-    stoneChance = 0.15,
+    stoneChance = 0.12,
+    -- second layer on free grass tiles: extra tufts, flowers, leafy plant
+    -- tiles (pack 'Tile -Plant') and small bush sprites (non-blocking)
+    extraTufts = 2,
+    flowerChance = 0.5,
+    plantTileChance = 0.16,
+    shrubChance = 0.14,
 }
 -- Ambient motion: sway angle (x-skew), its speed, and pond shimmer speed.
 FARM_SWAY_SKEW = 0.08
@@ -198,18 +204,30 @@ FARM_DAY_TINTS = {
     {1.00, {1.00, 0.84, 0.72}},     -- back to dawn
 }
 
--- Farm post-process shader (shaders/farm.glsl via src/FarmShader.lua) ---------------
+-- Farm look pipeline (shaders/farm.glsl + farm_blur.glsl via src/FarmShader.lua)
 -- Every strength is a uniform, so the look is tuned here, not in the GLSL.
--- Setting one to 0 removes that effect only. Initial defaults, not yet
--- tuned (tuning follows the shader/look review).
-FARM_FX_SUN = 0.12                      -- warm multiply toward FARM_FX_SUN_COLOR (by day)
-FARM_FX_SUN_COLOR = {1.0, 0.93, 0.78}
-FARM_FX_SHAFT = 0.06                    -- diagonal light shafts (by day)
-FARM_FX_SHAFT_SPEED = 0.03              -- shaft drift (screen widths per second)
-FARM_FX_BLOOM = 0.35                    -- glow added from bright areas
-FARM_FX_BLOOM_THRESHOLD = 0.7           -- luminance where bloom starts
-FARM_FX_GLIMMER = 0.6                   -- sparkle on very bright pixels (ripe crops, pond)
+-- Setting one to 0 removes that effect only.
+FARM_FX_SUN = 0.10                      -- warm multiply toward FARM_FX_SUN_COLOR (by day)
+FARM_FX_SUN_COLOR = {1.0, 0.86, 0.58}   -- golden
+FARM_FX_SUN_GLOW = 0.30                 -- warm glow from the sun corner (by day)
+FARM_FX_SUN_POS = {-0.18, -0.05}        -- light source, uv, beyond the top-left corner
+FARM_FX_SHAFT = 0.30                    -- diagonal light shafts fanning from the sun (by day)
+FARM_FX_SHAFT_SPEED = 0.05              -- shaft drift speed
+FARM_FX_BLOOM = 0.55                    -- soft glow from bright / strongly coloured areas
+FARM_FX_BLOOM_THRESHOLD = 0.66          -- brightness where bloom starts
+FARM_FX_GLIMMER = 0.5                   -- sparkle on very bright pixels (ripe crops, pond)
 FARM_FX_GLIMMER_THRESHOLD = 0.8         -- luminance where glimmer starts
+FARM_FX_TILT = 0.8                      -- tilt-shift depth of field (0 = all sharp)
+FARM_FX_FOCUS_HALF = 0.22               -- sharp band half height around the farmer (uv)
+FARM_FX_FOCUS_RAMP = 0.26               -- distance over which the band softens fully (uv)
+FARM_FX_SATURATION = 0.22               -- saturation lift (0 = unchanged)
+FARM_FX_VIGNETTE = 0.22                 -- corner darkening
+
+-- Ambient life drawn into the scene (so it shares the depth of field):
+-- drifting light motes, falling petals and leaves (counts), frozen in the break.
+FARM_AMBIENT_MOTES = 22
+FARM_AMBIENT_PETALS = 9
+FARM_AMBIENT_LEAVES = 6
 
 -- The break (over-sell -> glitch -> fall) ----------------------------------------
 -- After the first sale the villager keeps asking for crops. Trying to sell

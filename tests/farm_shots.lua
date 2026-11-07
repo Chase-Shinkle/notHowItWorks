@@ -175,6 +175,15 @@ scene('farm-start', function()
     shot('farm-start-daylight', 'fresh farm (new game data), 0.5 s after entering, no input', nil)
 end)
 
+scene('focus', function()
+    local farm = newFarm()
+    -- the sharp band follows the farmer: walk up next to the barn by real input
+    press('right'); wait(0.3); press('right'); wait(0.3); press('right'); wait(0.3)
+    press('up'); wait(0.3); press('up'); wait(0.3); press('up'); wait(0.6)
+    shot('focus-follows-farmer', string.format('farmer walked by real arrow presses to (%d,%d): sharp band moved up to the barn row',
+        farm.player.col, farm.player.row), nil)
+end)
+
 scene('soil', function()
     local farm = newFarm()
     -- setup: three plots of the top row put directly into the untilled,

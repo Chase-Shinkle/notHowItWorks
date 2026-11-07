@@ -3188,10 +3188,19 @@ local function fakePass()
     local shader = {sent = sent}
     function shader:hasUniform() return true end
     function shader:send(name, v) sent[name] = v end
-    local canvas = {setFilter = function() end}
+    local function fakeCanvas(w, h)
+        return {setFilter = function() end, getDimensions = function() return w, h end}
+    end
+    local canvas = fakeCanvas(VIRTUAL_WIDTH, VIRTUAL_HEIGHT)
+    local blur = {sent = {}}
+    function blur:hasUniform() return true end
+    function blur:send(name, v) self.sent[name] = v end
+    local buffers = {}
+    for i, d in ipairs({2, 2, 4, 4, 4, 4}) do buffers[i] = fakeCanvas(VIRTUAL_WIDTH / d, VIRTUAL_HEIGHT / d) end
     FarmShader.reset()
     FarmShader.tried, FarmShader.enabled, FarmShader.shader, FarmShader.canvas = true, true, shader, canvas
-    return shader, canvas
+    FarmShader.blur, FarmShader.buffers = blur, buffers
+    return shader, canvas, blur
 end
 
 test('day: a new farm is day 1 in full daylight; the counter goes up at each dawn', function()
@@ -3284,7 +3293,28 @@ test('shader: the scene goes into the farm canvas and through the pass; text and
     assert(setCanvasTo and shaderOn and drawCanvas and shaderOff and hud, 'pass ran')
     assert(setCanvasTo < shaderOn and shaderOn < drawCanvas and drawCanvas < shaderOff and shaderOff < hud,
         'scene -> canvas -> shader -> HUD after the pass')
-    eq(mock.count('setBlendMode'), 0, 'no fallback overlay while the pass is on')
+    for _, c in ipairs(mock.calls) do
+        assert(not (c.name == 'setBlendMode' and c.args[1] == 'multiply'), 'no fallback overlay while the pass is on')
+    end
+    -- every piece of text (price, bubble, HUD, hint) is drawn after the composite
+    for i = 1, shaderOff do
+        local c = mock.calls[i]
+        assert(c.name ~= 'print' and c.name ~= 'printf', 'text drawn inside the pass: ' .. tostring(c.args[1]))
+    end
+    -- the top bar is opaque, so no world pixel (the barn roof) shows behind it
+    local opaqueBar = false
+    for i = shaderOff, #mock.calls - 1 do
+        local c, n = mock.calls[i], mock.calls[i + 1]
+        if c.name == 'setColor' and c.args[4] == 1 and n.name == 'rectangle' and n.args[1] == 'fill'
+            and n.args[2] == 0 and n.args[3] == 0 and n.args[4] == VIRTUAL_WIDTH then opaqueBar = true end
+    end
+    assert(opaqueBar, 'opaque HUD bar drawn after the pass')
+    -- the downsampled chain ran: six blur steps into the buffers, bloom thresholded
+    local blurDraws = 0
+    for _, c in ipairs(mock.calls) do
+        if c.name == 'setCanvas' then for _, b in ipairs(FarmShader.buffers) do if c.args[1] == b then blurDraws = blurDraws + 1 end end end
+    end
+    eq(blurDraws, 6, 'six blur steps')
     -- uniforms come from the constants and the day tint
     local u = shader.sent
     eq(u.bloomStrength, FARM_FX_BLOOM); eq(u.sunStrength, FARM_FX_SUN); eq(u.shaftStrength, FARM_FX_SHAFT)
@@ -3343,6 +3373,11 @@ test('shader: during the break the pass is plain and corruption and the fade are
         if c.name == 'rectangle' and c.args[1] == 'fill' then fillsAfter = fillsAfter + 1 end
     end
     assert(fillsAfter > 5, 'corruption blocks drawn outside the pass (' .. fillsAfter .. ')')
+    for i = 1, shaderOff do
+        local c = mock.calls[i]
+        assert(c.name ~= 'print' and c.name ~= 'printf', 'break: text drawn inside the pass: ' .. tostring(c.args[1]))
+    end
+    eq(u.tiltStrength, 0); eq(u.saturation, 0); eq(u.vignette, 0); eq(u.sunGlow, 0)
     run(BREAK_TIME)
     eq(gStateMachine.current.usesPush, false, 'reached the backrooms')
 end)

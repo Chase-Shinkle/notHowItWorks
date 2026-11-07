@@ -1,10 +1,17 @@
-// Farm post-process pass (src/FarmShader.lua), one pass over the farm's own
-// 320x320 canvas: bloom from bright areas, warm sun multiply and drifting
-// diagonal light shafts (scaled by daylight), glimmer on very bright pixels
-// (ripe-crop markers, pond highlights), and the day-cycle tint last.
-// Every strength is a uniform fed from the FARM_FX_* constants; a strength of
-// 0 removes that effect only. Sampling stays on the texel grid (nearest
-// canvas), so sprite and text edges stay sharp apart from the bloom glow.
+// Farm composite pass (src/FarmShader.lua). Inputs: the sharp 320x320 scene
+// (`tex`), two soft copies made by shaders/farm_blur.glsl at half and quarter
+// resolution, and a quarter-resolution bloom. In order:
+//   1. tilt-shift depth of field: a sharp band around the farmer (focusY),
+//      easing into the soft copies above and below it (background a little
+//      softer than the foreground);
+//   2. restrained bloom from bright / strongly coloured areas;
+//   3. golden sun: warm multiply, a glow from the upper-left corner and
+//      diagonal shafts fanning out from it, drifting slowly;
+//   4. glimmer on very bright in-focus pixels;
+//   5. grade: lifted saturation, gentle vignette;
+//   6. the day-cycle tint last, so night darkens everything evenly.
+// Every strength is a uniform fed from the FARM_FX_* constants; 0 removes
+// that effect only. The HUD and all text are drawn after this pass.
 
 uniform float time;
 uniform vec2 texel;             // 1 / canvas size
@@ -12,53 +19,71 @@ uniform vec3 dayTint;
 uniform float daylight;         // 0 at night .. 1 by day
 uniform vec3 sunColor;
 uniform float sunStrength;
+uniform float sunGlow;
+uniform vec2 sunPos;            // uv of the light source (off-screen corner)
 uniform float shaftStrength;
 uniform float shaftSpeed;
 uniform float bloomStrength;
-uniform float bloomThreshold;
+uniform float bloomThreshold;   // used by the bloom blur passes
 uniform float glimmerStrength;
 uniform float glimmerThreshold;
+uniform float tiltStrength;
+uniform float focusY;           // uv y of the farmer (centre of the sharp band)
+uniform float focusHalf;        // half height of the fully sharp band (uv)
+uniform float focusRamp;        // distance over which it softens fully (uv)
+uniform float saturation;       // 0 = unchanged
+uniform float vignette;
+uniform Image nearTex;          // half-res blur
+uniform Image farTex;           // quarter-res blur
+uniform Image bloomTex;         // quarter-res thresholded blur
 
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
-
-vec3 brightPart(Image tex, vec2 uv) {
-    vec3 c = Texel(tex, uv).rgb;
-    return c * smoothstep(bloomThreshold, 1.0, luma(c));
-}
-
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 
 vec4 effect(vec4 color, Image tex, vec2 uv, vec2 screen_coords) {
     vec4 base = Texel(tex, uv);
     vec3 c = base.rgb;
 
-    // bloom: 8 taps at 2 and 4 texels around the pixel
-    vec3 b = vec3(0.0);
-    vec2 r1 = texel * 2.0;
-    vec2 r2 = texel * 4.0;
-    b += brightPart(tex, uv + vec2(r1.x, 0.0));
-    b += brightPart(tex, uv - vec2(r1.x, 0.0));
-    b += brightPart(tex, uv + vec2(0.0, r1.y));
-    b += brightPart(tex, uv - vec2(0.0, r1.y));
-    b += brightPart(tex, uv + r2 * 0.7071);
-    b += brightPart(tex, uv - r2 * 0.7071);
-    b += brightPart(tex, uv + vec2(r2.x, -r2.y) * 0.7071);
-    b += brightPart(tex, uv + vec2(-r2.x, r2.y) * 0.7071);
-    c += b * (bloomStrength / 8.0);
+    // 1. tilt-shift: 0 inside the band, 1 far from it; above the band
+    // and below it soften over the ramp; the foreground a little sooner
+    float dy = uv.y - focusY;
+    float reach = dy < 0.0 ? focusRamp : focusRamp * 0.85;
+    float k = smoothstep(focusHalf, focusHalf + reach, abs(dy)) * tiltStrength;
+    vec3 nearC = Texel(nearTex, uv).rgb;
+    vec3 farC = Texel(farTex, uv).rgb;
+    c = mix(c, nearC, clamp(k * 2.0, 0.0, 1.0));
+    c = mix(c, farC, clamp(k * 2.0 - 1.0, 0.0, 1.0));
 
-    // sun: warm multiply and soft diagonal shafts drifting over time
+    // 2. bloom
+    c += Texel(bloomTex, uv).rgb * bloomStrength;
+
+    // 3. golden sun
     c *= mix(vec3(1.0), sunColor, sunStrength * daylight);
-    float d = (uv.x * 0.8 + uv.y * 0.6) * 2.5 - time * shaftSpeed;
-    float band = pow(max(0.0, sin(d * 6.2831853)), 8.0);
-    c += sunColor * band * shaftStrength * daylight * (1.0 - uv.y * 0.6);
+    vec2 v = (uv - sunPos) * vec2(1.0, 1.0);
+    float dist = length(v);
+    float ang = atan(v.y, v.x);
+    float drift = time * shaftSpeed;
+    float r1 = pow(0.5 + 0.5 * sin(ang * 31.0 + sin(ang * 9.0 + drift * 5.0) * 1.6 + drift * 2.0), 4.0);
+    float r2 = pow(0.5 + 0.5 * sin(ang * 13.0 - drift * 3.0 + 1.3), 6.0);
+    float fall = smoothstep(1.45, 0.25, dist);
+    float shaft = (r1 * 0.65 + r2 * 0.6) * fall;
+    float glow = smoothstep(1.0, 0.0, dist);
+    vec3 light = sunColor * (shaft * shaftStrength + glow * glow * sunGlow) * daylight;
+    c = 1.0 - (1.0 - c) * (1.0 - clamp(light, 0.0, 1.0));     // screen blend: no clipping
 
-    // glimmer: a few twinkling 2x2 cells, only on very bright pixels
+    // 4. glimmer: a few twinkling 2x2 cells on very bright, in-focus pixels
     vec2 cell = floor(uv / texel / 2.0);
     float h = hash(cell + floor(time * 3.0) * 17.0);
-    float g = step(0.97, h) * smoothstep(glimmerThreshold, 1.0, luma(base.rgb));
+    float g = step(0.97, h) * smoothstep(glimmerThreshold, 1.0, luma(base.rgb)) * (1.0 - k);
     c += vec3(g) * glimmerStrength;
 
-    // time of day last, so night darkens everything evenly
+    // 5. grade: saturation lift and vignette
+    float l = luma(c);
+    c = mix(vec3(l), c, 1.0 + saturation);
+    vec2 q = uv - 0.5;
+    c *= 1.0 - vignette * smoothstep(0.3, 0.75, length(q));
+
+    // 6. time of day
     c *= dayTint;
-    return vec4(c, base.a) * color;
+    return vec4(clamp(c, 0.0, 1.0), base.a) * color;
 }

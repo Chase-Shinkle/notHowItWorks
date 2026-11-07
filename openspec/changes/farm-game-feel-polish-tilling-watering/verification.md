@@ -175,3 +175,21 @@ are left for the reviewer: the subjective look (crispness with the pass on
 compared with off; whether the bloom, shafts and glimmer are visible enough)
 and the barn-under-HUD layout. Section 6.3 will produce the full
 scenario-by-scenario table after the review.
+
+## Look pass after the shader/look review (round 1)
+
+The owner handed the shader/look review to the orchestrator. Round 1 found: flat top-down look, no perceptible depth blur, imperceptible shafts, sparse ground, and the barn roof showing through the top HUD near "Day 1". Changes are in design.md decision 7a. That decision moves away from the single-pass design to a small chain of downsampled blur and bloom passes.
+
+- **Reference images:** the instructions pointed to `/workspace/qa/farmfeel/reference/ref1-village-festival.jpg` and `ref2-countryside-path.jpg`. Neither file exists on this machine (no `reference/` directory, no match anywhere on the filesystem). The work follows the orchestrator's written description of them instead.
+- **HUD bug:** the cause was a top bar at 65 % alpha, plus the HUD being drawn inside the pass during the break. Both bars are now opaque. The HUD, all text and the tool icon are drawn after the composite in the normal and break render paths. Headless tests now assert this:
+  - no `print`/`printf` before the composite (normal and break);
+  - the opaque bar is drawn after it;
+  - six blur steps run;
+  - the break zeroes tilt, saturation, vignette and glow.
+- **Tests:** `love tests/love_runner tests/run.lua` gives **161 passed, 0 failed**. Real LÖVE 11.5 under xvfb `--farm-shots` gives **26 checks, 0 failed** with the shader on, **22, 0 failed** with `--no-shader`, and **26, 0 failed** with `--placeholder-assets`. The forced compile failure still falls back and plays. The full `check_all.sh` run is recorded under task 6.2.
+- **Screenshots:** `/workspace/qa/farmfeel/final/` holds `final-*` shots for shader on, off and placeholder, plus `final-compare-*` before/after images (baseline 577d3e6 on the left). The baseline is kept in `/workspace/qa/farmfeel/baseline-577d3e6/`. The new scene `focus-follows-farmer` walks the farmer up next to the barn using real arrow presses.
+- **Status:** all checks are scripted (automated runs and screenshots). No human has playtested the new look.
+- **Known trade-offs:**
+  - the stall price label stays sharp when the stall is out of focus;
+  - the focus band follows the farmer, so plots 2–3 rows away soften slightly;
+  - the blur is computed at 160/80 px, so up close it shows as soft blocks after push's nearest 2.5x upscale.

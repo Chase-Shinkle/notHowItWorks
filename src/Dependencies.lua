@@ -79,6 +79,7 @@ local TEXTURE_MANIFEST = {
     ['bush-1'] = {FARM_PACK .. 'CROPS/Crops - RAPSBERRY/Crops RASPBERRY 07.png', {0.25, 0.5, 0.25, 1}, 14},
     ['bush-2'] = {FARM_PACK .. 'CROPS/Crops - BLACKBERRY/Crops  BLACKBERRY07.png', {0.2, 0.45, 0.3, 1}, 14},
     ['path'] = {FARM_PACK .. 'Ground/Tile - Stone Soil - 01.png', {0.7, 0.6, 0.45, 1}},
+    ['grass-plant'] = {FARM_PACK .. 'Ground/Tile -Plant - 01.png', {0.3, 0.6, 0.3, 1}},
     -- tools shown beside the farmer (the seed bag is the crop's own bag)
     ['tool-shovel'] = {FARM_PACK .. 'Tools/Tools  - Icons - WO (With Outline)/Icon -  Shovel WO 01.png', {0.6, 0.6, 0.65, 1}, 8},
     ['tool-can'] = {FARM_PACK .. 'Tools/Tools  - Icons - WO (With Outline)/Icons - Water Can WO.png', {0.4, 0.6, 0.9, 1}, 8},

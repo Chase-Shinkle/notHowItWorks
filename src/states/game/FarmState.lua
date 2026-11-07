@@ -170,6 +170,39 @@ function FarmState:buildDecor()
             end
         end
     end
+
+    -- second, denser layer from its own seed (the first layer is unchanged):
+    -- extra tufts and pixel flowers on every free tile, some leafy plant
+    -- tiles from the pack, and small non-blocking bush sprites
+    seed = D.groundSeed + 7
+    self.plantTiles, self.shrubs = {}, {}
+    local FLOWERS = {{1, 0.62, 0.78}, {1, 0.95, 0.9}, {1, 0.86, 0.3}, {0.78, 0.62, 1}, {1, 0.5, 0.42}}
+    for row = FARM_FIELD_TOP, FARM_FIELD_BOTTOM do
+        for col = 1, FARM_COLS do
+            local k = key(col, row)
+            local free = not self.blocked[k] and not self.pathTiles[k] and not self:targetAt(col, row)
+                and not (col == FARM_PLAYER_START.col and row == FARM_PLAYER_START.row)
+            local r1, r2, r3 = rand(), rand(), rand()
+            if free then
+                if r1 < D.plantTileChance then self.plantTiles[#self.plantTiles + 1] = {col = col, row = row} end
+                for _ = 1, D.extraTufts do
+                    self.groundDecor[#self.groundDecor + 1] = {kind = 'tuft', col = col, row = row,
+                        x = math.floor(2 + rand() * 27), y = math.floor(6 + rand() * 24), phase = rand() * 6.28}
+                end
+                if r2 < D.flowerChance then
+                    for _ = 1, 1 + math.floor(rand() * 3) do
+                        self.groundDecor[#self.groundDecor + 1] = {kind = 'flower', col = col, row = row,
+                            x = math.floor(3 + rand() * 25), y = math.floor(7 + rand() * 21), phase = rand() * 6.28,
+                            color = FLOWERS[1 + math.floor(rand() * #FLOWERS)]}
+                    end
+                end
+                if r3 < D.shrubChance then
+                    self.shrubs[#self.shrubs + 1] = {col = col, row = row, x = math.floor(rand() * 12) - 6,
+                        alt = rand() < 0.5, phase = rand() * 6.28}
+                end
+            end
+        end
+    end
 end
 
 function FarmState:isBlockedDecor(col, row)
@@ -738,6 +771,13 @@ function FarmState:renderField()
         end
     end
 
+    -- leafy plant tiles (pack ground tile) among the grass
+    for _, t in ipairs(self.plantTiles or {}) do
+        local x, y = FarmTileToPixel(t.col, t.row)
+        love.graphics.setColor(1, 1, 1, 1)
+        drawTiled(gTextures['grass-plant'], x, y)
+    end
+
     -- dirt path to the villager and the stall
     for _, t in ipairs(FARM_DECOR.path) do
         local x, y = FarmTileToPixel(t[1], t[2])
@@ -758,6 +798,16 @@ function FarmState:renderField()
             love.graphics.rectangle('fill', x + lean, y - 4, 1, 1)
             love.graphics.rectangle('fill', x + 2 + lean, y - 5, 1, 1)
             love.graphics.rectangle('fill', x + 1, y - 2, 1, 2)
+        elseif g.kind == 'flower' then
+            local lean = math.floor(self:sway(g.phase) * 14 + 0.5)
+            love.graphics.setColor(0.25, 0.5, 0.22, 1)
+            love.graphics.rectangle('fill', x + 1, y - 2, 1, 3)
+            local c = g.color
+            love.graphics.setColor(c[1], c[2], c[3], 1)
+            love.graphics.rectangle('fill', x + lean, y - 4, 3, 1)
+            love.graphics.rectangle('fill', x + 1 + lean, y - 5, 1, 3)
+            love.graphics.setColor(1, 0.92, 0.45, 1)
+            love.graphics.rectangle('fill', x + 1 + lean, y - 4, 1, 1)
         else
             love.graphics.setColor(0.35, 0.36, 0.38, 1)
             love.graphics.rectangle('fill', x, y, g.big and 3 or 2, 2)
@@ -809,6 +859,16 @@ function FarmState:renderField()
         drawShadow(x, y, 26)
         drawSprite(gTextures['well'], x, y)
     end
+    for _, sh in ipairs(self.shrubs or {}) do
+        local x, y = FarmTileToPixel(sh.col, sh.row)
+        local img = gTextures[sh.alt and 'bush-2' or 'bush-1']
+        local w, h = img:getDimensions()
+        love.graphics.setColor(0, 0, 0, 0.18)
+        love.graphics.ellipse('fill', x + FARM_TILE / 2 + sh.x, y + FARM_TILE - 4, w / 2, 2)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(img, x + FARM_TILE / 2 + sh.x, y + FARM_TILE - 3, 0, 1, 1, w / 2, h,
+            self:sway(sh.phase), 0)
+    end
     for i, t in ipairs(FARM_DECOR.bushes) do
         local x, y = FarmTileToPixel(t[1], t[2])
         drawShadow(x, y, 22)
@@ -845,9 +905,46 @@ function FarmState:renderShop()
         local iw, ih = icon:getDimensions()
         love.graphics.draw(icon, x + FARM_TILE / 2 - 7, y + 8, 0, 14 / iw, 14 / ih)
     end
+end
+
+-- The stall's price label: text, so it is drawn after the look pipeline.
+function FarmState:renderShopPrice(dy)
+    local x, y = FarmTileToPixel(FARM_SHOP.col, FARM_SHOP.row)
     love.graphics.setFont(gFonts['small'])
     love.graphics.setColor(1, 0.9, 0.3, 1)
-    love.graphics.printf((SEED_PRICES[self.selectedSeed] or 0) .. 'c', x, y + 21, FARM_TILE, 'center')
+    love.graphics.printf((SEED_PRICES[self.selectedSeed] or 0) .. 'c', x, y + 21 + (dy or 0), FARM_TILE, 'center')
+end
+
+-- Ambient life: light motes drifting up, petals and leaves falling
+-- diagonally with the sun. Positions are a pure function of self.time (no
+-- state, frozen in the break), drawn on the pixel grid.
+function FarmState:renderAmbient()
+    local t = self.time or 0
+    local W, H = VIRTUAL_WIDTH, VIRTUAL_HEIGHT
+    local function wrap(v, m) return v % m end
+    for i = 1, FARM_AMBIENT_MOTES do
+        local sx, sy = (i * 97.3) % W, (i * 57.1) % H
+        local x = math.floor(wrap(sx + math.sin(t * 0.4 + i) * 10 + t * 3, W))
+        local y = math.floor(wrap(sy - t * (4 + i % 5), H))
+        local a = 0.35 + 0.35 * math.sin(t * 2.2 + i * 1.7)
+        love.graphics.setColor(1, 0.95, 0.7, a)
+        love.graphics.rectangle('fill', x, y, 1, 1)
+        if i % 4 == 0 then
+            love.graphics.setColor(1, 0.9, 0.6, a * 0.5)
+            love.graphics.rectangle('fill', x - 1, y, 3, 1)
+            love.graphics.rectangle('fill', x, y - 1, 1, 3)
+        end
+    end
+    local function faller(i, speed, colorA, colorB, seedOff)
+        local sx, sy = ((i + seedOff) * 131.7) % W, ((i + seedOff) * 71.3) % H
+        local y = wrap(sy + t * speed, H + 20) - 10
+        local x = math.floor(wrap(sx + t * speed * 0.6 + math.sin(t * 1.3 + i) * 8, W))
+        local flip = math.sin(t * 3 + i * 2) > 0
+        love.graphics.setColor(flip and colorA or colorB)
+        love.graphics.rectangle('fill', x, math.floor(y), flip and 2 or 1, flip and 1 or 2)
+    end
+    for i = 1, FARM_AMBIENT_PETALS do faller(i, 9 + i % 4, {1, 0.72, 0.84, 0.9}, {1, 0.85, 0.92, 0.9}, 0) end
+    for i = 1, FARM_AMBIENT_LEAVES do faller(i, 7 + i % 3, {0.55, 0.78, 0.3, 0.9}, {0.85, 0.7, 0.25, 0.9}, 40) end
 end
 
 function FarmState:renderHighlights()
@@ -964,8 +1061,12 @@ function FarmState:renderHUD()
     local data = self.gameData
     local layout = self:hudLayout()
     local font = gFonts['small']
-    love.graphics.setColor(0, 0, 0, 0.65)
+    -- opaque bar with a thin warm rule, so nothing in the world (the barn
+    -- roof, the light shafts) ever shows through behind the text
+    love.graphics.setColor(0.09, 0.08, 0.07, 1)
     love.graphics.rectangle('fill', 0, 0, VIRTUAL_WIDTH, FARM_TILE - 4)
+    love.graphics.setColor(0.55, 0.42, 0.22, 1)
+    love.graphics.rectangle('fill', 0, FARM_TILE - 5, VIRTUAL_WIDTH, 1)
     love.graphics.setFont(font)
     local dim = FARM_HUD.emptyAlpha
 
@@ -1015,8 +1116,10 @@ function FarmState:renderHUD()
     love.graphics.print(dayText, layout.day.right - font:getWidth(dayText), layout.day.y)
 
     -- bottom hint bar
-    love.graphics.setColor(0, 0, 0, 0.65)
+    love.graphics.setColor(0.09, 0.08, 0.07, 1)
     love.graphics.rectangle('fill', 0, VIRTUAL_HEIGHT - 16, VIRTUAL_WIDTH, 16)
+    love.graphics.setColor(0.55, 0.42, 0.22, 1)
+    love.graphics.rectangle('fill', 0, VIRTUAL_HEIGHT - 16, VIRTUAL_WIDTH, 1)
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.printf(self:hintText(), 0, VIRTUAL_HEIGHT - 12, VIRTUAL_WIDTH, 'center')
     if DEBUG_MODE then
@@ -1044,9 +1147,9 @@ function FarmState:renderCorruption()
     end
 end
 
--- Draws `drawScene` either into the farm canvas and then through the shader
--- (into push's canvas), or, without the pass, straight through followed by a
--- multiply overlay of the day tint (skipped when `plain`).
+-- Draws `drawScene` either into the farm canvas and then through the look
+-- pipeline (into push's canvas), or, without it, straight through followed
+-- by a multiply overlay of the day tint (skipped when `plain`).
 function FarmState:drawThroughPass(drawScene, plain)
     if FarmShader.init() then
         local target = love.graphics.getCanvas()
@@ -1057,11 +1160,10 @@ function FarmState:drawThroughPass(drawScene, plain)
         drawScene()
         love.graphics.pop()
         love.graphics.setCanvas(target)
-        FarmShader.send(FarmShader.uniforms({time = self.time, tint = self:dayTint(), plain = plain}))
-        love.graphics.setShader(FarmShader.shader)
-        love.graphics.setColor(1, 1, 1, 1)
-        love.graphics.draw(FarmShader.canvas, 0, 0)
-        love.graphics.setShader()
+        local p = self.player
+        local focusY = ((p and p.drawY or VIRTUAL_HEIGHT / 2) + FARM_TILE * 0.6) / VIRTUAL_HEIGHT
+        FarmShader.present(FarmShader.uniforms({time = self.time, tint = self:dayTint(), plain = plain,
+            focusY = focusY}))
         return true
     end
     drawScene()
@@ -1090,15 +1192,24 @@ function FarmState:renderBreak()
         love.graphics.push()
         love.graphics.translate(sx, sy - drop * VIRTUAL_HEIGHT * 0.5)
         self:renderField()
-        self:renderVillagerLine()
         love.graphics.pop()
 
         love.graphics.push()
         love.graphics.translate(sx, sy)
         self:renderPlayer(drop * VIRTUAL_HEIGHT, fx.fall * 6)
-        self:renderHUD()
         love.graphics.pop()
     end, true)
+
+    -- text and HUD after the pass (never through it), still shaking
+    love.graphics.push()
+    love.graphics.translate(sx, sy - drop * VIRTUAL_HEIGHT * 0.5)
+    self:renderShopPrice()
+    self:renderVillagerLine()
+    love.graphics.pop()
+    love.graphics.push()
+    love.graphics.translate(sx, sy)
+    self:renderHUD()
+    love.graphics.pop()
 
     self:renderCorruption()
     love.graphics.setColor(0, 0, 0, fx.fall)
@@ -1106,9 +1217,9 @@ function FarmState:renderBreak()
     love.graphics.setColor(1, 1, 1, 1)
 end
 
--- The field, characters and effects go through the post-process pass; the
--- speech bubble, popups, HUD and flying pickups are drawn after it, so text
--- stays crisp and readable at night.
+-- The field, characters, effects and ambient life go through the look
+-- pipeline; the tool icon, stall price, speech bubble, popups, HUD and
+-- flying pickups are drawn after it, so they stay crisp and readable.
 function FarmState:render()
     if self.breaking then
         self:renderBreak()
@@ -1119,10 +1230,14 @@ function FarmState:render()
         self:renderField()
         self:renderHighlights()
         self:renderPlayer()
-        self:renderTool()
         self.juice:drawParticles()
+        self:renderAmbient()
     end)
 
+    -- after the pipeline: tool icon and every piece of text and HUD, so none
+    -- is blurred, graded or covered by the world
+    self:renderTool()
+    self:renderShopPrice()
     self:renderVillagerLine()
     self.juice:drawPopups(gFonts['small'])
     self:renderHUD()
