@@ -18,3 +18,27 @@ Integration note: the level-length spec needs both "critical path >= 14 cells" a
 - Full flow: levels are now longer (path 21/27/33 cells at 4 m/s, 6 m cells: 30/39/48 s of pure walking, centre to centre, plus obstacles and branches). Raise the full-flow total timeout and any per-level timeout to scale with the level index (e.g. base 60 s + 2x the walking time of `LEVELGEN_DIFFICULTY[i].minPath * LEVELGEN_CELL / BACKROOMS_WALK_SPEED`), not a single constant.
 - Per-level: log elapsed time per level at each level transition (task 6.2 "record time per level") and write it to verification.
 - Loop over `#LEVELGEN_DIFFICULTY`, not a hard-coded 3.
+
+## Integration run (final, `sh tests/check_all.sh`, run once, NOT rerun)
+
+The run was killed by my own 10-minute background timeout while inside the physical sweep (step 3), so the suite is **incomplete, not green**. Steps after the sweep (maze dump, maze_* tests, rim, fallback, launches, autotest, package) never ran. Raw log: /tmp/check_all_final.txt (not committed).
+
+Completed steps:
+- Unit/headless `tests/run.lua`: **194 passed, 4 failed**.
+  - `backrooms opts out of push...`: tests/run.lua:114 drawn count got 18, want 15
+  - `levelgen 2.2: a bad candidate is rejected...`: tests/run.lua:3547 second candidate used got 3, want 1
+  - `sequence 4.1 ...`: tests/run.lua:3701 level seed got 1148977120, want 602283270 (expectation tied to the old generator/retry count)
+  - `dressing review ...`: tests/run.lua:4351 merged baseboard model got 307, want 294
+  - Likely stale expectations from the new generator (box counts, retry counts, seeds); not confirmed and not fixed.
+- Reachability sweep: 84 assignments searched, 0 unexpected. (Look shader reports disabled in that harness: `love.filesystem.read` is nil under the mock runner; harness-only.)
+- Physical sweep: started, no result.
+
+## Visual review (/workspace/qa/maze/final/)
+- `maze_d1_s1.png`, `maze_d3_s2.png` layout maps inspected by the orchestrator: real branching, turns and loops (d1 path 25 / turns 18 / loops 1; d3 path 55 / turns 34 / loops 5).
+- In-game shots (seed 1, levels 2 and 3): `L*-pit-L*.png` shows a readable pit rim with a black void; `L*-turn-*`, `L*-junction-*` captured.
+
+## Known limits
+- `junction` shot (L3) looks like a plain corridor; the scene picks a path cell with degree >= 3 but the camera looks down the path, so the side branch is not clearly visible.
+- `exit` scene in tests/backrooms_shots.lua assumes the exit lies along +x; in maze levels the shot faces a wall. Needs a path-direction-aware exit scene.
+- Post-pass black void was only viewed on the pit shots, not an exit-specific one.
+- Everything beyond the 4 unit failures above is unverified. Chase tests himself.
