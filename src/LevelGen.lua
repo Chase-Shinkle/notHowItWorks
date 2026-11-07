@@ -100,7 +100,11 @@ end
 --            onPath, pathIndex, start, exit, degree, room (id), inset, deadEnd, nook, loop},
 --   edges  = {['cx,cy|cx,cy'] = 'open' | 'door'} (key sorted as strings),
 --   regions = list (index 0..n at [r + 1]) of {index, elev, entry = {cx, cy}, cells = count},
---   rooms  = list of {id, cells = {{cx, cy} x4}},
+--   rooms  = list of {id, shape ('room2x2'|'room1x2'|'room2x3'|'roomL'|'pillared'|'atrium'|'gallery'),
+--            cells = {{cx, cy}...}, pillars (pillared only)}; every room cell has c.room = id (one zone unit),
+--   cells[i].shape = room shape, 'closet' (inset dead end) or 'hall' (plain cell),
+--   pillars = list of {x, y, size (square side), room, elev, ceil}: solid colliders (boxes with kind 'solid'),
+--   shapeCounts = {shape = instances} ('hall' and 'closet' count cells),
 --   loopEdges = list of edge keys, boxCount, nooks.
 
 local function key(cx, cy) return cx .. ',' .. cy end
@@ -478,9 +482,9 @@ function LevelGen.build(seed, difficulty)
         for _, c in ipairs(b) do if inRoom[c] then free = false end end
         if free and rng:chance(LEVELGEN_ROOM_CHANCE) then
             local id = #rooms + 1
-            local r = {id = id, cells = {}}
+            local r = {id = id, shape = 'room2x2', cells = {}}
             for _, c in ipairs(b) do
-                inRoom[c], c.room = true, id
+                inRoom[c], c.room, c.shape = true, id, 'room2x2'
                 r.cells[#r.cells + 1] = {c.cx, c.cy}
             end
             conn[edgeKey(b[1], b[2])], conn[edgeKey(b[3], b[4])] = 'open', 'open'
@@ -488,6 +492,95 @@ function LevelGen.build(seed, difficulty)
             local top = math.max(b[1].ceil, b[2].ceil, b[3].ceil, b[4].ceil)
             for _, c in ipairs(b) do c.ceil = top end
             rooms[id] = r
+        end
+    end
+
+
+    -- 3b. shape stamps (openspec backrooms-zones-variety-audio 4.1-4.3), own RNG stream so the carve and the
+    -- rest of the layout keep their draws. Each stamp is a multi-cell room (c.room = id, so zones treat it as one
+    -- unit): all cells share region, elevation and optional-area, none is a module, start, exit or optional-area cell,
+    -- and no cell has an 'open' edge to a cell outside the stamp (a raised ceiling must not meet an open edge).
+    -- Interior edges open; the room ceiling is the highest member (+ bonus for the atrium).
+    local srng = LevelGen.rng(seed * 37 + 4421)
+    local pillars = {}
+    local stamped = 0
+    do
+        local function cellAt(x, y) return cells[key(x, y)] end
+        local function usable(set, n)
+            local inSet = {}
+            for i = 1, n do
+                local c = set[i]
+                if not c or c.room or c.kind == 'module' or c.start or c.exit or c.optional or (c.opt or 0) ~= 0 then return false end
+                if c.region ~= set[1].region or c.elev ~= set[1].elev then return false end
+                inSet[c] = true
+            end
+            for _, c in ipairs(set) do
+                for _, d in ipairs(SIDES) do
+                    local nb = cellAt(c.cx + d[1], c.cy + d[2])
+                    if nb and not inSet[nb] and conn[edgeKey(c, nb)] == 'open' then return false end
+                end
+            end
+            return true
+        end
+        local cand = {}
+        local function add(shape, set, n) cand[#cand + 1] = {shape = shape, cells = set, n = n} end
+        local function rect(x, y, w, h)
+            local set = {}
+            for j = 0, h - 1 do for i = 0, w - 1 do set[j * w + i + 1] = cellAt(x + i, y + j) end end
+            return set, w * h
+        end
+        for cy = 0, H - 1 do
+            for cx = 0, W - 1 do
+                for _, rs in ipairs({{'room1x2', 2, 1}, {'room1x2', 1, 2}, {'room2x3', 3, 2}, {'room2x3', 2, 3},
+                        {'gallery', 3, 1}, {'gallery', 1, 3}, {'gallery', 4, 1}, {'gallery', 1, 4}, {'pillared', 3, 3}}) do
+                    add(rs[1], rect(cx, cy, rs[2], rs[3]))
+                end
+                local block = rect(cx, cy, 2, 2)
+                for skip = 1, 4 do
+                    local set, n = {}, 0
+                    for i = 1, 4 do if i ~= skip then n = n + 1; set[n] = block[i] end end
+                    add('roomL', set, 3)
+                end
+                add('atrium', {cellAt(cx, cy), cellAt(cx + 1, cy), cellAt(cx - 1, cy), cellAt(cx, cy + 1), cellAt(cx, cy - 1)}, 5)
+            end
+        end
+        srng:shuffle(cand)
+        for _, cd in ipairs(cand) do
+            if stamped >= ROOM_SHAPE_MAX then break end
+            local w = ROOM_SHAPE_WEIGHTS[cd.shape] or 0
+            if w > 0 and usable(cd.cells, cd.n or #cd.cells) and srng:chance(w * ROOM_SHAPE_CHANCE) then
+                stamped = stamped + 1
+                local id = #rooms + 1
+                local r = {id = id, shape = cd.shape, cells = {}}
+                local inSet, top = {}, -math.huge
+                for _, c in ipairs(cd.cells) do
+                    inSet[c] = true
+                    top = math.max(top, c.ceil)
+                    r.cells[#r.cells + 1] = {c.cx, c.cy}
+                end
+                if cd.shape == 'atrium' then top = top + ROOM_ATRIUM_CEILING_BONUS end
+                for _, c in ipairs(cd.cells) do
+                    inRoom[c], c.room, c.shape, c.ceil = true, id, cd.shape, top
+                    c.raised = cd.shape == 'atrium' or nil
+                    for _, d in ipairs({{1, 0}, {0, 1}}) do
+                        local nb = cellAt(c.cx + d[1], c.cy + d[2])
+                        if nb and inSet[nb] then conn[edgeKey(c, nb)] = 'open' end
+                    end
+                end
+                if cd.shape == 'pillared' then
+                    -- 3x3 (cd.cells row-major): pillars on the four interior grid intersections
+                    local x0, y0 = cd.cells[1].cx * CELL, cd.cells[1].cy * CELL - CELL / 2
+                    r.pillars = {}
+                    for i = 1, 2 do
+                        for j = 1, 2 do
+                            local p = {x = x0 + i * CELL, y = y0 + j * CELL, size = ROOM_PILLAR_SIZE, room = id,
+                                elev = cd.cells[1].elev, ceil = top}
+                            pillars[#pillars + 1] = p; r.pillars[#r.pillars + 1] = p
+                        end
+                    end
+                end
+                rooms[id] = r
+            end
         end
     end
 
@@ -531,7 +624,7 @@ function LevelGen.build(seed, difficulty)
         local cand = {}
         for _, c in ipairs(list) do
             if c.kind == 'branch' and c.parent and c.deadEnd and not c.loop and not c.opt and not c.room
-                and c.parent.kind ~= 'module' then cand[#cand + 1] = c end
+                and c.parent.kind ~= 'module' and not c.parent.raised then cand[#cand + 1] = c end
         end
         orng:shuffle(cand)
         local made = 0
@@ -540,7 +633,7 @@ function LevelGen.build(seed, difficulty)
             local z = c.parent
             local d = step(z, c)
             local y = cells[key(c.cx + d[1], c.cy + d[2])]
-            if y and y.kind ~= 'module' and not y.start and not y.exit and not y.opt and y.region == c.region
+            if y and y.kind ~= 'module' and not y.start and not y.exit and not y.opt and not y.raised and y.region == c.region
                 and y.elev == c.elev and #treeNeighbors(cells, conn, c) == 1 then
                 local td = dist(z, y)
                 if td and td >= LEVELGEN_SHORTCUT_MIN then
@@ -578,6 +671,30 @@ function LevelGen.build(seed, difficulty)
             end
             if open[1][1] + open[2][1] == 0 and open[1][2] + open[2][2] == 0 then
                 c.inset, c.insetAxis = LEVELGEN_NARROW_INSET, open[1][1] ~= 0 and 'x' or 'y'
+            end
+        end
+    end
+
+
+    -- closets / alcoves (4.2): off-path dead ends, own stream, narrowed by side slabs and a lower ceiling
+    local closets = 0
+    do
+        local crng = LevelGen.rng(seed * 41 + 6203)
+        local w = ROOM_SHAPE_WEIGHTS.closet or 0
+        for _, c in ipairs(list) do
+            if w > 0 and closets < ROOM_CLOSET_MAX and c.deadEnd and not c.nook and not c.loop and c.kind == 'branch'
+                and not c.room and not c.start and not c.exit and not c.optional and (c.opt or 0) == 0 and c.degree == 1
+                and not c.inset and crng:chance(w * ROOM_SHAPE_CHANCE) then
+                for _, d in ipairs(SIDES) do
+                    local nb = cells[key(c.cx + d[1], c.cy + d[2])]
+                    if nb and conn[edgeKey(c, nb)] then
+                        c.inset, c.insetAxis = ROOM_CLOSET_INSET, d[1] ~= 0 and 'x' or 'y'
+                        c.ceil = math.max(c.elev + BACKROOMS_PLAYER_HEIGHT + 1.5, c.ceil - ROOM_CLOSET_CEIL_DROP)
+                        c.shape = 'closet'
+                        closets = closets + 1
+                        break
+                    end
+                end
             end
         end
     end
@@ -765,6 +882,13 @@ function LevelGen.build(seed, difficulty)
         end
     end
 
+
+    -- pillars (4.3): solid colliders inside pillared halls
+    for _, p in ipairs(pillars) do
+        local c = cells[key(LevelGen.cellOf(p.x - 0.1, p.y + 0.1))]
+        addBox('solid', p.x - p.size / 2, p.x + p.size / 2, p.y - p.size / 2, p.y + p.size / 2, p.elev, p.ceil, themes[c])
+    end
+
     -- nook props: half-cover the doorway on the parent side
     local nookCount = 0
     for _, c in ipairs(list) do
@@ -850,7 +974,8 @@ function LevelGen.build(seed, difficulty)
             ceil = c.ceil, k = c.k, module = c.module, dir = c.dir, rot = c.rot, onPath = c.onPath or false,
             pathIndex = c.pathIndex, start = c.start, exit = c.exit, degree = c.degree, room = c.room,
             inset = c.inset, deadEnd = c.deadEnd, nook = c.nook, loop = c.loop,
-            optional = c.optional, shortcut = c.shortcut, opt = c.opt, plotId = c.plotId, zone = c.zone}
+            optional = c.optional, shortcut = c.shortcut, opt = c.opt, plotId = c.plotId, zone = c.zone,
+            shape = c.shape or 'hall'}
     end
     local metaZones = {}
     for i, z in ipairs(zoneList) do
@@ -859,6 +984,14 @@ function LevelGen.build(seed, difficulty)
         table.sort(adj)
         metaZones[i] = {id = z.id, theme = z.theme, lighting = z.lighting, cellCount = #z.cells, adjacent = adj}
     end
+    local shapeCounts = {}
+    for _, c in ipairs(metaCells) do
+        if c.room then
+            -- one count per room, below
+        elseif c.shape == 'closet' then shapeCounts.closet = (shapeCounts.closet or 0) + 1
+        else shapeCounts.hall = (shapeCounts.hall or 0) + 1 end
+    end
+    for _, r in ipairs(rooms) do shapeCounts[r.shape] = (shapeCounts[r.shape] or 0) + 1 end
     local metaPath = {}
     for i, c in ipairs(path) do metaPath[i] = {c.cx, c.cy} end
     local edges = {}
@@ -879,7 +1012,7 @@ function LevelGen.build(seed, difficulty)
         meta = {seed = seed, obstacles = n, chain = chain, cells = metaCells, edges = edges, nooks = nookCount,
             grid = {W, H}, start = {path[1].cx, path[1].cy}, exitCell = {path[L].cx, path[L].cy},
             path = metaPath, pathLength = L, turns = countTurns(path), minPath = minPath, minTurns = minTurns,
-            regions = regionInfo, rooms = rooms, zones = metaZones, loopEdges = loopEdges, loops = #loopEdges,
+            regions = regionInfo, rooms = rooms, pillars = pillars, shapeCounts = shapeCounts, zones = metaZones, loopEdges = loopEdges, loops = #loopEdges,
             fallback = fallback, boxCount = #boxes,
             optional = optional, shortcuts = shortcutList, shortcutsWanted = wantShortcuts, plotCount = #plots},
     }

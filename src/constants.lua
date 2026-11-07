@@ -409,6 +409,12 @@ BACKROOMS_ZONE_BLEND_DISTANCE = 2.5    -- m over which ambient/fog blend toward 
 -- and elevation, excludes module/start/exit cells, uses its own RNG stream. Weights 0 = disabled.
 ROOM_SHAPE_NAMES = {'hall', 'room2x2', 'room1x2', 'room2x3', 'roomL', 'pillared', 'atrium', 'gallery', 'closet'}
 ROOM_SHAPE_WEIGHTS = {hall = 1, room2x2 = 1, room1x2 = 1, room2x3 = 0.6, roomL = 0.8, pillared = 0.4, atrium = 0.3, gallery = 0.6, closet = 0.5}
+ROOM_SHAPE_CHANCE = 0.45               -- per candidate stamp: chance = weight * this
+ROOM_SHAPE_MAX = 6                     -- most new-shape rooms per level (2x2 rooms have LEVELGEN_MAX_ROOMS)
+ROOM_PILLAR_SIZE = 0.7                 -- m, square pillar
+ROOM_CLOSET_INSET = 0.6                -- m of side slab per side in a closet
+ROOM_CLOSET_CEIL_DROP = 1              -- m lower ceiling in a closet
+ROOM_CLOSET_MAX = 3
 ROOM_PILLAR_CLEARANCE = 1.2            -- m between a pillar and walls/other pillars
 ROOM_ATRIUM_CEILING_BONUS = 2.5        -- extra ceiling height of a crossroads atrium
 -- Audio (src/BackroomsAudio.lua, owned by the audio group)

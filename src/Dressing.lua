@@ -59,6 +59,7 @@ function Dressing.zones(data)
     if data.exit then z[#z + 1] = {data.exit.pos[1], data.exit.pos[2], 1.8} end
     if data.spawn then z[#z + 1] = {data.spawn[1], data.spawn[2], 2.2} end
     for _, b in ipairs(data.billboards or {}) do z[#z + 1] = {b.pos[1], b.pos[2], 1.2} end
+    for _, p in ipairs(data.meta and data.meta.pillars or {}) do z[#z + 1] = {p.x, p.y, 1.0} end
     return z
 end
 

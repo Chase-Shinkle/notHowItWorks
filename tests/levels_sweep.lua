@@ -39,6 +39,7 @@ local verbose = os.getenv('SWEEP_VERBOSE')
 local fails, levels, searches, t0 = 0, 0, 0, os.clock()
 local obstacleKinds, perDiff = {}, {}
 local optionalPlots, optionalAreas = 0, 0
+local pillarCount = 0
 local function bad(seed, d, msg)
     fails = fails + 1
     realPrint(string.format('FAIL seed=%d diff=%d: %s', seed, d, msg))
@@ -61,6 +62,15 @@ for _, d in ipairs(diffs) do
         local room0 = Reach.roomWith(data, {})
         local p = PlayerController(data.spawn[1], data.spawn[2], data.spawn[3])
         local cols = room0:solidColliders()
+        -- pillars (room shapes) must be real solid colliders, so every search below routes around them
+        for i, pl in ipairs(data.meta.pillars or {}) do
+            local found = false
+            for _, c in ipairs(cols) do
+                if math.abs(c.min[1] - (pl.x - pl.size / 2)) < 1e-6 and math.abs(c.max[2] - (pl.y + pl.size / 2)) < 1e-6 then found = true end
+            end
+            if not found then bad(seed, d, 'pillar ' .. i .. ' has no collider') end
+            pillarCount = pillarCount + 1
+        end
         for _ = 1, 20 do p:update(1 / 20, {}, 0, cols, room0:climbVolumes()) end
         if not p.grounded or math.abs(p.z - data.spawn[3]) > 0.05 then bad(seed, d, 'spawn does not settle grounded at spawn height') end
 
@@ -190,6 +200,6 @@ table.sort(kinds)
 local pd = {}
 for d, n in pairs(perDiff) do pd[#pd + 1] = 'd' .. d .. '=' .. n end
 table.sort(pd)
-realPrint(string.format('levels_sweep seeds %d..%d diffs %s: %d levels (%s), %d searches, obstacles {%s}, optional plots %d (areas %d), %d failures, %.1f s cpu',
-    from, to, table.concat(diffs, ','), levels, table.concat(pd, ' '), searches, table.concat(kinds, ' '), optionalPlots, optionalAreas, fails, os.clock() - t0))
+realPrint(string.format('levels_sweep seeds %d..%d diffs %s: %d levels (%s), %d searches, obstacles {%s}, optional plots %d (areas %d), pillars %d, %d failures, %.1f s cpu',
+    from, to, table.concat(diffs, ','), levels, table.concat(pd, ' '), searches, table.concat(kinds, ' '), optionalPlots, optionalAreas, pillarCount, fails, os.clock() - t0))
 os.exit(fails == 0 and 0 or 1)
