@@ -3315,6 +3315,8 @@ test('shader: the scene goes into the farm canvas and through the pass; text and
         if c.name == 'setCanvas' then for _, b in ipairs(FarmShader.buffers) do if c.args[1] == b then blurDraws = blurDraws + 1 end end end
     end
     eq(blurDraws, 10, 'ten blur steps')
+    eq(shader.sent.focusY, nil, 'tilt-shift is fixed to the screen: no focus-position uniform')
+    assert(shader.sent.focusHalf and shader.sent.focusRamp, 'fixed tilt-shift zone uniforms sent')
     -- uniforms come from the constants and the day tint
     local u = shader.sent
     eq(u.bloomStrength, FARM_FX_BLOOM); eq(u.sunStrength, FARM_FX_SUN); eq(u.shaftStrength, FARM_FX_SHAFT)

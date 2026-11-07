@@ -1160,10 +1160,7 @@ function FarmState:drawThroughPass(drawScene, plain)
         drawScene()
         love.graphics.pop()
         love.graphics.setCanvas(target)
-        local p = self.player
-        local focusY = ((p and p.drawY or VIRTUAL_HEIGHT / 2) + FARM_TILE * 0.6) / VIRTUAL_HEIGHT
-        FarmShader.present(FarmShader.uniforms({time = self.time, tint = self:dayTint(), plain = plain,
-            focusY = focusY}))
+        FarmShader.present(FarmShader.uniforms({time = self.time, tint = self:dayTint(), plain = plain}))
         return true
     end
     drawScene()

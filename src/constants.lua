@@ -220,9 +220,9 @@ FARM_FX_BLOOM = 0.55                    -- soft glow from bright / strongly colo
 FARM_FX_BLOOM_THRESHOLD = 0.66          -- brightness where bloom starts
 FARM_FX_GLIMMER = 0.4                   -- sparkle on very bright pixels (ripe crops, pond)
 FARM_FX_GLIMMER_THRESHOLD = 0.8         -- luminance where glimmer starts
-FARM_FX_TILT = 0.8                      -- tilt-shift depth of field (0 = all sharp)
-FARM_FX_FOCUS_HALF = 0.22               -- sharp band half height around the farmer (uv)
-FARM_FX_FOCUS_RAMP = 0.26               -- distance over which the band softens fully (uv)
+FARM_FX_TILT = 0.7                      -- blur at the very top/bottom edge (0 = all sharp)
+FARM_FX_FOCUS_HALF = 0.28               -- fully sharp middle zone, half height (uv): middle 56% of the screen
+FARM_FX_FOCUS_RAMP = 0.22               -- smootherstep ramp from the zone to the top/bottom edge (uv)
 FARM_FX_SATURATION = 0.22               -- saturation lift (0 = unchanged)
 FARM_FX_VIGNETTE = 0.22                 -- corner darkening
 

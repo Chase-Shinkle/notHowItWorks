@@ -177,11 +177,23 @@ end)
 
 scene('focus', function()
     local farm = newFarm()
-    -- the sharp band follows the farmer: walk up next to the barn by real input
+    -- the tilt-shift is fixed on screen y: walk up next to the barn by real input; the blur must not move
     press('right'); wait(0.3); press('right'); wait(0.3); press('right'); wait(0.3)
     press('up'); wait(0.3); press('up'); wait(0.3); press('up'); wait(0.6)
-    shot('focus-follows-farmer', string.format('farmer walked by real arrow presses to (%d,%d): sharp band moved up to the barn row',
+    shot('tilt-fixed-after-walk', string.format('farmer walked by real arrow presses to (%d,%d): blur unchanged, still fixed to the screen',
         farm.player.col, farm.player.row), nil)
+end)
+
+scene('tiltshift', function()
+    local farm = newFarm()
+    -- setup: farmer placed directly (not walked) near the top and bottom of the field;
+    -- the fixed tilt-shift must look the same regardless of where the farmer stands
+    face(farm, 5, 2, 'down'); wait(0.6)
+    shot('tilt-player-top', 'farmer placed at tile (5,2), top of the field',
+        {0, 0, 320, 80, 2})
+    face(farm, 5, FARM_FIELD_BOTTOM, 'up'); wait(0.6)
+    shot('tilt-player-bottom', 'farmer placed at tile (5,' .. FARM_FIELD_BOTTOM .. '), bottom of the field',
+        {0, 240, 320, 80, 2})
 end)
 
 scene('soil', function()

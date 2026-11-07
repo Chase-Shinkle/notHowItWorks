@@ -1,5 +1,5 @@
 -- The farm's look pipeline (shaders/farm.glsl + shaders/farm_blur.glsl):
--- tilt-shift depth of field around the farmer, restrained bloom, golden sun
+-- fixed screen-space tilt-shift depth of field (sharp middle, soft top and bottom), restrained bloom, golden sun
 -- glow and shafts, glimmer, saturation/vignette grade and the day-cycle
 -- tint. FarmState draws the scene into FarmShader.canvas (320x320) and calls
 -- FarmShader.present(uniforms), which draws it through the pipeline into
@@ -15,7 +15,7 @@
 --    the composite also upsamples them with a 4-tap bilinear kernel)
 --   nearTex   -> thresholded blur H 80 -> blur V 80 x2 (bloomTex)
 --   composite: scene + nearTex/farTex/bloomTex through farm.glsl.
--- Six 160/80 px passes plus one 320 px composite per frame.
+-- Ten 160/80 px passes plus one 320 px composite per frame.
 --
 -- Safe fallback: reading the sources, compiling both shaders and creating
 -- every canvas are each wrapped in pcall. On any failure (or with the
@@ -157,7 +157,7 @@ local function daylightOf(tint)
 end
 
 -- The uniform values for a frame. `opts.time` (s), `opts.tint` {r, g, b},
--- `opts.focusY` (uv y of the farmer); `opts.plain` zeroes the tint and every
+-- `opts.plain` zeroes the tint and every
 -- lighting, depth and grading effect (used during the break, so corruption
 -- and the fade stay crisp and fully visible).
 function FarmShader.uniforms(opts)
@@ -179,7 +179,6 @@ function FarmShader.uniforms(opts)
         glimmerStrength = plain and 0 or FARM_FX_GLIMMER,
         glimmerThreshold = FARM_FX_GLIMMER_THRESHOLD,
         tiltStrength = plain and 0 or FARM_FX_TILT,
-        focusY = opts.focusY or 0.5,
         focusHalf = FARM_FX_FOCUS_HALF,
         focusRamp = FARM_FX_FOCUS_RAMP,
         saturation = plain and 0 or FARM_FX_SATURATION,

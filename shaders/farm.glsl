@@ -1,9 +1,9 @@
 // Farm composite pass (src/FarmShader.lua). Inputs: the sharp 320x320 scene
 // (`tex`), two soft copies made by shaders/farm_blur.glsl at half and quarter
 // resolution, and a quarter-resolution bloom. In order:
-//   1. tilt-shift depth of field: a sharp band around the farmer (focusY),
-//      easing into the soft copies above and below it (background a little
-//      softer than the foreground);
+//   1. tilt-shift depth of field: FIXED on screen y (never follows the
+//      farmer): the middle of the play area is fully sharp, easing
+//      smoothly into the soft copies toward the top and bottom edges;
 //   2. restrained bloom from bright / strongly coloured areas;
 //   3. golden sun: warm multiply, a glow from the upper-left corner and
 //      diagonal shafts fanning out from it, drifting slowly;
@@ -28,9 +28,8 @@ uniform float bloomThreshold;   // used by the bloom blur passes
 uniform float glimmerStrength;
 uniform float glimmerThreshold;
 uniform float tiltStrength;
-uniform float focusY;           // uv y of the farmer (centre of the sharp band)
-uniform float focusHalf;        // half height of the fully sharp band (uv)
-uniform float focusRamp;        // distance over which it softens fully (uv)
+uniform float focusHalf;        // half height of the fully sharp middle zone (uv)
+uniform float focusRamp;        // distance beyond it over which blur reaches its maximum (uv)
 uniform float saturation;       // 0 = unchanged
 uniform float vignette;
 uniform Image nearTex;          // half-res blur
@@ -50,11 +49,9 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 screen_coords) {
     vec4 base = Texel(tex, uv);
     vec3 c = base.rgb;
 
-    // 1. tilt-shift: 0 inside the band, 1 far from it; above the band
-    // and below it soften over the ramp; the foreground a little sooner
-    float dy = uv.y - focusY;
-    float reach = dy < 0.0 ? focusRamp : focusRamp * 0.85;
-    float t = clamp((abs(dy) - focusHalf) / reach, 0.0, 1.0);
+    // 1. tilt-shift: depends only on screen y. 0 in the middle zone, rising
+    // with a smootherstep to tiltStrength at the top and bottom edges
+    float t = clamp((abs(uv.y - 0.5) - focusHalf) / focusRamp, 0.0, 1.0);
     float k = t * t * t * (t * (t * 6.0 - 15.0) + 10.0) * tiltStrength;   // smootherstep
     vec3 nearC = soft(nearTex, uv, texel * 2.0);
     vec3 farC = soft(farTex, uv, texel * 4.0);

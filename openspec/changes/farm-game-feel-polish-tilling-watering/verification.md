@@ -317,3 +317,19 @@ fallback: `final/final-compile-failure-fallback-*`, `*-placeholder*`; break:
   **161 passed, 0 failed**.
 - **The full suite (`check_all.sh`) was NOT rerun after this fix.** Task 6.2
   stays pending: there is no clean full-suite execution on record.
+
+
+## Fixed screen-space tilt-shift (follow-up)
+
+The tilt-shift no longer follows the farmer. Blur depends only on screen y: the
+middle ~56% is fully sharp, then a smootherstep ramp reaches `FARM_FX_TILT` (0.7)
+at the top and bottom edges. The `focusY` uniform and its FarmState logic are removed;
+the HUD, hint, fallback, break and other effects are untouched.
+
+- Quick check: one `love . --farm-shots` run (`SHOTS_ONLY=tiltshift,focus`, xvfb): shader
+  pipeline enabled, 3 checks, 0 failed. A test assertion was added that no `focusY` is sent.
+- Screenshots: `/workspace/qa/farmfeel/tiltshift/` (farmer near top and bottom, before and
+  after; see its README for baseline provenance). Images were not evaluated by the agent.
+- **Not run:** the full suite, package builds and the unit run. A suite run had started
+  before it was interrupted because verification instructions changed mid-run; its result
+  is not claimed. Task 6.2 stays pending.
