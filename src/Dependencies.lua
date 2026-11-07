@@ -66,7 +66,13 @@ local TEXTURE_MANIFEST = {
     ['bucket'] = {FARM_PACK .. 'Tools/Tools - ITEMS/Items - Bucket.png', {0.6, 0.45, 0.3, 1}, 10},
     ['sacks'] = {FARM_PACK .. 'Tools/Tools - ITEMS/Props - Icons - Sacks.png', {0.75, 0.65, 0.45, 1}, 10},
     ['plot'] = {FARM_PACK .. 'Ground/Props - Soil Preparation.png', {0.36, 0.22, 0.13, 1}},
-    ['villager'] = {FARM_PACK .. 'Sprites/Hero  white - 001 copy 2.png', {0.7, 0.5, 0.85, 1}, 13},
+    -- the farm villager: its own sprite (brown hair, straw hat, apron), made
+    -- from the hero by tools/make_villager.py; no draw-time tint
+    ['villager'] = {'graphics/characters/villager.png', {0.7, 0.5, 0.85, 1}, 13},
+    -- tools shown beside the farmer (the seed bag is the crop's own bag)
+    ['tool-shovel'] = {FARM_PACK .. 'Tools/Tools  - Icons - WO (With Outline)/Icon -  Shovel WO 01.png', {0.6, 0.6, 0.65, 1}, 8},
+    ['tool-can'] = {FARM_PACK .. 'Tools/Tools  - Icons - WO (With Outline)/Icons - Water Can WO.png', {0.4, 0.6, 0.9, 1}, 8},
+    ['tool-sickle'] = {FARM_PACK .. 'Tools/Tools  - Icons - WO (With Outline)/Icons -Sickle WO 01.png', {0.75, 0.75, 0.8, 1}, 8},
 }
 Assets.loadAll(gTextures, TEXTURE_MANIFEST, function(path, color, size) return Assets.loadImage(path, color, size) end)
 

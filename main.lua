@@ -97,3 +97,9 @@ end
 for _, a in ipairs(arg or {}) do
     if a == '--autotest' then require 'tests/autotest' end
 end
+
+-- `love . --farm-shots`: reviewer screenshots of the farm (tests/farm_shots.lua,
+-- development only; not in the package). Never loaded in normal play.
+for _, a in ipairs(arg or {}) do
+    if a == '--farm-shots' then require 'tests/farm_shots' end
+end

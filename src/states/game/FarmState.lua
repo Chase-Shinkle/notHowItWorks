@@ -31,8 +31,6 @@ local DIRS = {
 }
 local DIR_ORDER = {'up', 'down', 'left', 'right'}
 
--- HUD seed slots: x position and width in the top bar
-local SEED_SLOT_X, SEED_SLOT_W = 4, 46
 
 local function anyPressed(keys)
     for _, key in ipairs(keys) do
@@ -83,6 +81,7 @@ function FarmState:enter(gameData)
     self.popups = self.juice.popups
     self.displayCoins = self.gameData.coins or 0   -- the HUD's ticking coin count
     self.coinTickTimer = 0
+    self.time = 0                         -- seconds on the farm outside the break (ambient motion)
     self.villagerLine = nil               -- {text, time left}
 
     -- the break
@@ -199,8 +198,8 @@ end
 function FarmState:produceSlotCenter(seedType)
     for i, t in ipairs(SEED_TYPES) do
         if t == seedType then
-            local r = self:hudLayout().produce[i]
-            return r.x + r.iconSize / 2, r.y + r.iconSize / 2
+            local r = self:hudLayout().produce[i].icon
+            return r.x + r.size / 2, r.y + r.size / 2
         end
     end
     return VIRTUAL_WIDTH / 2, FARM_TILE / 2
@@ -227,6 +226,20 @@ function FarmState:plotAction(plot)
         return 'harvest'
     end
     return plot.watered and 'growing' or 'water'
+end
+
+-- Texture key of the tool shown beside the farmer for the faced plot (from
+-- plotAction), or nil when nothing usable is faced.
+function FarmState:toolIcon()
+    local target = self:facingTarget()
+    if not target or target.kind ~= 'plot' then return nil end
+    local action = self:plotAction(target.plot)
+    if action == 'till' then return 'tool-shovel'
+    elseif action == 'plant' then return 'seedbag-' .. Farm.pickSeed(self.gameData, self.selectedSeed)
+    elseif action == 'water' then return 'tool-can'
+    elseif action == 'harvest' then return 'tool-sickle'
+    end
+    return nil
 end
 
 -- Use a target (plot, villager or seed stall). Returns the action taken:
@@ -459,9 +472,10 @@ function FarmState:updateMouse()
     if love.mouse.wasPressed(1) then
         -- seed slots in the top bar
         if row == 1 then
+            local slots = self:hudLayout().seeds
             for i, seedType in ipairs(SEED_TYPES) do
-                local sx = SEED_SLOT_X + (i - 1) * SEED_SLOT_W
-                if gx >= sx and gx < sx + SEED_SLOT_W then
+                local r = slots[i]
+                if gx >= r.x and gx < r.x + r.w then
                     self:selectSeed(seedType)
                     return
                 end
@@ -507,8 +521,14 @@ function FarmState:update(dt)
     self.player.drawX = self.player.drawX + (tx - self.player.drawX) * k
     self.player.drawY = self.player.drawY + (ty - self.player.drawY) * k
 
+    self.time = self.time + dt
     self:updateEffects(dt)
     self:updateVillager(dt)
+end
+
+-- The day number shown in the HUD.
+function FarmState:dayNumber()
+    return self.day or 1
 end
 
 -- Bottom-bar hint for the seed stall: the selected type and its price.
@@ -553,6 +573,15 @@ end
 
 -- Render -----------------------------------------------------------------------
 
+-- Draws an image fitted into a `size` box at (x, y), scaled around its
+-- centre by `pulse`, at `alpha`.
+local function drawIcon(image, x, y, size, pulse, alpha)
+    local iw, ih = image:getDimensions()
+    local s = size / math.max(iw, ih) * (pulse or 1)
+    love.graphics.setColor(1, 1, 1, alpha or 1)
+    love.graphics.draw(image, x + size / 2, y + size / 2, 0, s, s, iw / 2, ih / 2)
+end
+
 local function drawSprite(image, x, y, tint, sx, sy)
     -- draws an image scaled x2, bottom-centred in the tile at (x, y); sx/sy
     -- (optional) multiply the scale around the bottom centre (pops, squash)
@@ -593,8 +622,9 @@ function FarmState:renderField()
         end
     end
 
+    -- the villager hops after a sale (its tile's pop, see FarmState:emit)
     local vx, vy = FarmTileToPixel(FARM_VILLAGER.col, FARM_VILLAGER.row)
-    drawSprite(gTextures['villager'], vx, vy, {0.85, 0.7, 1, 1})
+    drawSprite(gTextures['villager'], vx, vy + self:villagerHop())
 
     self:renderShop()
 end
@@ -640,6 +670,24 @@ function FarmState:renderHighlights()
     end
 end
 
+-- Vertical offset of the villager's sale bounce (0 at rest, negative = up).
+function FarmState:villagerHop()
+    local pop = self.juice:popScale(FARM_VILLAGER.col .. ',' .. FARM_VILLAGER.row)
+    return -math.floor((pop - 1) * FARM_VILLAGER_HOP + 0.5)
+end
+
+-- The tool for the faced plot, small beside the farmer with a gentle bob.
+function FarmState:renderTool()
+    local key = self:toolIcon()
+    if not key or not gTextures[key] then return end
+    local p = self.player
+    local bob = math.floor(math.sin((self.time or 0) * 4) + 0.5)
+    -- held at the farmer's right side, mostly outside the sprite
+    local x = p.drawX + FARM_TILE - 9
+    local y = p.drawY + 12 + bob
+    drawIcon(gTextures[key], x, y, FARM_TOOL_ICON_SIZE, 1, 1)
+end
+
 -- `dy` and `rotation` (optional) are used by the fall.
 function FarmState:renderPlayer(dy, rotation)
     local p = self.player
@@ -665,7 +713,7 @@ function FarmState:renderVillagerLine()
     local font = gFonts['small']
     local w = font:getWidth(text) + 8
     local bx = math.max(2, math.min(VIRTUAL_WIDTH - w - 2, vx + FARM_TILE / 2 - w / 2))
-    local by = vy - 16
+    local by = vy - 16 + self:villagerHop()
     love.graphics.setColor(1, 1, 1, 0.9)
     love.graphics.rectangle('fill', bx, by, w, 13, 3, 3)
     love.graphics.setColor(0.1, 0.1, 0.1, 1)
@@ -673,55 +721,102 @@ function FarmState:renderVillagerLine()
     love.graphics.print(text, bx + 4, by + 2)
 end
 
--- Rectangles of the top-bar elements (virtual px).
+-- Rectangles of the top-bar elements (virtual px), from FARM_HUD: seed
+-- slots (bag icon, key number above the count), a divider, produce slots
+-- (icon and count), the coin icon and amount, and the day number
+-- (right-aligned at day.right). Text positions are top-left corners.
 function FarmState:hudLayout()
+    local L = FARM_HUD
     local layout = {seeds = {}, produce = {}}
+    local x = L.left
     for i = 1, #SEED_TYPES do
-        layout.seeds[i] = {x = SEED_SLOT_X + (i - 1) * SEED_SLOT_W, y = 2, w = SEED_SLOT_W - 3, h = FARM_TILE - 9,
-            iconSize = 16}
+        layout.seeds[i] = {x = x, y = L.top, w = L.seedSlotW, h = L.height,
+            icon = {x = x + 2, y = L.top + 4, size = L.seedIcon}, iconSize = L.seedIcon,
+            key = {x = x + L.seedIcon + 5, y = L.top + 1}, count = {x = x + L.seedIcon + 4, y = L.top + 11}}
+        x = x + L.seedSlotW
     end
-    local x = 4 + #SEED_TYPES * SEED_SLOT_W + 6
+    layout.divider = {x = x + L.gap, y = L.top + 2, w = 1, h = L.height - 4}
+    x = x + L.gap * 2 + 1
     for i = 1, #SEED_TYPES do
-        layout.produce[i] = {x = x, y = 8, w = 28, h = 12, iconSize = 12}
-        x = x + 30
+        layout.produce[i] = {x = x, y = L.top, w = L.produceSlotW, h = L.height,
+            icon = {x = x + 1, y = L.top + 6, size = L.produceIcon}, iconSize = L.produceIcon,
+            count = {x = x + L.produceIcon + 3, y = L.top + 8}}
+        x = x + L.produceSlotW
     end
-    layout.coinIcon = {x = x + 4, y = 8, w = 10, h = 10}
+    layout.coinIcon = {x = x + L.gap, y = L.top + 7, w = L.coinIcon, h = L.coinIcon}
+    layout.coinText = {x = x + L.gap + L.coinIcon + 3, y = L.top + 8}
+    layout.day = {right = VIRTUAL_WIDTH - L.left, y = L.top + 8}
+    layout.bar = {x = 0, y = 0, w = VIRTUAL_WIDTH, h = FARM_TILE - 4}
     return layout
+end
+
+-- A small gold coin drawn in code (the pack has no coin sprite).
+local function drawCoin(r, scale)
+    local cx, cy = r.x + r.w / 2, r.y + r.h / 2
+    local rad = r.w / 2 * (scale or 1)
+    love.graphics.setColor(0.45, 0.28, 0.05, 1)
+    love.graphics.circle('fill', cx, cy, rad)
+    love.graphics.setColor(1, 0.82, 0.25, 1)
+    love.graphics.circle('fill', cx, cy, rad - 1)
+    love.graphics.setColor(1, 0.95, 0.6, 1)
+    love.graphics.rectangle('fill', math.floor(cx - 1), math.floor(cy - rad + 2), 1, 2)
+    love.graphics.setColor(0.8, 0.55, 0.1, 1)
+    love.graphics.rectangle('fill', math.floor(cx), math.floor(cy - 1), 1, 3)
 end
 
 function FarmState:renderHUD()
     local data = self.gameData
+    local layout = self:hudLayout()
+    local font = gFonts['small']
     love.graphics.setColor(0, 0, 0, 0.65)
     love.graphics.rectangle('fill', 0, 0, VIRTUAL_WIDTH, FARM_TILE - 4)
-    love.graphics.setFont(gFonts['small'])
+    love.graphics.setFont(font)
+    local dim = FARM_HUD.emptyAlpha
 
+    -- seed bags: dimmed when empty; the selected slot is always outlined
     for i, seedType in ipairs(SEED_TYPES) do
-        local x = SEED_SLOT_X + (i - 1) * SEED_SLOT_W
+        local r = layout.seeds[i]
+        local n = data.seeds[seedType] or 0
+        local a = n > 0 and 1 or dim
         if seedType == self.selectedSeed then
             love.graphics.setColor(1, 0.95, 0.3, 1)
-            love.graphics.rectangle('line', x + 0.5, 2.5, SEED_SLOT_W - 3, FARM_TILE - 9)
+            love.graphics.rectangle('line', r.x + 0.5, r.y + 0.5, r.w - 2, r.h - 1)
         end
-        love.graphics.setColor(1, 1, 1, 1)
-        local icon = gTextures['seedbag-' .. seedType]
-        local iw, ih = icon:getDimensions()
-        love.graphics.draw(icon, x + 3, 5, 0, 16 / iw, 16 / ih)
-        love.graphics.print(i .. ' x' .. (data.seeds[seedType] or 0), x + 21, 9)
+        drawIcon(gTextures['seedbag-' .. seedType], r.icon.x, r.icon.y, r.icon.size, 1, a)
+        love.graphics.setColor(0.75, 0.75, 0.75, a)
+        love.graphics.print(tostring(i), r.key.x, r.key.y)
+        love.graphics.setColor(1, 1, 1, a)
+        love.graphics.print('x' .. n, r.count.x, r.count.y)
     end
 
-    -- harvested crops, then coins
-    local x = 4 + #SEED_TYPES * SEED_SLOT_W + 6
-    for _, seedType in ipairs(SEED_TYPES) do
-        local icon = gTextures['produce-' .. seedType]
-        local iw, ih = icon:getDimensions()
-        local pulse = self.juice:popScale('slot-' .. seedType)
-        love.graphics.setColor(1, 1, 1, 1)
-        love.graphics.draw(icon, x + 6, 14, 0, 12 / iw * pulse, 12 / ih * pulse, iw / 2, ih / 2)
-        love.graphics.print('' .. (data.crops[seedType] or 0), x + 13, 10)
-        x = x + 30
+    -- divider between the seed group and the produce group
+    local d = layout.divider
+    love.graphics.setColor(1, 1, 1, 0.35)
+    love.graphics.rectangle('fill', d.x, d.y, d.w, d.h)
+
+    -- harvested produce: dimmed when none; pulses when a flying crop lands
+    for i, seedType in ipairs(SEED_TYPES) do
+        local r = layout.produce[i]
+        local n = data.crops[seedType] or 0
+        local a = n > 0 and 1 or dim
+        drawIcon(gTextures['produce-' .. seedType], r.icon.x, r.icon.y, r.icon.size,
+            self.juice:popScale('slot-' .. seedType), a)
+        love.graphics.setColor(1, 1, 1, a)
+        love.graphics.print(tostring(n), r.count.x, r.count.y)
     end
-    love.graphics.setColor(1, 0.9, 0.3, 1)
+
+    -- coins: an icon and the ticking amount, pulsing while it changes
     local shown = math.floor(self.displayCoins + 0.5)
-    love.graphics.print(shown .. 'c', x + 4, 10)
+    local ticking = self.displayCoins ~= (data.coins or 0)
+    local pulse = ticking and (1 + 0.15 * math.abs(math.sin((self.time or 0) * 18))) or 1
+    drawCoin(layout.coinIcon, pulse)
+    love.graphics.setColor(1, 0.9, 0.3, 1)
+    love.graphics.print(tostring(shown), layout.coinText.x, layout.coinText.y)
+
+    -- day number
+    local dayText = 'Day ' .. self:dayNumber()
+    love.graphics.setColor(0.85, 0.9, 1, 1)
+    love.graphics.print(dayText, layout.day.right - font:getWidth(dayText), layout.day.y)
 
     -- bottom hint bar
     love.graphics.setColor(0, 0, 0, 0.65)
@@ -788,6 +883,7 @@ function FarmState:render()
     self:renderField()
     self:renderHighlights()
     self:renderPlayer()
+    self:renderTool()
     self:renderVillagerLine()
 
     self.juice:drawParticles()

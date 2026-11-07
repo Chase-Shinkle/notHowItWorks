@@ -94,6 +94,23 @@ FARM_KEYS = {
     nextSeed = {'tab', 'q'},
 }
 
+-- Farm top bar (virtual px): left margin, slot top and height, seed slot
+-- width (bag icon + key number over 'x999'), produce slot width (icon +
+-- '999'), icon sizes, the gap around the divider and the coin icon, and the
+-- alpha of empty slots. A layout test checks that nothing overlaps with
+-- three-digit counts.
+FARM_HUD = {
+    left = 3, top = 2, height = 24,
+    seedSlotW = 40, seedIcon = 14,
+    produceSlotW = 31, produceIcon = 12,
+    coinIcon = 9, gap = 3,
+    emptyAlpha = 0.35,
+}
+
+-- Tool icon beside the farmer (px), and the villager's sale hop height (px).
+FARM_TOOL_ICON_SIZE = 12
+FARM_VILLAGER_HOP = 16
+
 -- Farm game feel (src/Fx.lua) ------------------------------------------------------
 -- Particle bursts per action: count, speed (px/s) and life (s) ranges,
 -- gravity (px/s^2), size (px), start jitter (px), optional launch angle and

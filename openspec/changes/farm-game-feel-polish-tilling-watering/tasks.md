@@ -17,9 +17,9 @@
 
 ## 3. Characters and HUD
 
-- [ ] 3.1 Add `tools/make_villager.py` (Pillow, dev-time) producing `graphics/characters/villager.png` (different hair, hat, apron), load it as `villager` and remove the draw-time tint; verify the loaded villager image differs from the hero and a screenshot shows them distinguishable.
-- [ ] 3.2 Add the villager sale bounce and the tool icon beside the farmer (shovel, seed bag, watering can, sickle, none when nothing usable is faced); verify a test mapping each plot state to its icon and a screenshot of each.
-- [ ] 3.3 Rebuild the top bar: seed group, divider, produce group, dimmed empty slots (selected slot stays highlighted), coin icon with amount, and day number; verify no overlap with three-digit counts by a layout test on the computed rectangles and a screenshot.
+- [x] 3.1 Add `tools/make_villager.py` (Pillow, dev-time) producing `graphics/characters/villager.png` (different hair, hat, apron), load it as `villager` and remove the draw-time tint; verify the loaded villager image differs from the hero and a screenshot shows them distinguishable.
+- [x] 3.2 Add the villager sale bounce and the tool icon beside the farmer (shovel, seed bag, watering can, sickle, none when nothing usable is faced); verify a test mapping each plot state to its icon and a screenshot of each.
+- [x] 3.3 Rebuild the top bar: seed group, divider, produce group, dimmed empty slots (selected slot stays highlighted), coin icon with amount, and day number; verify no overlap with three-digit counts by a layout test on the computed rectangles and a screenshot.
 
 ## 4. World dressing
 

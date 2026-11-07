@@ -2873,5 +2873,150 @@ test('sound: a missing sound file still runs the actions silently', function()
     eq(farm:facingTarget().plot.watered, true, 'actions work without sound')
 end)
 
+-- farm game feel: characters and HUD (section 3) -----------------------------------
+-- The colour set right before `texture` was drawn in the last love.draw().
+-- (`last`: the last draw of it instead of the first, e.g. the HUD's.)
+local function colorBeforeDraw(texture, last)
+    local color, found
+    for _, c in ipairs(mock.calls) do
+        if c.name == 'setColor' then color = c.args end
+        if c.name == 'draw' and c.args[1] == texture then
+            found = type(color[1]) == 'table' and color[1] or color
+            if not last then return found end
+        end
+    end
+    return found
+end
+
+test('characters: the villager has its own sprite file, drawn untinted; the farmer is the hero', function()
+    local farm = toFarm()
+    eq(gTextures['villager'].source, 'graphics/characters/villager.png')
+    assert(gTextures['villager'].source ~= gTextures['hero'].source, 'different files')
+    local a = assert(io.open(gTextures['villager'].source, 'rb')):read('*a')
+    local b = assert(io.open(gTextures['hero'].source, 'rb')):read('*a')
+    assert(a ~= b, 'villager pixels differ from the hero')
+    mock.reset(); love.draw()
+    local c = colorBeforeDraw(gTextures['villager'])
+    eq(c[1], 1); eq(c[2], 1); eq(c[3], 1, 'no draw-time tint')
+    assert(colorBeforeDraw(gTextures['hero']), 'farmer drawn with the hero sprite')
+end)
+
+test('characters: the tool beside the farmer follows the faced plot (shovel, seed bag, can, sickle, none)', function()
+    local farm = toFarm()
+    local plot = farm:facingTarget().plot
+    local function drawnTool()
+        mock.reset(); love.draw()
+        for _, key in ipairs({'tool-shovel', 'tool-can', 'tool-sickle', 'seedbag-beanstalk', 'seedbag-pumpkin'}) do
+            -- the HUD also draws seed bags: count draws of each texture
+            local n = 0
+            for _, c in ipairs(mock.calls) do if c.name == 'draw' and c.args[1] == gTextures[key] then n = n + 1 end end
+            local hud = key:match('^seedbag') and 2 or 0     -- HUD slot + stall counter (selected only)
+            if key:match('^seedbag') and key ~= 'seedbag-' .. farm.selectedSeed then hud = 1 end
+            if n > hud then return key end
+        end
+        return nil
+    end
+    eq(farm:toolIcon(), 'tool-shovel'); eq(drawnTool(), 'tool-shovel')
+    press('e')
+    eq(farm:toolIcon(), 'seedbag-beanstalk'); eq(drawnTool(), 'seedbag-beanstalk')
+    press('2')
+    eq(farm:toolIcon(), 'seedbag-pumpkin', 'the selected seed bag')
+    press('e')
+    eq(farm:toolIcon(), 'tool-can'); eq(drawnTool(), 'tool-can')
+    press('e')
+    eq(farm:toolIcon(), nil, 'watered and growing: nothing to use'); eq(drawnTool(), nil)
+    Farm.advance(plot, 100)
+    eq(farm:toolIcon(), 'tool-sickle'); eq(drawnTool(), 'tool-sickle')
+    press('down')
+    eq(farm:facingTarget(), nil); eq(farm:toolIcon(), nil, 'facing grass'); eq(drawnTool(), nil)
+    farm.player.col, farm.player.row, farm.player.facing = FARM_VILLAGER.col - 1, FARM_VILLAGER.row, 'right'
+    eq(farm:toolIcon(), nil, 'facing the villager')
+end)
+
+test('characters: the villager bounces briefly on a sale and keeps talking', function()
+    local farm = farmAtVillager({crops = {pumpkin = 2}})
+    eq(farm:villagerHop(), 0)
+    press('e')
+    run(FX_POP_TIME / 2)
+    assert(farm:villagerHop() < -2, 'hopping up (' .. farm:villagerHop() .. ')')
+    eq(farm.villagerLine.text, 'Thanks! A pumpkin!')
+    run(FX_POP_TIME)
+    eq(farm:villagerHop(), 0, 'back on the ground')
+end)
+
+test('hud: seeds | divider | produce, coin icon and day; nothing overlaps with three-digit counts', function()
+    local farm = toFarm()
+    for _, t in ipairs(SEED_TYPES) do farm.gameData.seeds[t] = 999; farm.gameData.crops[t] = 999 end
+    farm.gameData.coins = 999; farm.displayCoins = 999; farm.day = 999
+    local L = farm:hudLayout()
+    local font = gFonts['small']
+    -- worst case text width: the mock font or LÖVE 11.5's 8 px font (5 px per digit/char, measured)
+    local function tw(text) return math.max(font:getWidth(text), 5 * #text) end
+    local boxes = {}
+    local function add(name, x, y, w, h) boxes[#boxes + 1] = {name = name, x = x, y = y, w = w, h = h} end
+    for i, r in ipairs(L.seeds) do
+        add('seed icon ' .. i, r.icon.x, r.icon.y, r.icon.size, r.icon.size)
+        add('seed key ' .. i, r.key.x, r.key.y, tw(tostring(i)), 9)
+        add('seed count ' .. i, r.count.x, r.count.y, tw('x999'), 9)
+        assert(r.count.x + tw('x999') <= r.x + r.w, 'seed count ' .. i .. ' inside its slot')
+    end
+    add('divider', L.divider.x, L.divider.y, L.divider.w, L.divider.h)
+    for i, r in ipairs(L.produce) do
+        add('produce icon ' .. i, r.icon.x, r.icon.y, r.icon.size, r.icon.size)
+        add('produce count ' .. i, r.count.x, r.count.y, tw('999'), 9)
+    end
+    add('coin icon', L.coinIcon.x, L.coinIcon.y, L.coinIcon.w, L.coinIcon.h)
+    add('coin amount', L.coinText.x, L.coinText.y, tw('999'), 9)
+    add('day', L.day.right - tw('Day 999'), L.day.y, tw('Day 999'), 9)
+    for i, a in ipairs(boxes) do
+        assert(a.x >= 0 and a.x + a.w <= VIRTUAL_WIDTH, a.name .. ' inside the screen width')
+        assert(a.y >= 0 and a.y + a.h <= FARM_TILE - 4, a.name .. ' inside the top bar (clear of the hint bar)')
+        for j = i + 1, #boxes do
+            local b = boxes[j]
+            local overlap = a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h
+            assert(not overlap, a.name .. ' overlaps ' .. b.name)
+        end
+    end
+    -- the divider sits between the last seed slot and the first produce slot
+    assert(L.divider.x >= L.seeds[3].x + L.seeds[3].w and L.divider.x + 1 <= L.produce[1].x, 'divider between groups')
+    -- drawn: coin icon (circles), amount without a 'c' suffix, day number
+    mock.reset(); love.draw()
+    local texts = {}
+    for _, c in ipairs(mock.calls) do if c.name == 'print' then texts[#texts + 1] = c.args[1] end end
+    local all = table.concat(texts, '|')
+    assert(all:find('|999|', 1, true) and not all:find('999c', 1, true), 'coin amount without a c suffix: ' .. all)
+    assert(all:find('Day 999', 1, true), 'day number drawn')
+    assert(mock.count('circle') >= 2, 'coin icon drawn')
+end)
+
+test('hud: a new farm shows day 1; empty slots dim and the selected slot stays highlighted', function()
+    local farm = toFarm()
+    mock.reset(); love.draw()
+    local found = false
+    for _, c in ipairs(mock.calls) do if c.name == 'print' and c.args[1] == 'Day 1' then found = true end end
+    assert(found, 'Day 1 on a new farm')
+    local bag = gTextures['seedbag-pumpkin']
+    eq(colorBeforeDraw(bag, true)[4], 1, 'pumpkin seeds held: full brightness')
+    farm.gameData.seeds.pumpkin = 0
+    farm:selectSeed('pumpkin')
+    mock.reset(); love.draw()
+    eq(colorBeforeDraw(bag, true)[4], FARM_HUD.emptyAlpha, 'empty: dimmed')
+    local r = farm:hudLayout().seeds[2]
+    local outlined = false
+    for _, c in ipairs(mock.calls) do
+        if c.name == 'rectangle' and c.args[1] == 'line' and c.args[2] == r.x + 0.5 and c.args[3] == r.y + 0.5 then outlined = true end
+    end
+    assert(outlined, 'selected empty slot still outlined')
+    farm.gameData.seeds.pumpkin = 1
+    mock.reset(); love.draw()
+    eq(colorBeforeDraw(bag, true)[4], 1, 'back to full brightness at 1')
+    -- produce slots too
+    local produce = gTextures['produce-vine']
+    eq(colorBeforeDraw(produce)[4], FARM_HUD.emptyAlpha)
+    farm.gameData.crops.vine = 1
+    mock.reset(); love.draw()
+    eq(colorBeforeDraw(produce)[4], 1)
+end)
+
 realPrint(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)
