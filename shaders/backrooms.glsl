@@ -58,8 +58,5 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
     float fog = 1.0 - exp(-fogDensity * max(length(wp - camPos) - FOG_NEAR, 0.0));
     if (gameplay) { fog = min(fog, 0.2); }
     rgb = mix(rgb, fogColor, clamp(fog, 0.0, 1.0));
-    // pits/gaps: bottomless dark. Room surfaces fade to black below the floor
-    // plane (z 0 -> -2.5), so the pit bottom (z -4) is never seen; rims stay lit.
-    if (!gameplay) { rgb *= clamp(1.0 + wp.z / 2.5, 0.0, 1.0); }
     return vec4(rgb, texel.a);
 }
