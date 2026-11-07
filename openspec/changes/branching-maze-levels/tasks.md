@@ -35,7 +35,9 @@
 ## 5. Checkpoints and respawn
 
 - [ ] 5.1 Record region checkpoints on solid floor and track the player's current checkpoint on entering regions; test a checkpoint is never on a crop and updates on entry.
+  - IMPLEMENTED (`Room:buildCheckpoints`/`regionAt`, `BackroomsState:updateCheckpoint`); UNVERIFIED: tests in `tests/maze_checkpoints.lua` written, not run.
 - [ ] 5.2 Respawn at the current checkpoint on `killZ`, keeping crops, seeds and collected pickups, and return to the spawn on reset; test both paths.
+  - IMPLEMENTED (`BackroomsState:respawnAtCheckpoint` on killZ; `resetCheckpoint` on load/reset); UNVERIFIED: not run.
 
 ## 6. Level size and sequence
 

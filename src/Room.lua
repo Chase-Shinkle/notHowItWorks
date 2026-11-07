@@ -217,6 +217,7 @@ function Room:init(data)
     self.name = data.name or data.id
     self.spawn = {data.spawn[1], data.spawn[2], data.spawn[3], data.spawn[4] or 0}
     self.killZ = data.killZ or BACKROOMS_KILL_Z
+    self:buildCheckpoints()
     self.allotment = CopySeeds(data.allotment)
     self.seedTypes = data.seedTypes
     -- collectible seeds, rebuilt with the room (so reset respawns them)
@@ -538,6 +539,52 @@ function Room:climbVolumes()
 end
 
 -- Is a box (min, max) touching the exit trigger?
+-- Region checkpoints (generated levels): checkpoints[r + 1] = {x, y, z, direction}
+-- at the centre of a plain floor cell of region r (its entry cell when that is
+-- one), never a module cell nor a cell holding a plot, so no crop is ever under
+-- or needed for it. Empty for hand-made rooms.
+function Room:buildCheckpoints()
+    self.checkpoints = {}
+    local meta = self.data.meta
+    if not (meta and meta.regions and meta.cells) then return end
+    local CELL = LEVELGEN_CELL
+    local function hasPlot(cell)
+        local mx, my = LevelGen.cellCenter(cell.cx, cell.cy)
+        for _, p in ipairs(self.data.plots or {}) do
+            if math.abs(p.pos[1] - mx) < CELL / 2 + 1 and math.abs(p.pos[2] - my) < CELL / 2 + 1 then return true end
+        end
+        return false
+    end
+    for _, reg in ipairs(meta.regions) do
+        local ex, ey = reg.entry[1], reg.entry[2]
+        local best, bestD
+        for _, c in ipairs(meta.cells) do
+            if c.region == reg.index and c.kind ~= 'module' and c.kind ~= 'start' and not c.exit and not hasPlot(c) then
+                local d = math.abs(c.cx - ex) + math.abs(c.cy - ey)
+                if not bestD or d < bestD then best, bestD = c, d end
+            end
+        end
+        if best then
+            local x, y = LevelGen.cellCenter(best.cx, best.cy)
+            self.checkpoints[reg.index + 1] = {x, y, reg.elev or 0, self.spawn[4]}
+        end
+    end
+    -- region 0 is the level spawn itself
+    self.checkpoints[1] = {self.spawn[1], self.spawn[2], self.spawn[3], self.spawn[4]}
+end
+
+-- Region index of the generated-level cell under (x, y), or nil.
+function Room:regionAt(x, y)
+    local meta = self.data.meta
+    if not (meta and meta.cells) then return nil end
+    if not self.cellIndex then
+        self.cellIndex = {}
+        for _, c in ipairs(meta.cells) do self.cellIndex[c.cx .. ',' .. c.cy] = c end
+    end
+    local c = self.cellIndex[math.floor(x / LEVELGEN_CELL) .. ',' .. math.floor((y + LEVELGEN_CELL / 2) / LEVELGEN_CELL)]
+    return c and c.region or nil
+end
+
 function Room:overlapsExit(min, max)
     return PlayerController.boxesOverlap(min, max, self.exit.min, self.exit.max)
 end
