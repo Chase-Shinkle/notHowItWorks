@@ -13,7 +13,10 @@ function love.load()
 
     gStateMachine = StateMachine({
         ['start'] = function() return StartState() end,
+        ['farm'] = function() return FarmState() end,
+        ['backrooms'] = function() return BackroomsState() end,
     })
+    g3d.camera.resize(love.graphics.getDimensions())
     gStateMachine:change('start')
 
     love.keyboard.keysPressed = {}
@@ -31,6 +34,10 @@ end
 
 function love.keyboard.wasPressed(key)
     return love.keyboard.keysPressed[key] or false
+end
+
+function IsDebugAdvancePressed()
+    return DEBUG_MODE and love.keyboard.wasPressed(DEBUG_ADVANCE_KEY)
 end
 
 -- Needed for g3d.camera.firstPersonLook(dx, dy) if you use a first-person camera
@@ -57,7 +64,24 @@ function love.update(dt)
 end
 
 function love.draw()
-    push:apply('start')
-    gStateMachine:render()
-    push:apply('end')
+    local state = gStateMachine.current
+
+    if state.usesPush == false then
+        -- Native-resolution path (3D): draw straight to the screen, which has a
+        -- depth buffer (conf.lua). love.run clears color and depth each frame.
+        love.graphics.setDepthMode('lequal', true)
+        state:render()
+
+        -- 2D overlay at native resolution, never occluded by 3D depth
+        love.graphics.setDepthMode()
+        if state.renderHUD then
+            state:renderHUD()
+        end
+    else
+        -- Virtual-resolution path (2D): push's canvas has no depth buffer
+        love.graphics.setDepthMode()
+        push:apply('start')
+        state:render()
+        push:apply('end')
+    end
 end
