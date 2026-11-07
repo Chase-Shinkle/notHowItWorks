@@ -1,5 +1,5 @@
--- Section 3 (branch plots) assertions for the branching maze. Standalone, not
--- wired into tests/run.lua or check_all.sh:  luajit tests/maze_branches.lua
+-- Section 3 (branch plots) assertions for the branching maze. Standalone;
+-- check_all.sh runs it once (not wired into tests/run.lua):  luajit tests/maze_branches.lua
 -- (or lua / love tests/love_runner tests/maze_branches.lua). Env: BRANCH_SEEDS (150).
 package.path = './?.lua;./?/init.lua;' .. package.path
 local realPrint = print
@@ -24,6 +24,10 @@ for d = 1, #LEVELGEN_DIFFICULTY do
         -- 3.2: at least two more plots than critical obstacles
         if #data.plots < m.obstacles + 2 then bad(tag .. ': plots ' .. #data.plots .. ' < obstacles+2') end
         stats.minExtra = math.min(stats.minExtra, #data.plots - m.obstacles)
+        -- section 6 row: at least `branches` optional modules (shortcuts count)
+        if #m.optional < LEVELGEN_DIFFICULTY[d].branches then
+            bad(tag .. ': optional ' .. #m.optional .. ' < row branches ' .. LEVELGEN_DIFFICULTY[d].branches)
+        end
         -- later levels have a shortcut
         if m.obstacles >= 3 and #m.shortcuts < 1 then bad(tag .. ': no shortcut') end
         local ids = {}

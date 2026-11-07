@@ -327,7 +327,7 @@ LEVELGEN_DOOR = 2.4                  -- doorway width between side cells
 LEVELGEN_CEILING = 6                 -- ceiling height above a cell's entry floor
 LEVELGEN_VOID_Z = -4                 -- bottom of pits and gaps
 LEVELGEN_KILL_Z = -0.5
-LEVELGEN_MAX_ATTEMPTS = 20           -- derived-seed retries by the self-check
+LEVELGEN_MAX_ATTEMPTS = 60           -- derived-seed retries by the self-check (branch sites/optional plots accept ~25-35% of builds)
 LEVELGEN_BRANCH_CHANCE = 0.45        -- (legacy spine generator; unused by the maze)
 LEVELGEN_LOOP_CHANCE = 0.4           -- chance per candidate same-region cell pair to become a loop
 -- Maze (branching-maze-levels sections 1-2). A difficulty row may override
@@ -347,10 +347,12 @@ LEVELGEN_BOX_BUDGET = 1500           -- most boxes in one generated level
 LEVELGEN_DIFFICULTY = {
     -- grid / minPath / minTurns are read by LevelGen.build; `branches` is the
     -- minimum optional-branch count (read by the later branch sections).
-    -- Rows never shrink in grid area, minPath or branches.
-    {obstacles = 2, types = {'pit', 'gap'},           grid = 6, minPath = 14, minTurns = 3, branches = 2},
-    {obstacles = 3, types = {'pit', 'gap', 'ledge'},  grid = 8, minPath = 20, minTurns = 4, branches = 3},
-    {obstacles = 4, types = {'pit', 'gap', 'ledge'},  grid = 9, minPath = 26, minTurns = 5, branches = 4},
+    -- Rows never shrink in grid area, minPath or branches. minPath >= 21 cells so the
+    -- centre-to-centre walk (minPath - 1) * LEVELGEN_CELL / BACKROOMS_WALK_SPEED is >= 30 s
+    -- (level-length spec: 'pure walking time at least 30 seconds'; 14 cells is only 19.5 s).
+    {obstacles = 2, types = {'pit', 'gap'},           grid = 6, minPath = 21, minTurns = 3, branches = 2},
+    {obstacles = 3, types = {'pit', 'gap', 'ledge'},  grid = 8, minPath = 27, minTurns = 4, branches = 3},
+    {obstacles = 4, types = {'pit', 'gap', 'ledge'},  grid = 9, minPath = 33, minTurns = 5, branches = 4},
 }
 
 -- Level sequence: the authored tutorial, then one generated level per

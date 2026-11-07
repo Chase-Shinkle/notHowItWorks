@@ -19,5 +19,11 @@ for i, r in ipairs(rows) do
 end
 local fw, fh = dims(first.grid); local lw, lh = dims(last.grid)
 assert(lw * lh > fw * fh and last.minPath > first.minPath, 'last exceeds first')
-assert(first.minPath / BACKROOMS_WALK_SPEED >= 3, 'walking time')
+-- level-length spec: critical path >= 14 cells AND pure walking time >= 30 s
+-- (centre-to-centre distance of a minPath-cell path, at the walking speed)
+for i, r in ipairs(rows) do
+    assert(r.minPath >= 14, 'row ' .. i .. ' path at least 14 cells')
+    local secs = (r.minPath - 1) * LEVELGEN_CELL / BACKROOMS_WALK_SPEED
+    assert(secs >= 30, string.format('row %d walking time %.1f s < 30 s', i, secs))
+end
 print('maze_scaling ok')

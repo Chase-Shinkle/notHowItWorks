@@ -622,7 +622,10 @@ function Room:buildCheckpoints()
         local ex, ey = reg.entry[1], reg.entry[2]
         local best, bestD
         for _, c in ipairs(meta.cells) do
-            if c.region == reg.index and c.kind ~= 'module' and c.kind ~= 'start' and not c.exit and not hasPlot(c) then
+            -- never a module cell, a cell near any plot (critical or optional), or inside / on an
+            -- optional area (c.opt = walled-off area, c.optional = optional module cell)
+            if c.region == reg.index and c.kind ~= 'module' and not c.start and not c.exit
+                and not c.optional and not c.opt and not c.shortcut and not hasPlot(c) then
                 local d = math.abs(c.cx - ex) + math.abs(c.cy - ey)
                 if not bestD or d < bestD then best, bestD = c, d end
             end

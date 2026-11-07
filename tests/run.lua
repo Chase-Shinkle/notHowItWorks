@@ -3602,7 +3602,7 @@ test('levelgen 2.5: visibleSeedTypes uses seedTypes when present', function()
 end)
 
 -- 3. uproot ----------------------------------------------------------------------
-test('uproot 3.1: freeing a plot lets it take a new seed; the seed count is unchanged', function()
+test('uproot 3.1: freeing a plot lets it take a new seed; uprooting refunds one seed (grown or growing)', function()
     local back = toBackrooms()
     back.rooms = {BACKROOMS_ROOMS[2]}
     back:loadRoom(1)
@@ -3615,7 +3615,7 @@ test('uproot 3.1: freeing a plot lets it take a new seed; the seed count is unch
     local plot = back.room:plotById('pit')
     eq(back:uproot() and true, true, 'uprooted while growing')
     eq(plot.crop, nil, 'plot free'); eq(#back.room.crops, 0)
-    eq(back.gameData.seeds.pumpkin, 1, 'no refund')
+    eq(back.gameData.seeds.pumpkin, 2, 'growing crop: one seed refunded')
     assert(back.message.text:find('Uprooted', 1, true), 'message')
     -- the cancelled growth never completes
     Timer.update(10, back.timers)
@@ -3629,13 +3629,14 @@ test('uproot 3.1: freeing a plot lets it take a new seed; the seed count is unch
     local solids = #back.room:solidColliders()
     local ok3 = back:uproot()
     eq(ok3, true, 'uprooted when grown')
+    eq(back.gameData.seeds.pumpkin, 2, 'grown crop: one seed refunded (planted 1, back to 2)')
     eq(#back.room:solidColliders(), solids - 1, 'structure no longer collides')
     back.gameData.seeds.vine = 1
     back.selectedSeed = 'vine'
     local ok4 = back:plant()
     eq(ok4, true, 'plot accepts a new seed')
     eq(back.gameData.seeds.vine, 0)
-    eq(back.gameData.seeds.pumpkin, 0, 'pumpkin count only went down by planting')
+    eq(back.gameData.seeds.pumpkin, 2, 'both pumpkins were refunded; the vine was a different type')
     -- the X key drives it
     press('x')
     eq(plot.crop, nil, 'X uproots')

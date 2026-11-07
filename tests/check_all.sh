@@ -23,13 +23,12 @@ MAZE_SEEDS=1,2 MAZE_DIFFS=1,2,3 MAZE_OUT=/tmp/check_maze xvfb-run -a love tests/
 tail -1 /tmp/check_maze.txt
 
 # Dedicated maze test files from the parallel branches (branch plots, refund, checkpoints,
-# scaling). Each runs as soon as it exists in the tree; none is skipped once merged.
+# scaling). All four are merged; a missing file fails the run.
 for t in maze_branches maze_refund maze_checkpoints maze_scaling; do
-    if [ -f "tests/$t.lua" ]; then
-        step "tests/$t.lua"
-        love tests/love_runner "tests/$t.lua" > "/tmp/check_$t.txt" 2>&1 || fail=1
-        grep -E '^FAIL|^ERROR|error' "/tmp/check_$t.txt"; tail -1 "/tmp/check_$t.txt"
-    fi
+    step "tests/$t.lua"
+    if [ ! -f "tests/$t.lua" ]; then echo "FAIL (tests/$t.lua is missing)"; fail=1; continue; fi
+    love tests/love_runner "tests/$t.lua" > "/tmp/check_$t.txt" 2>&1 || fail=1
+    grep -E '^FAIL|^ERROR|error' "/tmp/check_$t.txt"; tail -1 "/tmp/check_$t.txt"
 done
 
 step "pit-rim measurement (tests/rim.lua): pit plots plantable over >= 2.5 m of floor"
@@ -53,9 +52,9 @@ for mode in "" "--placeholder-assets"; do
     else echo "ok (still running after 8 s, no errors logged)"; fi
 
     step "scripted playthrough: love . --autotest $mode"
-    AUTOTEST_OUT="/tmp/autotest${mode}" xvfb-run -a -s '-screen 0 1024x1024x24' timeout 300 \
+    AUTOTEST_OUT="/tmp/autotest${mode}" xvfb-run -a -s '-screen 0 1024x1024x24' timeout 600 \
         love . --autotest $mode > /tmp/check_autotest.txt 2>&1 || fail=1
-    grep -E 'FAIL|ERROR|checks,' /tmp/check_autotest.txt
+    grep -E 'FAIL|ERROR|checks,|LEVEL-TIME' /tmp/check_autotest.txt
 done
 
 step "package: sh tools/package.sh (reproducible .love)"

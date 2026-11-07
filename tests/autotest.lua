@@ -440,6 +440,16 @@ local function script()
                 'level %d obstacle %d (%s): %s selected and held', idx, k, link.module, link.seed)
             press('e')
             check(plot.crop ~= nil, 'level %d obstacle %d: %s planted', idx, k, link.seed)
+            if k == 1 then
+                -- uproot refunds the seed (section 4): X on the growing crop, then plant it again
+                local before = back.gameData.seeds[link.seed]
+                press('x')
+                check(plot.crop == nil and back.gameData.seeds[link.seed] == before + 1,
+                    'level %d: X uproots the growing %s and refunds the seed (%d -> %d)', idx, link.seed, before, back.gameData.seeds[link.seed])
+                press('e')
+                check(plot.crop ~= nil and back.gameData.seeds[link.seed] == before,
+                    'level %d: %s planted again after the refund', idx, link.seed)
+            end
             wait(CROP_DEFS[link.seed].growTime + 0.4)
             if k == 1 then shot(string.format('18-level%d-first-crop', idx)) end
             -- the maze rotates modules: face the travel direction, walk until past the cell's far edge
@@ -449,6 +459,19 @@ local function script()
             local crossed = holdUntil('w', function() return along() > LEVELGEN_CELL / 2 + 0.4 end, 10)
             check(crossed, 'level %d obstacle %d (%s) crossed (x=%.2f y=%.2f z=%.2f)', idx, k, link.module, back.player.x, back.player.y, back.player.z)
             if not crossed then return false end
+            -- region checkpoints (section 5): entering region k makes its checkpoint current
+            check(back.checkpointRegion == k, 'level %d obstacle %d: checkpoint is now region %d (is %s)', idx, k, k, tostring(back.checkpointRegion))
+            if k == 1 then
+                -- falling respawns at that checkpoint and keeps crops, seeds and pickups
+                local cp = back.room.checkpoints[2]
+                local crops0, seeds0, picks0 = #back.room.crops, seeds(), #back.room.pickups
+                back.player:setPosition(back.player.x, back.player.y, back.room.killZ - 5)
+                wait(0.4)
+                check(cp and math.abs(back.player.x - cp[1]) < 1 and math.abs(back.player.y - cp[2]) < 1 and back.player.z > back.room.killZ,
+                    'level %d: killZ respawns at the region-1 checkpoint (%.1f, %.1f)', idx, back.player.x, back.player.y)
+                check(#back.room.crops == crops0 and seeds() == seeds0 and #back.room.pickups == picks0 and plot.crop ~= nil,
+                    'level %d: respawn keeps crops, seeds and pickups', idx)
+            end
         end
         local expect = idx + 1
         -- the winding maze has no straight walk to the exit: stand in the exit cell, face it, walk in
@@ -472,8 +495,18 @@ local function script()
         check(back.roomIndex == idx, 'now in level %d (%s)', idx, back.room.name)
         wait(0.3)
         shot(string.format('15-level%d-arrival', idx), {0, 0, 450, 70, 3})
+        local f0, w0 = frame, love.timer.getTime()
         ok = solveLevel(idx)
         check(ok, 'level %d: exit reached', idx)
+        -- per-level time (task 6.2) against a budget that scales with the level's walking time:
+        -- 60 s + 2x the pure walk of the minimum path + 8 s per obstacle (growth, shots, resets)
+        local row = LEVELGEN_DIFFICULTY[idx - 1] or LEVELGEN_DIFFICULTY[#LEVELGEN_DIFFICULTY]
+        local walk = (row.minPath - 1) * LEVELGEN_CELL / BACKROOMS_WALK_SPEED
+        local budget = 60 + 2 * walk + 8 * row.obstacles
+        local simulated = (frame - f0) * DT
+        log('LEVEL-TIME level %d: %.1f s simulated (budget %.0f s, pure walk of the minimum path %.1f s), %.1f s wall, %d frames',
+            idx, simulated, budget, walk, love.timer.getTime() - w0, frame - f0)
+        check(simulated <= budget, 'level %d: solved within its %.0f s budget (%.1f s)', idx, budget, simulated)
         if not ok then break end
     end
     check(ok and is(EndingState), 'last generated level exit -> ending')

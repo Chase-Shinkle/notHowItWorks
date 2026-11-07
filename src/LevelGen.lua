@@ -15,7 +15,7 @@ local VOID_Z = LEVELGEN_VOID_Z
 -- section 3 tunables (defaults here to keep constants.lua conflict-free)
 LEVELGEN_OPT_TYPES = LEVELGEN_OPT_TYPES or {'pit', 'gap'}   -- optional modules never rise
 LEVELGEN_OPT_MAX_AREA = LEVELGEN_OPT_MAX_AREA or 8          -- most cells behind one optional module
-LEVELGEN_SHORTCUT_MIN = LEVELGEN_SHORTCUT_MIN or 6          -- shortcut must skip at least this many steps
+LEVELGEN_SHORTCUT_MIN = LEVELGEN_SHORTCUT_MIN or 4          -- shortcut must skip at least this many tree steps (route z..y of >= 4 becomes 2); 6 left ~3% of candidates valid
 local MODULUS = 2147483647
 
 -- RNG -------------------------------------------------------------------------
@@ -403,7 +403,7 @@ function LevelGen.build(seed, difficulty)
             end
         end
         orng:shuffle(cand)
-        local want, taken = spec.optional or math.max(2, n), {}
+        local want, taken = spec.optional or spec.branches or math.max(2, n), {}   -- branches: LEVELGEN_DIFFICULTY row (section 6)
         local rewardFlip = orng:int(0, 1)
         for _, c in ipairs(cand) do
             if #optional >= want then break end

@@ -4,9 +4,12 @@
 -- Env: MAZE_SEEDS ("1,2,3"), MAZE_DIFFS ("1,2,3"), MAZE_OUT ("/workspace/qa/maze").
 -- Writes <out>/maze_d<diff>_s<seed>.png and <out>/layouts.txt. Reads only the
 -- LevelGen meta interface (grid, path, chain, cells, edges, loopEdges, regions,
--- rooms) plus data.pickups / data.plots; optional fields from later sections
--- (cells with a module but no chain index = optional gates, meta.checkpoints,
--- meta.shortcuts) are drawn when present and ignored otherwise.
+-- rooms, optional, shortcuts) plus data.pickups / data.plots. Field names are the
+-- real meta ones: cell.optional / cell.shortcut (optional gate cells), cell.opt
+-- (index of the optional area a cell lies in), meta.optional[i] = {plot, module,
+-- cell, area, reward, shortcut, from, to, supply}, meta.shortcuts (those with
+-- shortcut = true). Checkpoints are not in meta: they are computed by the real
+-- Room.buildCheckpoints on a stub table (no Room is built).
 package.path = './?.lua;./?/init.lua;' .. package.path
 local realImage = love.image          -- the mock replaces `love`; keep the real encoder
 local realPrint = print
@@ -36,7 +39,7 @@ local MOD_LETTER = {pit = 'P', gap = 'G', ledge = 'L'}
 -- ASCII ------------------------------------------------------------------------
 -- 2W+1 x 2H+1 characters, x to the right, y (cy) downward as printed. Cell chars:
 -- S start, E exit, P/G/L gate (pit/gap/ledge; lowercase = optional gate),
--- * other critical-path cell, digit = region of an off-path cell.
+-- o cell inside an optional area, * other critical-path cell, digit = region of an off-path cell.
 -- Between cells: - | open, = " doorway, ~ : loop.
 local function ascii(data)
     local m = data.meta
@@ -50,7 +53,8 @@ local function ascii(data)
         if c.start then ch = 'S' elseif c.exit then ch = 'E'
         elseif c.module then
             ch = MOD_LETTER[c.module] or '?'
-            if not c.k then ch = ch:lower() end
+            if c.optional then ch = ch:lower() end
+        elseif c.opt then ch = 'o'
         elseif c.onPath then ch = '*'
         else ch = tostring((c.region or 0) % 10) end
         g[2 * c.cy + 2][2 * c.cx + 2] = ch
@@ -78,10 +82,17 @@ local function describe(data, seed, diff)
     local crit, extra = 0, 0
     for _, pk in ipairs(data.pickups) do if pk.tier == 'critical' then crit = crit + 1 else extra = extra + 1 end end
     local rooms = m.rooms and #m.rooms or 0
-    return string.format('== seed %d diff %d (level seed %d, attempt %s%s)\ngrid %dx%d, path %d cells (min %d), turns %d (min %d), loops %d, rooms %d, regions %d, boxes %d, pickups %d critical + %d extra, plots %d\nchain: %s',
+    local opt = {}
+    for i, o in ipairs(m.optional or {}) do
+        opt[i] = string.format('%s:%s(%s)@%d,%d %s%s', o.plot, o.module, o.seed, o.cell[1], o.cell[2],
+            o.shortcut and 'shortcut' or (o.kind or '?') .. '/' .. tostring(o.reward), o.area and (' area ' .. #o.area) or '')
+    end
+    local walk = (m.pathLength - 1) * LEVELGEN_CELL / BACKROOMS_WALK_SPEED
+    return string.format('== seed %d diff %d (level seed %d, attempt %s%s)\ngrid %dx%d, path %d cells (min %d, %.1f s walk), turns %d (min %d), loops %d, rooms %d, regions %d, boxes %d, pickups %d critical + %d extra, plots %d (%d critical + %d optional)\nchain: %s\noptional: %s',
         seed, diff, m.seed, tostring(m.attempt), m.fallback and ', FALLBACK' or '', m.grid[1], m.grid[2], m.pathLength,
-        m.minPath, m.turns, m.minTurns, m.loops or 0, rooms, m.regions and #m.regions or 0, m.boxCount or #data.boxes,
-        crit, extra, #(data.plots or {}), table.concat(chain, '  '))
+        m.minPath, walk, m.turns, m.minTurns, m.loops or 0, rooms, m.regions and #m.regions or 0, m.boxCount or #data.boxes,
+        crit, extra, #(data.plots or {}), #m.chain, #(m.optional or {}), table.concat(chain, '  '),
+        #opt > 0 and table.concat(opt, '  ') or 'none')
 end
 
 -- PNG --------------------------------------------------------------------------
@@ -138,6 +149,7 @@ local COL = {
     exit = rgb(240, 70, 70), pit = rgb(255, 150, 40), gap = rgb(220, 90, 230), ledge = rgb(60, 220, 220),
     optional = rgb(150, 150, 150), crit = rgb(255, 235, 120), extra = rgb(240, 240, 240), plot = rgb(120, 255, 120),
     text = rgb(225, 228, 235), ckpt = rgb(255, 255, 255),
+    optArea = rgb(30, 22, 34), shortcut = rgb(255, 120, 200),
 }
 local REGION_TINT = {rgb(46, 50, 62), rgb(52, 58, 76), rgb(60, 52, 76), rgb(70, 56, 62), rgb(56, 70, 60), rgb(70, 66, 50)}
 
@@ -149,6 +161,8 @@ local function png(data, seed, diff, path)
     local cv = newCanvas(math.max(mapW + 2 * pad, 640), mapH + 2 * pad + legendH)
     cv.rect(0, 0, cv.w, cv.h, COL.bg)
     local function cc(cx, cy) return pad + cx * S + S / 2, pad + cy * S + S / 2 end
+    -- world x -> map x, world y -> map y (cell cy spans y = cy*6 +- 3)
+    local function wp(px, py) return pad + px / CELL * S, pad + (py / CELL + 0.5) * S end
     local byKey = {}
     for _, c in ipairs(m.cells) do byKey[c.cx .. ',' .. c.cy] = c end
     local inRoom = {}
@@ -156,7 +170,7 @@ local function png(data, seed, diff, path)
 
     for _, c in ipairs(m.cells) do
         local x, y = pad + c.cx * S, pad + c.cy * S
-        local tint = REGION_TINT[((c.region or 0) % #REGION_TINT) + 1]
+        local tint = c.opt and COL.optArea or REGION_TINT[((c.region or 0) % #REGION_TINT) + 1]
         cv.rect(x + 3, y + 3, S - 6, S - 6, inRoom[c.cx .. ',' .. c.cy] and COL.room or tint)
     end
     -- room blocks: fill the seams between their four cells
@@ -184,32 +198,37 @@ local function png(data, seed, diff, path)
         local x1, y1 = cc(m.path[i + 1][1], m.path[i + 1][2])
         cv.line(x0, y0, x1, y1, 5, COL.path)
     end
-    -- shortcuts / checkpoints from later sections, if present
+    -- shortcuts: dashed line from the joined cell to the far cell
     for _, sc in ipairs(m.shortcuts or {}) do
-        if type(sc) == 'string' then
-            local ax, ay, bx, by = split(sc)
-            if ax then local x0, y0 = cc(ax, ay); local x1, y1 = cc(bx, by); cv.line(x0, y0, x1, y1, 4, COL.optional, 3) end
+        if sc.from and sc.to then
+            local x0, y0 = cc(sc.from[1], sc.from[2]); local x1, y1 = cc(sc.to[1], sc.to[2])
+            cv.line(x0, y0, x1, y1, 4, COL.shortcut, 3)
         end
     end
     -- gates, start, exit
     for _, c in ipairs(m.cells) do
         local x, y = cc(c.cx, c.cy)
         if c.module then
-            local col = c.k and (COL[c.module] or COL.optional) or COL.optional
+            local col = (not c.optional) and (COL[c.module] or COL.optional) or COL.optional
             cv.rect(x - 11, y - 11, 22, 22, col)
             if c.dir then cv.line(x, y, x + c.dir[1] * 22, y + c.dir[2] * 22, 3, COL.bg) end   -- travel direction (map y down)
-            cv.text(c.k and tostring(c.k) or 'O', x - 2, y - 3, 2, COL.bg)
+            cv.text(c.k and tostring(c.k) or (c.shortcut and 'S' or 'O'), x - 2, y - 3, 2, COL.bg)
         end
         if c.start then cv.rect(x - 8, y - 8, 16, 16, COL.start) end
         if c.exit then cv.rect(x - 8, y - 8, 16, 16, COL.exit) end
-        if c.branch or (not c.onPath and c.deadEnd) then cv.rect(x - 3, y - 3, 6, 6, COL.edge) end
+        if not c.onPath and c.deadEnd then cv.rect(x - 3, y - 3, 6, 6, COL.edge) end
     end
-    for _, cp in ipairs(m.checkpoints or {}) do
-        local cx, cy = cp.cx or (cp.cell and cp.cell[1]), cp.cy or (cp.cell and cp.cell[2])
-        if cx then local x, y = cc(cx, cy); cv.rect(x - 14, y + 8, 6, 6, COL.ckpt) end
+    -- region checkpoints (world x, y of a cell centre) from the real Room.buildCheckpoints
+    local stub = {data = data, spawn = data.spawn}
+    Room.buildCheckpoints(stub)
+    for r = 2, #stub.checkpoints do
+        local cp = stub.checkpoints[r]
+        if cp then
+            local x, y = wp(cp[1], cp[2])
+            cv.rect(x - 14, y + 8, 6, 6, COL.ckpt)
+        end
     end
-    -- plots and pickups (world x -> map x, world y -> map y; cell cy spans y = cy*6 +- 3)
-    local function wp(px, py) return pad + px / CELL * S, pad + (py / CELL + 0.5) * S end
+    -- plots and pickups
     for _, pl in ipairs(data.plots or {}) do
         local x, y = wp(pl.pos[1], pl.pos[2]); cv.rect(x - 3, y - 3, 6, 6, COL.plot)
     end
@@ -224,7 +243,7 @@ local function png(data, seed, diff, path)
     cv.text(string.format('SEED %d DIFF %d  GRID %dX%d  PATH %d  TURNS %d  LOOPS %d', seed, diff, W, H, m.pathLength, m.turns, m.loops or 0), pad, ly - 14, 2, COL.text)
     local items = {
         {COL.start, 'START'}, {COL.exit, 'EXIT'}, {COL.pit, 'PIT GATE'}, {COL.gap, 'GAP GATE'}, {COL.ledge, 'LEDGE GATE'},
-        {COL.optional, 'OPTIONAL GATE (O)'}, {COL.path, 'CRITICAL PATH'}, {COL.edge, 'OPEN EDGE (BRANCH TREE)'},
+        {COL.optional, 'OPTIONAL GATE (O / S=SHORTCUT)'}, {COL.optArea, 'OPTIONAL AREA'}, {COL.shortcut, 'SHORTCUT (DASHED)'}, {COL.ckpt, 'CHECKPOINT'}, {COL.path, 'CRITICAL PATH'}, {COL.edge, 'OPEN EDGE (BRANCH TREE)'},
         {COL.door, 'DOORWAY'}, {COL.loop, 'LOOP (DASHED)'}, {COL.room, 'LARGE ROOM'}, {COL.crit, 'CRITICAL SEED'},
         {COL.extra, 'EXTRA SEED'}, {COL.plot, 'PLOT'},
     }
@@ -250,7 +269,7 @@ for _, d in ipairs(diffs) do
         n = n + 1
     end
 end
-txt[#txt + 1] = 'ASCII legend: S start, E exit, P/G/L pit/gap/ledge gate (lowercase = optional gate), * other critical-path cell, digit = region of an off-path cell; - | open passage, = " doorway, ~ : loop. x right, y down.\n'
+txt[#txt + 1] = 'ASCII legend: S start, E exit, P/G/L pit/gap/ledge gate (lowercase = optional gate), * other critical-path cell, o cell in an optional area, digit = region of an off-path cell; - | open passage, = " doorway, ~ : loop. x right, y down.\n'
 local f = assert(io.open(outDir .. '/layouts.txt', 'w'))
 f:write(table.concat(txt, '\n'))
 f:close()

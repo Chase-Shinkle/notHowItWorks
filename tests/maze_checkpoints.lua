@@ -1,5 +1,5 @@
 -- Focused assertions for branching-maze-levels 5.1-5.2 (checkpoints / respawn).
--- Written, NOT run. From repo root:  lua tests/maze_checkpoints.lua
+-- Written, NOT run (check_all.sh runs it once). From repo root:  lua tests/maze_checkpoints.lua
 package.path = './?.lua;./?/init.lua;' .. package.path
 local mock = dofile('tests/mock_love.lua')
 mock.install()
@@ -40,6 +40,9 @@ test('5.1 checkpoints exist per region on plain floor, never on a plot/crop/modu
             end
             for _, c in ipairs(data.meta.cells) do
                 local mx, my = LevelGen.cellCenter(c.cx, c.cy)
+                if math.abs(mx - cp[1]) < 1e-6 and math.abs(my - cp[2]) < 1e-6 and reg.index > 0 then
+                    check(not (c.optional or c.opt or c.shortcut or c.start or c.exit), 'checkpoint cell is not optional / start / exit')
+                end
                 if c.kind == 'module' then
                     check(math.abs(mx - cp[1]) > 1e-6 or math.abs(my - cp[2]) > 1e-6, 'not in a module cell')
                 end
