@@ -374,7 +374,8 @@ function FarmState:update(dt)
     Timer.update(dt, self.timers)
 
     if IsDebugAdvancePressed() then
-        gStateMachine:change('backrooms', self.gameData)
+        -- same seeds-only hand-off as the real break, so coins/crops never leak
+        gStateMachine:change('backrooms', CarryOverGameData(self.gameData))
         return
     end
 

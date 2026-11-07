@@ -11,11 +11,16 @@ require 'src/Assets'
 require 'src/Geometry'
 require 'src/GameData'
 require 'src/Farm'
+require 'src/PlayerController'
+require 'src/Billboard'
+require 'src/Room'
+require 'src/rooms'
 
 require 'src/states/game/BaseState'
 require 'src/states/game/StartState'
 require 'src/states/game/FarmState'
 require 'src/states/game/BackroomsState'
+require 'src/states/game/EndingState'
 
 -- `love . --placeholder-assets` forces every asset to its fallback, which is
 -- equivalent to launching with empty asset folders.

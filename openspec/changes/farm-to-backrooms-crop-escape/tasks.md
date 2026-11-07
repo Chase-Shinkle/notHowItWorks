@@ -2,7 +2,7 @@
 
 > A checked box means the code is written. Runtime and manual verification
 > status lives in `verification.md`; no Lua runtime was available, so those
-> checks are still pending for 1.1-3.4.
+> checks are still pending for 1.1-4.5.
 
 ## 1. Foundation and render path
 
@@ -26,11 +26,11 @@
 
 ## 4. Backrooms world (first-person-controls, backrooms-collision, room-progression, billboard-assets)
 
-- [ ] 4.1 Implement first-person look and move using `g3d.camera` and `mousemoved` forwarding, with mouse capture; verify walking and looking in a plain box room.
-- [ ] 4.2 Implement a capsule player controller with gravity and slide-on-contact against room models via `g3d.collisions`; verify no clipping through walls/floors and no sticking in corners.
-- [ ] 4.3 Implement the data-driven `Room` builder (wall/floor boxes, plots, exit, seed allotment); verify a sample room loads from a data table.
-- [ ] 4.4 Add billboarded farm-asset sprites facing the camera; verify they rotate to face the player.
-- [ ] 4.5 Implement exit detection, room progression, and the ending screen; verify reaching an exit loads the next room and the last exit shows the ending.
+- [x] 4.1 Implement first-person look and move using `g3d.camera` and `mousemoved` forwarding, with mouse capture; verify walking and looking in a plain box room.
+- [x] 4.2 Implement a capsule player controller with gravity and slide-on-contact against room models via `g3d.collisions`; verify no clipping through walls/floors and no sticking in corners.
+- [x] 4.3 Implement the data-driven `Room` builder (wall/floor boxes, plots, exit, seed allotment); verify a sample room loads from a data table.
+- [x] 4.4 Add billboarded farm-asset sprites facing the camera; verify they rotate to face the player.
+- [x] 4.5 Implement exit detection, room progression, and the ending screen; verify reaching an exit loads the next room and the last exit shows the ending.
 
 ## 5. Seed puzzles (seed-types, plot-planting, room-puzzles, tutorial-room, room-reset)
 

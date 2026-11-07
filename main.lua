@@ -15,6 +15,7 @@ function love.load()
         ['start'] = function() return StartState() end,
         ['farm'] = function() return FarmState() end,
         ['backrooms'] = function() return BackroomsState() end,
+        ['ending'] = function() return EndingState() end,
     })
     g3d.camera.resize(love.graphics.getDimensions())
     gStateMachine:change('start')

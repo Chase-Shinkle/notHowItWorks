@@ -32,6 +32,11 @@ local function step()
     love.update(1 / 60)
 end
 
+-- Is `state` an instance of the state class `cls` (e.g. EndingState)?
+local function isState(state, cls)
+    return state ~= nil and state.update == cls.update and state.render == cls.render
+end
+
 local function find(list, pattern)
     for _, line in ipairs(list) do if line:find(pattern, 1, true) then return line end end
 end
@@ -54,7 +59,9 @@ test('backrooms opts out of push and draws g3d with depth then HUD without', fun
     mock.reset()
     love.draw()
     eq(mock.count('push.apply'), 0, 'push bypassed')
-    eq(mock.count('model.draw'), 3, 'cube, cross cube, floor drawn')
+    local room = gStateMachine.current.room
+    eq(mock.count('model.draw'), #room.models + #room.plots + 1 + #room.billboards,
+        'room boxes, plots, exit marker and billboards drawn')
     local first = mock.calls[1]
     eq(first.name, 'setDepthMode'); eq(first.args[1], 'lequal'); eq(first.args[2], true)
     -- the depth reset must come after every model draw (HUD drawn last)
@@ -68,16 +75,24 @@ test('backrooms opts out of push and draws g3d with depth then HUD without', fun
 end)
 
 -- 1.2 states and debug transitions -------------------------------------------
-test('start -> farm -> backrooms -> start via debug key', function()
+test('start -> farm -> backrooms rooms -> ending -> start via debug key', function()
     loadGame()
     assert(gStateMachine.current.usesPush ~= false, 'start uses push')
     mock.press('f1'); step()
     eq(gStateMachine.current.usesPush, true, 'farm state')
     assert(gStateMachine.current.gameData, 'farm has game data')
     mock.press('f1'); step()
-    eq(gStateMachine.current.usesPush, false, 'backrooms state')
+    local back = gStateMachine.current
+    eq(back.usesPush, false, 'backrooms state')
+    -- in the backrooms the debug key skips the current room
+    for i = 1, #BACKROOMS_ROOMS do
+        eq(gStateMachine.current, back, 'still in the backrooms')
+        eq(back.roomIndex, i, 'room ' .. i)
+        mock.press('f1'); step()
+    end
+    assert(isState(gStateMachine.current, EndingState), 'ending state')
     mock.press('f1'); step()
-    assert(gStateMachine.current.usesPush == nil, 'back at start')
+    assert(isState(gStateMachine.current, StartState), 'back at start')
 end)
 
 test('debug key is ignored when DEBUG_MODE is off', function()
@@ -104,13 +119,20 @@ test('new game data has seeds, coins, crops, hasSold', function()
     eq(STARTING_SEEDS.vine, 2)
 end)
 
-test('the same game-data table flows farm -> backrooms and seeds are printed', function()
+test('debug farm -> backrooms carries seeds only (via CarryOverGameData) and prints them', function()
     loadGame()
     mock.press('f1'); step()
     local farmData = gStateMachine.current.gameData
     farmData.seeds.vine = 7
+    farmData.coins = 12; farmData.crops.pumpkin = 3; farmData.hasSold = true
     mock.press('f1'); step()
-    assert(gStateMachine.current.gameData == farmData, 'same table passed through change')
+    local back = gStateMachine.current
+    assert(back.gameData ~= farmData, 'a fresh carried-over table, not the farm table')
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=2 pumpkin=2 vine=7', 'seeds kept')
+    eq(back.gameData.coins, 0, 'coins do not leak through the debug skip')
+    eq(back.gameData.crops.pumpkin, 0, 'crops do not leak through the debug skip')
+    eq(back.gameData.hasSold, true)
+    eq(farmData.coins, 12, 'farm data untouched')
     assert(find(mock.printed, '[backrooms] seeds received: beanstalk=2 pumpkin=2 vine=7'), 'seeds printed')
 end)
 
@@ -471,13 +493,15 @@ test('farm: crop art loads from the pack when present', function()
     end
 end)
 
-test('farm: shared game data survives farm -> backrooms', function()
+test('farm: seeds spent on the farm stay spent in the backrooms (debug skip)', function()
     local farm = toFarm()
     press('e')                                          -- spend one beanstalk seed
-    local data = farm.gameData
     mock.press('f1'); step()
-    assert(gStateMachine.current.gameData == data, 'same table')
+    local back = gStateMachine.current
+    eq(back.usesPush, false, 'in backrooms')
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=1 pumpkin=2 vine=2')
     assert(find(mock.printed, 'beanstalk=1 pumpkin=2 vine=2'), 'spent seed visible in backrooms')
+    eq(back.gameData.coins, 0)
 end)
 
 test('Farm rules: plant/harvest/sell return values', function()
@@ -753,6 +777,541 @@ test('break: sequence renders and completes with every asset as a placeholder', 
     for _ = 1, 6 do run(BREAK_TIME / 6); love.draw() end
     run(0.1); love.draw()
     eq(gStateMachine.current.usesPush, false, 'reached backrooms')
+end)
+
+-- 4. backrooms world -----------------------------------------------------------
+local function near(a, b, tol, msg)
+    if math.abs(a - b) > (tol or 1e-6) then
+        error((msg or 'expected near') .. ': got ' .. tostring(a) .. ', want ' .. tostring(b) .. ' +- ' .. tostring(tol or 1e-6), 2)
+    end
+end
+
+-- Enters the backrooms with `seeds` carried over (default: a new game's).
+local function toBackrooms(seeds, args)
+    loadGame(args)
+    gStateMachine:change('backrooms', CarryOverGameData(NewGameData(seeds and {seeds = seeds} or nil)))
+    local back = gStateMachine.current
+    assert(back.room and back.player, 'in backrooms state')
+    return back
+end
+
+-- A closed 6 x 6 x 3 m test room (interior x, y in [-3, 3], floor top z = 0)
+-- plus `extra` boxes; its exit is far below the floor, out of the way.
+local function testRoom(extra)
+    return Room({
+        id = 'test', spawn = {0, 0, 0, 0},
+        boxes = Room.joinBoxes(Room.shellBoxes(6, 6, 3), extra or {}),
+        exit = {pos = {0, 0, -50}, size = {1, 1, 1}},
+        allotment = {},
+    })
+end
+
+-- Steps a bare controller for `seconds` at 60 fps.
+local function simulate(player, room, seconds, input, direction)
+    for _ = 1, math.floor(seconds * 60 + 0.5) do
+        player:update(1 / 60, input or {}, direction or 0, room.colliders)
+    end
+end
+
+local R = BACKROOMS_PLAYER_RADIUS
+
+-- 4.1 first-person look and move ----------------------------------------------
+test('backrooms: entering captures the mouse; Esc frees it, a click recaptures, leaving releases', function()
+    local back = toBackrooms()
+    eq(mock.relativeMode, true, 'relative mouse mode on entry')
+    eq(back.mouseCaptured, true)
+    press('escape')
+    eq(back.mouseCaptured, false); eq(mock.relativeMode, false, 'freed by Esc')
+    local dir = g3d.camera.getDirectionPitch()
+    love.mousemoved(0, 0, 120, 40)
+    eq(g3d.camera.getDirectionPitch(), dir, 'no look while the mouse is free')
+    eq(mock.relativeMode, false, 'firstPersonLook not called (it would recapture)')
+    mock.click(1); step()
+    eq(back.mouseCaptured, true); eq(mock.relativeMode, true, 'click recaptures')
+    back:loadRoom(#BACKROOMS_ROOMS); back:advance()   -- to the ending
+    eq(mock.relativeMode, false, 'released on leaving the backrooms')
+end)
+
+test('backrooms: mouse movement turns the g3d camera (yaw and clamped pitch)', function()
+    local back = toBackrooms()
+    local dir0, pitch0 = g3d.camera.getDirectionPitch()
+    near(dir0, BACKROOMS_ROOMS[1].spawn[4], 1e-9, 'spawn yaw'); near(pitch0, 0, 1e-9)
+    love.mousemoved(400, 400, 30, 0)
+    local dir1, pitch1 = g3d.camera.getDirectionPitch()
+    near(dir1, dir0 - 30 / 300, 1e-9, 'mouse right turns right'); near(pitch1, 0, 1e-9)
+    love.mousemoved(400, 400, 0, -60)
+    local _, pitch2 = g3d.camera.getDirectionPitch()
+    near(pitch2, 60 / 300, 1e-9, 'mouse up looks up')
+    love.mousemoved(400, 400, 0, -100000)
+    local _, pitch3 = g3d.camera.getDirectionPitch()
+    near(pitch3, math.pi / 2, 1e-9, 'pitch clamped')
+    -- the camera target follows the look direction
+    local lx, ly, lz = g3d.camera.getLookVector()
+    assert(lz > 0.99, 'looking straight up, lz=' .. lz)
+    eq(back.mouseCaptured, true)
+end)
+
+test('backrooms: WASD/arrows walk relative to the look direction and the camera follows the eyes', function()
+    local back = toBackrooms()
+    local p = back.player
+    run(0.5)                                         -- settle on the floor
+    local x0, y0 = p.x, p.y
+    mock.hold('w'); run(0.5); mock.release('w')
+    near(p.x - x0, BACKROOMS_WALK_SPEED * 0.5, 0.15, 'forward along +x (spawn yaw 0)')
+    near(p.y, y0, 1e-6, 'no sideways drift')
+    -- camera eye follows the controller
+    near(g3d.camera.position[1], p.x, 1e-9); near(g3d.camera.position[2], p.y, 1e-9)
+    near(g3d.camera.position[3], p.z + BACKROOMS_EYE_HEIGHT, 1e-9)
+    -- strafe right (facing +x, z up, right is -y)
+    local y1 = p.y
+    mock.hold('d'); run(0.25); mock.release('d')
+    assert(p.y < y1 - 0.5, 'd strafes right (-y)')
+    -- turn 90 degrees left with the mouse, then the up arrow walks +y
+    love.mousemoved(0, 0, -(math.pi / 2) * 300, 0)
+    local x2, y2 = p.x, p.y
+    mock.hold('up'); run(0.25); mock.release('up')
+    assert(p.y > y2 + 0.5, 'forward is now +y'); near(p.x, x2, 1e-3, 'no x drift')
+    -- back + left together are normalised (not faster on diagonals)
+    local x3, y3 = p.x, p.y
+    mock.hold('s'); mock.hold('a'); run(0.25); mock.release('s'); mock.release('a')
+    local moved = math.sqrt((p.x - x3) ^ 2 + (p.y - y3) ^ 2)
+    near(moved, BACKROOMS_WALK_SPEED * 0.25, 0.1, 'diagonal speed')
+end)
+
+test('backrooms: renders at native resolution (camera aspect, HUD crosshair at screen centre)', function()
+    local back = toBackrooms()
+    local resized = mock.callsNamed('camera.resize')
+    local last = resized[#resized]
+    eq(last.args[1], 800); eq(last.args[2], 800)
+    mock.reset(); love.draw()
+    eq(mock.count('push.apply'), 0)
+    local centred = false
+    for _, c in ipairs(mock.callsNamed('line')) do
+        if c.args[1] == 394 and c.args[2] == 400 and c.args[3] == 406 then centred = true end
+    end
+    assert(centred, 'crosshair drawn at the native window centre')
+    assert(find(mock.printed, '[backrooms] entered room 1/'), 'room entry logged')
+    eq(back.roomIndex, 1)
+end)
+
+-- 4.2 capsule controller and collision ------------------------------------------
+test('collision: the player rests on the floor under gravity without jitter', function()
+    local room = testRoom()
+    local p = PlayerController(0, 0, 0)
+    simulate(p, room, 2)
+    near(p.z, 0, 0.01, 'on the floor'); eq(p.grounded, true); eq(p.vz, 0)
+    local z = p.z
+    simulate(p, room, 1)
+    near(p.z, z, 0.005, 'stable while standing')
+end)
+
+test('collision: the player falls from height and lands on the floor', function()
+    local room = testRoom()
+    -- start at z = 1: the 1.7 m capsule must fit under the 3 m ceiling
+    local p = PlayerController(0, 0, 1)
+    simulate(p, room, 0.2)
+    assert(p.z < 1 and p.z > 0.5, 'falling, z=' .. p.z); eq(p.grounded, false)
+    simulate(p, room, 2)
+    near(p.z, 0, 0.01, 'landed'); eq(p.grounded, true)
+end)
+
+test('collision: a wall stops the player at the wall', function()
+    local room = testRoom()
+    local p = PlayerController(0, 0, 0)
+    simulate(p, room, 3, {forward = 1}, 0)            -- walk +x into the x = 3 wall
+    assert(p.x <= 3 - R + 0.01, 'not through the wall, x=' .. p.x)
+    assert(p.x >= 3 - R - 0.05, 'stopped at the wall, x=' .. p.x)
+    near(p.y, 0, 1e-3, 'head-on: no sideways push')
+    near(p.z, 0, 0.01, 'still on the floor')
+end)
+
+test('collision: walking diagonally into a wall slides along it', function()
+    local room = testRoom()
+    local p = PlayerController(0, -2, 0)
+    simulate(p, room, 1.5, {forward = 1}, math.rad(30))
+    assert(p.x <= 3 - R + 0.01, 'held at the wall, x=' .. p.x)
+    -- the y part of the motion survives the contact: -2 + 4 sin30 * 1.5 = 1
+    assert(p.y > 0.8, 'slid along the wall, y=' .. p.y)
+end)
+
+test('collision: no sticking in a corner and no clipping out of it', function()
+    local room = testRoom()
+    local p = PlayerController(0, 0, 0)
+    simulate(p, room, 2, {forward = 1}, math.pi / 4)  -- into the (+x, +y) corner
+    assert(p.x <= 3 - R + 0.01 and p.y <= 3 - R + 0.01, 'inside the corner')
+    assert(p.x > 3 - R - 0.05 and p.y > 3 - R - 0.05, 'reached the corner')
+    local x, y = p.x, p.y
+    simulate(p, room, 0.5, {forward = 1}, math.pi + math.pi / 4)   -- walk straight back out
+    local moved = math.sqrt((p.x - x) ^ 2 + (p.y - y) ^ 2)
+    near(moved, BACKROOMS_WALK_SPEED * 0.5, 0.1, 'free to leave the corner')
+    -- slide out along one wall too
+    simulate(p, room, 1, {forward = 1}, math.pi / 4)
+    simulate(p, room, 0.5, {forward = 1}, -math.pi / 2)            -- along the x wall, -y
+    assert(p.y < 3 - R - 1, 'slides out along the wall, y=' .. p.y)
+end)
+
+test('collision: walking off a raised surface falls to the floor below', function()
+    -- ledge (stand-in for a grown crop top): x in [-3, 0], top at z = 1
+    local room = testRoom({{kind = 'solid', pos = {-1.5, 0, 0.5}, size = {3, 6, 1}}})
+    local p = PlayerController(-1.5, 0, 1)
+    simulate(p, room, 0.5)
+    near(p.z, 1, 0.01, 'standing on top of the ledge'); eq(p.grounded, true)
+    simulate(p, room, 1, {forward = 1}, 0)
+    assert(p.x > 0.5, 'walked off the edge, x=' .. p.x)
+    simulate(p, room, 1)
+    near(p.z, 0, 0.01, 'fell to the floor'); eq(p.grounded, true)
+    -- and the ledge side is a wall from below
+    simulate(p, room, 1, {forward = 1}, math.pi)
+    assert(p.x >= R - 0.01, 'blocked by the ledge side, x=' .. p.x)
+    near(p.z, 0, 0.05, 'did not climb the 1 m ledge')
+end)
+
+test('collision: fast motion does not tunnel through thin walls or floors', function()
+    local room = testRoom({{kind = 'wall', pos = {1, 0, 1.5}, size = {0.05, 6, 3}}})
+    local p = PlayerController(0, 0, 0, {speed = 40})
+    for _ = 1, 30 do p:update(1 / 20, {forward = 1}, 0, room.colliders) end   -- 2 m per frame
+    assert(p.x < 1, 'stopped by a 5 cm wall, x=' .. p.x)
+    local pit = Room({id = 'pit', spawn = {0, 0, 0}, allotment = {},
+        boxes = {{kind = 'floor', pos = {0, 0, -0.1}, size = {6, 6, 0.2}}},
+        exit = {pos = {0, 0, -50}, size = {1, 1, 1}}})
+    local faller = PlayerController(-2, 0, 30)                                 -- no ceiling above
+    for _ = 1, 120 do faller:update(1 / 20, {}, 0, pit.colliders) end          -- reaches terminal speed
+    near(faller.vz, 0, 1e-9, 'stopped on landing')
+    near(faller.z, 0, 0.01, 'landed after a long fall'); eq(faller.grounded, true)
+    -- a huge dt is clamped instead of teleporting
+    local q = PlayerController(-2, 0, 0)
+    q:update(10, {forward = 1}, 0, room.colliders)
+    assert(q.x - (-2) <= BACKROOMS_WALK_SPEED * BACKROOMS_MAX_DT + 1e-6, 'dt clamped')
+end)
+
+test('collision: the ceiling stops upward motion', function()
+    local room = testRoom()
+    local p = PlayerController(0, 0, 0)
+    p.vz = 12
+    simulate(p, room, 0.4)
+    assert(p.z + BACKROOMS_PLAYER_HEIGHT <= 3 + 0.01, 'head below the ceiling')
+    assert(p.vz <= 0, 'vertical speed cancelled or falling')
+end)
+
+test('collision: colliders far from the player are not tested (broadphase)', function()
+    local room = testRoom()
+    local real = g3d.collisions.capsuleIntersection
+    local tested = 0
+    g3d.collisions.capsuleIntersection = function(...) tested = tested + 1; return real(...) end
+    local p = PlayerController(0, 0, 1)              -- mid-air, centre of the room
+    p:update(1 / 60, {}, 0, room.colliders)
+    g3d.collisions.capsuleIntersection = real
+    eq(tested, 0, 'no box near the player in the air')
+end)
+
+test('backrooms: falling out of the world respawns at the room spawn', function()
+    local back = toBackrooms()
+    back.player:setPosition(0, 0, BACKROOMS_KILL_Z - 1)
+    step()
+    local s = back.room.spawn
+    near(back.player.x, s[1], 1e-6); near(back.player.y, s[2], 1e-6)
+    eq(back.roomIndex, 1)
+end)
+
+-- 4.3 data-driven Room builder ----------------------------------------------------
+local SAMPLE_ROOM = {
+    id = 'sample', name = 'Sample',
+    spawn = {1, 2, 0, math.pi},
+    boxes = {
+        {kind = 'floor', pos = {0, 0, -0.1}, size = {8, 8, 0.2}},
+        {kind = 'wall', pos = {4, 0, 1.5}, size = {0.2, 8, 3}, color = {1, 0, 0, 1}},
+        {pos = {0, 0, 1}, size = {1, 1, 2}, collide = false},
+    },
+    plots = {{id = 'left', pos = {-2, 0, 0}}, {pos = {2, 0, 0}}},
+    exit = {pos = {3, 3, 1}, size = {1, 2, 2}},
+    allotment = {pumpkin = 2},
+    billboards = {{texture = 'crop-pumpkin-5', pos = {0, 3, 0}, height = 1}},
+    demoCrops = {{plot = 'left', seed = 'beanstalk', progress = 0.5}},
+}
+
+test('room: a sample room loads from a data table', function()
+    loadGame()
+    local room = Room(SAMPLE_ROOM)
+    eq(room.id, 'sample'); eq(room.name, 'Sample')
+    eq(room.spawn[1], 1); eq(room.spawn[4], math.pi)
+    eq(#room.models, 3, 'every box is drawn')
+    eq(#room.colliders, 2, 'collide = false box is not solid')
+    eq(room.colliders[1].kind, 'floor')
+    local c = room.colliders[2]
+    near(c.min[1], 3.9); near(c.max[1], 4.1); near(c.min[3], 0); near(c.max[3], 3)
+    eq(c.transform.translation[1], 4, 'collider uses the model translation')
+    eq(#c.verts, 36)
+    eq(c.verts[1][9], 1 * 0.85, 'custom colour, shaded per face')
+    eq(#room.plots, 2); eq(room.plots[1].id, 'left'); eq(room.plots[2].id, 'plot2')
+    eq(room.plots[1].pos[1], -2)
+    near(room.exit.min[1], 2.5); near(room.exit.max[2], 4); near(room.exit.max[3], 2)
+    eq(FormatSeeds(room.allotment), 'beanstalk=0 pumpkin=2 vine=0')
+    room.allotment.pumpkin = 0
+    eq(SAMPLE_ROOM.allotment.pumpkin, 2, 'allotment copied, data not aliased')
+    eq(#room.billboards, 1)
+    eq(room.demoCrops, SAMPLE_ROOM.demoCrops, 'demo crop data kept for section 5')
+    assert(room:overlapsExit({2.8, 2.8, 0}, {3.2, 3.2, 1.7}), 'standing in the exit')
+    assert(not room:overlapsExit({0, 0, 0}, {0.6, 0.6, 1.7}), 'away from the exit')
+end)
+
+test('room: textures tile with box size and faces are shaded', function()
+    loadGame()
+    local v = NewRoomBoxVerts(4, 2, 6, {1, 1, 1, 1})
+    local maxU = 0
+    for _, vert in ipairs(v) do
+        if vert[8] > 0.5 then eq(vert[9], 1, 'top face full bright') end
+        if vert[8] < -0.5 then eq(vert[9], 0.7, 'bottom face darker') end
+        if math.abs(vert[6]) > 0.5 then eq(vert[9], 0.85, 'x faces') end
+        maxU = math.max(maxU, math.abs(vert[4]))
+    end
+    near(maxU, 2 / ROOM_TEXTURE_TILE, 1e-9, 'u spans the face size in tiles')
+end)
+
+test('room: invalid data is rejected with a message naming the room', function()
+    loadGame()
+    local function broken(change)
+        local d = {}
+        for k, v in pairs(SAMPLE_ROOM) do d[k] = v end
+        d.id = 'bad'
+        change(d)
+        local ok, err = pcall(Room, d)
+        eq(ok, false, 'should fail')
+        assert(tostring(err):find('room bad', 1, true), 'message names the room: ' .. tostring(err))
+        return tostring(err)
+    end
+    broken(function(d) d.spawn = nil end)
+    broken(function(d) d.exit = nil end)
+    broken(function(d) d.boxes = {} end)
+    broken(function(d) d.boxes = {{pos = {0, 0, 0}, size = {1, 0, 1}}} end)
+    broken(function(d) d.boxes = {{pos = {0, 0, 0}, size = {1, 1, 1}, kind = 'lava'}} end)
+    broken(function(d) d.allotment = nil end)
+    assert(broken(function(d) d.allotment = {carrot = 1} end):find('carrot', 1, true))
+    broken(function(d) d.allotment = {vine = -1} end)
+    broken(function(d) d.allotment = {vine = 1.5} end)
+    broken(function(d) d.plots = {{id = 'x'}} end)
+    broken(function(d) d.billboards = {{pos = {0, 0, 0}}} end)
+    eq(Room.validate(SAMPLE_ROOM), true)
+end)
+
+test('room: every BACKROOMS_ROOMS entry builds, and the player spawns standing and free', function()
+    loadGame()
+    assert(#BACKROOMS_ROOMS >= 2, 'at least two rooms')
+    local ids = {}
+    for i, data in ipairs(BACKROOMS_ROOMS) do
+        assert(Room.validate(data))
+        assert(not ids[data.id], 'unique id ' .. data.id); ids[data.id] = true
+        local room = Room(data)
+        local s = room.spawn
+        local p = PlayerController(s[1], s[2], s[3])
+        simulate(p, room, 1)
+        eq(p.grounded, true, 'room ' .. i .. ' spawn is supported')
+        near(p.x, s[1], 0.02, 'room ' .. i .. ' spawn not inside a wall'); near(p.y, s[2], 0.02)
+        near(p.z, s[3], 0.02, 'room ' .. i .. ' spawn height')
+        local pmin, pmax = p:bounds()
+        assert(not room:overlapsExit(pmin, pmax), 'room ' .. i .. ' does not spawn in its exit')
+    end
+end)
+
+-- 4.4 billboards -----------------------------------------------------------------
+test('billboard: quad verts stand upright and face +x before rotation', function()
+    loadGame()
+    local v = NewBillboardVerts(2, 3)
+    eq(#v, 6)
+    for _, vert in ipairs(v) do
+        eq(vert[1], 0); assert(math.abs(vert[2]) == 1); assert(vert[3] == 0 or vert[3] == 3)
+        eq(vert[6], 1); eq(vert[7], 0); eq(#vert, 12)
+        -- image top at the top of the quad, left at -y (the viewer's left from +x)
+        eq(vert[5], vert[3] == 0 and 1 or 0); eq(vert[4], vert[2] < 0 and 0 or 1)
+    end
+end)
+
+test('billboard: keeps facing the camera as the player moves around it', function()
+    loadGame()
+    local b = Billboard({texture = 'crop-pumpkin-5', pos = {1, 2, 0}, height = 1})
+    eq(b.width, b.height, 'square texture keeps its aspect ratio')
+    for i = 0, 7 do
+        local a = i * math.pi / 4
+        local cx, cy = 1 + 3 * math.cos(a), 2 + 3 * math.sin(a)
+        b:faceCamera(cx, cy)
+        local fx, fy = b:facing()
+        local dx, dy = (cx - 1) / 3, (cy - 2) / 3
+        near(fx * dx + fy * dy, 1, 1e-9, 'facing the camera at angle ' .. i)
+        eq(b.model.rotation[3], b.yaw, 'model rotated about z only')
+        eq(b.model.rotation[1], 0); eq(b.model.rotation[2], 0)
+    end
+    local yaw = b.yaw
+    b:faceCamera(1, 2)                                    -- camera straight above: keep yaw
+    eq(b.yaw, yaw)
+    near(Billboard.yawToward(0, 0, 0, 5), math.pi / 2, 1e-12)
+    eq(Billboard.yawToward(0, 0, 0, 0), nil)
+    local wide = Billboard({texture = {getDimensions = function() return 64, 32 end}, pos = {0, 0, 0}, height = 1.5})
+    eq(wide.width, 3, 'width from the image aspect ratio')
+end)
+
+test('billboard: backrooms sprites turn to the player and draw after the room, far to near', function()
+    local back = toBackrooms()
+    local room = back.room
+    assert(#room.billboards >= 2, 'fixture room has billboards')
+    for _, pos in ipairs({{-3, -3}, {3, 3}, {0, -1}}) do
+        back.player:setPosition(pos[1], pos[2], 0)
+        mock.reset(); love.draw()
+        local order, opaqueLast, firstBoard = {}, 0, nil
+        local boardOf = {}
+        for _, b in ipairs(room.billboards) do boardOf[b.model] = b end
+        for i, c in ipairs(mock.callsNamed('model.draw')) do
+            local b = boardOf[c.args[1]]
+            if b then
+                order[#order + 1] = b
+                firstBoard = firstBoard or i
+            else
+                opaqueLast = i
+            end
+        end
+        eq(#order, #room.billboards, 'every billboard drawn')
+        assert(firstBoard > opaqueLast, 'billboards after opaque geometry')
+        for i, b in ipairs(order) do
+            local fx, fy = b:facing()
+            local dx, dy = pos[1] - b.x, pos[2] - b.y
+            local len = math.sqrt(dx * dx + dy * dy)
+            near((fx * dx + fy * dy) / len, 1, 1e-9, 'billboard faces the player')
+            if i > 1 then
+                local prev = order[i - 1]
+                assert((prev.x - pos[1]) ^ 2 + (prev.y - pos[2]) ^ 2 >= len * len - 1e-9, 'far to near')
+            end
+        end
+    end
+end)
+
+-- 4.5 exits, progression, ending -----------------------------------------------------
+test('progression: walking into the exit loads the next room with its own allotment', function()
+    local back = toBackrooms({beanstalk = 4, pumpkin = 0, vine = 2})
+    eq(FormatSeeds(back.gameData.seeds), 'beanstalk=4 pumpkin=0 vine=2', 'room 1 keeps the farm seeds')
+    mock.hold('w')                                   -- room 1 spawn faces its exit
+    local frames = 0
+    while back.roomIndex == 1 and frames < 6 * 60 do step(); frames = frames + 1 end
+    mock.release('w')
+    eq(back.roomIndex, 2, 'reached the room 1 exit on foot')
+    eq(back.room.id, BACKROOMS_ROOMS[2].id)
+    eq(FormatSeeds(back.gameData.seeds), FormatSeeds(CopySeeds(BACKROOMS_ROOMS[2].allotment)),
+        'room 2 seeds are exactly its allotment')
+    local s = back.room.spawn
+    near(back.player.x, s[1], 1e-6, 'placed at the new spawn'); near(back.player.y, s[2], 1e-6)
+    eq(gStateMachine.current, back, 'same state, new room')
+end)
+
+test('progression: an exit fires once and the last exit shows the ending', function()
+    local back = toBackrooms()
+    local changes = countChanges()
+    for i = 1, #BACKROOMS_ROOMS - 1 do
+        local e = back.room.exit.pos
+        back.player:setPosition(e[1], e[2], e[3] - 1)
+        step()
+        eq(back.roomIndex, i + 1, 'advanced exactly one room')
+    end
+    eq(#changes, 0, 'no state change before the last exit')
+    local e = back.room.exit.pos
+    back.player:setPosition(e[1], e[2], e[3] - 1)
+    step()
+    eq(#changes, 1); eq(changes[1], 'ending')
+    assert(isState(gStateMachine.current, EndingState), 'ending shown')
+    eq(gStateMachine.current.gameData, back.gameData)
+    back:advance()                                   -- a stray second trigger does nothing
+    eq(#changes, 1)
+    mock.reset(); love.draw()
+    eq(mock.count('push.apply'), 2, 'ending renders through push')
+    assert(mock.count('printf') >= 2, 'ending text drawn')
+end)
+
+test('progression: a single-room list goes straight to the ending', function()
+    loadGame()
+    local only = {}
+    for k, v in pairs(SAMPLE_ROOM) do only[k] = v end
+    local back = BackroomsState()
+    gStateMachine.current = back
+    back:enter(CarryOverGameData(NewGameData()), {only})
+    eq(#back.rooms, 1)
+    back.player:setPosition(3, 3, 0)
+    step()
+    assert(isState(gStateMachine.current, EndingState))
+end)
+
+test('ending: Enter returns to the start screen, but not in the first half second', function()
+    loadGame()
+    gStateMachine:change('ending', NewGameData())
+    assert(find(mock.printed, '[ending]'), 'ending logged')
+    press('return')
+    assert(isState(gStateMachine.current, EndingState), 'held Enter from the exit is ignored')
+    run(0.6)
+    press('return')
+    assert(isState(gStateMachine.current, StartState), 'back to start')
+end)
+
+-- seed carry-over vs per-room allotment policy ------------------------------------------
+test('seeds: Room 1 keeps the farm seeds topped up to its allotment; later rooms are fixed', function()
+    loadGame()
+    local room1 = {allotment = {beanstalk = 1, vine = 1}}
+    eq(FormatSeeds(RoomStartingSeeds(room1, 1, {pumpkin = 5})), 'beanstalk=1 pumpkin=5 vine=1')
+    eq(FormatSeeds(RoomStartingSeeds(room1, 1, {beanstalk = 3, vine = 0})), 'beanstalk=3 pumpkin=0 vine=1')
+    local room2 = {allotment = {pumpkin = 2}}
+    eq(FormatSeeds(RoomStartingSeeds(room2, 2, {beanstalk = 9, pumpkin = 9, vine = 9})), 'beanstalk=0 pumpkin=2 vine=0')
+    eq(FormatSeeds(RoomStartingSeeds(room2, 3, {})), 'beanstalk=0 pumpkin=2 vine=0')
+    local carried = {beanstalk = 2}
+    local out = RoomStartingSeeds(room1, 1, carried)
+    out.beanstalk = 0
+    eq(carried.beanstalk, 2, 'input not aliased')
+    local fixed = RoomStartingSeeds(room2, 2, {})
+    fixed.pumpkin = 0
+    eq(room2.allotment.pumpkin, 2, 'room data not aliased')
+end)
+
+test('seeds: FIRST_ROOM_MIN_SEEDS matches Room 1 allotment, so farm and backrooms agree', function()
+    loadGame()
+    eq(FormatSeeds(FIRST_ROOM_MIN_SEEDS), FormatSeeds(BACKROOMS_ROOMS[1].allotment))
+    -- a zero-seed farm arrival via the debug skip is topped up too
+    mock.press('return'); step()
+    local farm = gStateMachine.current
+    for _, t in ipairs(SEED_TYPES) do farm.gameData.seeds[t] = 0 end
+    mock.press('f1'); step()
+    eq(FormatSeeds(gStateMachine.current.gameData.seeds), FormatSeeds(CopySeeds(BACKROOMS_ROOMS[1].allotment)))
+end)
+
+test('seeds: resetting Room 1 restores its recorded start (topped-up farm seeds)', function()
+    local back = toBackrooms({beanstalk = 0, pumpkin = 5, vine = 0})
+    local start = FormatSeeds(back.gameData.seeds)
+    eq(start, FormatSeeds(RoomStartingSeeds(BACKROOMS_ROOMS[1], 1, {pumpkin = 5})))
+    assert(back.gameData.seeds.pumpkin == 5, 'farm pumpkins kept')
+    back.gameData.seeds.pumpkin = 0; back.gameData.seeds.beanstalk = 0   -- "waste" seeds
+    back.player:setPosition(2, 2, 0)
+    local oldRoom = back.room
+    back:resetRoom()
+    eq(FormatSeeds(back.gameData.seeds), start, 'recorded start restored, not the bare allotment')
+    assert(back.room ~= oldRoom, 'room rebuilt from data')
+    near(back.player.x, back.room.spawn[1], 1e-6, 'player back at spawn')
+    back.gameData.seeds.vine = 3
+    back:resetRoom()
+    eq(FormatSeeds(back.gameData.seeds), start, 'reset is repeatable')
+end)
+
+test('seeds: resetting a later room restores its fixed allotment', function()
+    local back = toBackrooms({beanstalk = 7, pumpkin = 7, vine = 7})
+    back:advance()
+    eq(back.roomIndex, 2)
+    local allot = FormatSeeds(CopySeeds(BACKROOMS_ROOMS[2].allotment))
+    eq(FormatSeeds(back.gameData.seeds), allot, 'farm surplus does not carry into room 2')
+    for _, t in ipairs(SEED_TYPES) do back.gameData.seeds[t] = 0 end
+    back:resetRoom()
+    eq(FormatSeeds(back.gameData.seeds), allot)
+    eq(back.roomIndex, 2, 'reset stays in the same room')
+end)
+
+test('backrooms: every fixture room renders with all assets as placeholders', function()
+    local back = toBackrooms(nil, {'.', '--placeholder-assets'})
+    for i = 1, #BACKROOMS_ROOMS do
+        eq(back.roomIndex, i)
+        mock.reset(); love.draw()
+        assert(mock.count('model.draw') > 0, 'room ' .. i .. ' drew')
+        if i < #BACKROOMS_ROOMS then back:advance() end
+    end
 end)
 
 realPrint(string.format('\n%d passed, %d failed', passed, failed))

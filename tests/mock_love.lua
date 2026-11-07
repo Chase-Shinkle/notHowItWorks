@@ -26,6 +26,7 @@ end
 function M.install()
     M.calls, M.printed, M.pressed, M.held = {}, {}, {}, {}
     M.mouseX, M.mouseY = 0, 0
+    M.relativeMode = false
 
     local graphics = {
         getDimensions = function() return 800, 800 end,
@@ -83,6 +84,8 @@ function M.install()
         },
         mouse = {
             getPosition = function() return M.mouseX, M.mouseY end,
+            setRelativeMode = function(on) M.relativeMode = on; record('setRelativeMode', on) end,
+            getRelativeMode = function() return M.relativeMode or false end,
         },
         timer = {getFPS = function() return 60 end},
         window = setmetatable({}, {__index = function() return function() end end}),
@@ -94,22 +97,37 @@ function M.install()
         M.printed[#M.printed + 1] = table.concat(parts, '\t')
     end
 
-    -- g3d needs a GL context (shader), so substitute a recording stub
-    local camera = {
-        resize = function(w, h) record('camera.resize', w, h) end,
-        lookAt = function(...) record('camera.lookAt', ...) end,
-    }
-    package.loaded['g3d'] = {
-        camera = camera,
-        newModel = function(verts, texture, translation)
-            record('g3d.newModel', #verts)
-            return {
-                verts = verts, texture = texture, translation = translation,
-                setRotation = function() end,
-                draw = function() record('model.draw') end,
-            }
-        end,
-    }
+    -- g3d's init.lua and model.lua need a GL context (shader, meshes), so the
+    -- g3d table and newModel are recording stubs. The pure-Lua parts (camera,
+    -- matrices, vectors, collisions) are the real g3d files, freshly loaded for
+    -- every test so camera state does not leak between tests.
+    for k in pairs(package.loaded) do
+        if k:match('^g3d%.') then package.loaded[k] = nil end
+    end
+    local g3d = {path = 'g3d'}
+    package.loaded['g3d'] = g3d
+    g3d.vectors = require('g3d.vectors')
+    g3d.collisions = require('g3d.collisions')
+    g3d.camera = require('g3d.camera')
+    local realResize = g3d.camera.resize
+    g3d.camera.resize = function(w, h) record('camera.resize', w, h); return realResize(w, h) end
+    local realLookAt = g3d.camera.lookAt
+    g3d.camera.lookAt = function(...) record('camera.lookAt', ...); return realLookAt(...) end
+    g3d.newModel = function(verts, texture, translation, rotation, scale)
+        record('g3d.newModel', #verts)
+        if type(scale) == 'number' then scale = {scale, scale, scale} end
+        local m = {
+            verts = verts, texture = texture,
+            translation = translation or {0, 0, 0},
+            rotation = rotation or {0, 0, 0},
+            scale = scale or {1, 1, 1},
+        }
+        function m:setRotation(x, y, z) self.rotation = {x, y, z} end
+        function m:setTranslation(x, y, z) self.translation = {x, y, z} end
+        function m:setScale(x, y, z) self.scale = {x, y or x, z or x} end
+        function m:draw(shader) record('model.draw', self, shader) end
+        return m
+    end
 
     -- push creates canvases/windows; record apply calls instead
     package.loaded['lib/push'] = {
@@ -145,5 +163,12 @@ function M.count(name)
 end
 
 function M.reset() M.calls = {} end
+
+-- Calls named `name`, in order.
+function M.callsNamed(name)
+    local out = {}
+    for _, c in ipairs(M.calls) do if c.name == name then out[#out + 1] = c end end
+    return out
+end
 
 return M

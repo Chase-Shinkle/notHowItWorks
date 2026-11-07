@@ -1,0 +1,201 @@
+-- Data-driven backrooms room builder.
+--
+-- A room is described by a plain table (see src/rooms.lua) and Room(data)
+-- turns it into g3d models, colliders, plots, an exit trigger and billboards.
+-- Adding or cutting a room is a data change only.
+--
+-- Room data fields (positions are box centres, sizes are full extents, in
+-- metres, z up):
+--   id, name           strings
+--   spawn              {x, y, z, direction}: feet position and camera yaw
+--   boxes              list of {pos = {x,y,z}, size = {sx,sy,sz},
+--                        kind = 'floor'|'wall'|'ceiling'|'solid' (default 'solid'),
+--                        texture = gTextures key (optional), color = {r,g,b,a} (optional),
+--                        collide = false (optional, decorative only)}
+--   exit               {pos = {x,y,z}, size = {sx,sy,sz}}: trigger volume; drawn as a
+--                        glowing marker, never collides
+--   plots              list of {id, pos = {x,y,z}} (optional): fixed planting plots,
+--                        drawn as soil pads on the floor (planting is task 5.2)
+--   allotment          {beanstalk = n, pumpkin = n, vine = n}: the room's seeds
+--   billboards         list of Billboard defs (optional)
+--   demoCrops          optional, kept as data for the tutorial room (task 5.4)
+--   killZ              optional, default BACKROOMS_KILL_Z
+--
+-- Boxes are always axis-aligned: g3d.collisions ignores model rotation.
+
+Room = Class{}
+
+-- Default look per box kind: texture key and flat backrooms-yellow colour.
+ROOM_BOX_STYLES = {
+    floor = {texture = 'floor', color = {0.62, 0.56, 0.32, 1}},
+    wall = {texture = 'wall', color = {0.86, 0.8, 0.46, 1}},
+    ceiling = {texture = 'wall', color = {0.93, 0.9, 0.72, 1}},
+    solid = {texture = 'wall', color = {0.78, 0.72, 0.42, 1}},
+}
+ROOM_EXIT_COLOR = {0.55, 1, 0.6, 0.85}
+ROOM_PLOT_SIZE = 1.2
+ROOM_TEXTURE_TILE = 2      -- metres per texture repeat on box faces
+
+-- Per-face shade so flat-coloured boxes still read as 3D without lighting.
+local function faceShade(nx, ny, nz)
+    if nz > 0.5 then return 1 end
+    if nz < -0.5 then return 0.7 end
+    if math.abs(nx) > 0.5 then return 0.85 end
+    return 0.92
+end
+
+-- Box vertices with per-face shading and world-size UVs (so textures tile
+-- instead of stretching). Built from NewBoxVerts; that helper is unchanged.
+function NewRoomBoxVerts(sx, sy, sz, color)
+    local verts = NewBoxVerts(sx, sy, sz, color)
+    for _, v in ipairs(verts) do
+        local s = faceShade(v[6], v[7], v[8])
+        v[9], v[10], v[11] = v[9] * s, v[10] * s, v[11] * s
+        local a, b
+        if math.abs(v[6]) > 0.5 then a, b = v[2], v[3]
+        elseif math.abs(v[7]) > 0.5 then a, b = v[1], v[3]
+        else a, b = v[1], v[2] end
+        v[4], v[5] = a / ROOM_TEXTURE_TILE, -b / ROOM_TEXTURE_TILE
+    end
+    return verts
+end
+
+-- Boxes for a closed rectangular room: floor top at z = 0, ceiling at
+-- z = height, walls of `thickness` just outside the [-w/2, w/2] x [-d/2, d/2]
+-- interior. A convenience for room data.
+function Room.shellBoxes(w, d, height, thickness)
+    local t = thickness or 0.2
+    return {
+        {kind = 'floor', pos = {0, 0, -t / 2}, size = {w + 2 * t, d + 2 * t, t}},
+        {kind = 'ceiling', pos = {0, 0, height + t / 2}, size = {w + 2 * t, d + 2 * t, t}},
+        {kind = 'wall', pos = {w / 2 + t / 2, 0, height / 2}, size = {t, d + 2 * t, height}},
+        {kind = 'wall', pos = {-w / 2 - t / 2, 0, height / 2}, size = {t, d + 2 * t, height}},
+        {kind = 'wall', pos = {0, d / 2 + t / 2, height / 2}, size = {w, t, height}},
+        {kind = 'wall', pos = {0, -d / 2 - t / 2, height / 2}, size = {w, t, height}},
+    }
+end
+
+-- Concatenate box lists (for data: Room.joinBoxes(Room.shellBoxes(...), {...})).
+function Room.joinBoxes(...)
+    local out = {}
+    for i = 1, select('#', ...) do
+        for _, b in ipairs(select(i, ...) or {}) do out[#out + 1] = b end
+    end
+    return out
+end
+
+local function isVec3(v)
+    return type(v) == 'table' and type(v[1]) == 'number' and type(v[2]) == 'number' and type(v[3]) == 'number'
+end
+
+-- Checks a room data table; returns true or false, message.
+function Room.validate(data)
+    local id = tostring(type(data) == 'table' and data.id or '?')
+    local function fail(msg) return false, 'room ' .. id .. ': ' .. msg end
+    if type(data) ~= 'table' then return fail('data must be a table') end
+    if type(data.spawn) ~= 'table' or not isVec3(data.spawn) then return fail('spawn {x, y, z, direction} required') end
+    if type(data.boxes) ~= 'table' or #data.boxes == 0 then return fail('at least one box required') end
+    for i, b in ipairs(data.boxes) do
+        if not isVec3(b.pos) or not isVec3(b.size) then return fail('box ' .. i .. ' needs pos and size') end
+        for k = 1, 3 do
+            if b.size[k] <= 0 then return fail('box ' .. i .. ' size must be positive') end
+        end
+        if b.kind and not ROOM_BOX_STYLES[b.kind] then return fail('box ' .. i .. ' unknown kind ' .. tostring(b.kind)) end
+    end
+    if type(data.exit) ~= 'table' or not isVec3(data.exit.pos) or not isVec3(data.exit.size) then
+        return fail('exit {pos, size} required')
+    end
+    if type(data.allotment) ~= 'table' then return fail('allotment required') end
+    for seedType, n in pairs(data.allotment) do
+        local known = false
+        for _, t in ipairs(SEED_TYPES) do if t == seedType then known = true end end
+        if not known then return fail('unknown seed type ' .. tostring(seedType)) end
+        if type(n) ~= 'number' or n < 0 or n % 1 ~= 0 then return fail('allotment ' .. seedType .. ' must be a whole number >= 0') end
+    end
+    for i, p in ipairs(data.plots or {}) do
+        if not isVec3(p.pos) then return fail('plot ' .. i .. ' needs pos') end
+    end
+    for i, b in ipairs(data.billboards or {}) do
+        if not isVec3(b.pos) or not b.texture then return fail('billboard ' .. i .. ' needs pos and texture') end
+    end
+    return true
+end
+
+local function bounds(pos, size)
+    return {pos[1] - size[1] / 2, pos[2] - size[2] / 2, pos[3] - size[3] / 2},
+           {pos[1] + size[1] / 2, pos[2] + size[2] / 2, pos[3] + size[3] / 2}
+end
+
+local function texture(key, fallbackKey)
+    local tex = gTextures[key or fallbackKey] or gTextures[fallbackKey]
+    if tex and tex.setWrap then tex:setWrap('repeat', 'repeat') end
+    return tex
+end
+
+function Room:init(data)
+    local ok, err = Room.validate(data)
+    if not ok then error(err, 2) end
+
+    self.data = data
+    self.id = data.id
+    self.name = data.name or data.id
+    self.spawn = {data.spawn[1], data.spawn[2], data.spawn[3], data.spawn[4] or 0}
+    self.killZ = data.killZ or BACKROOMS_KILL_Z
+    self.allotment = CopySeeds(data.allotment)
+
+    -- solid geometry
+    self.models = {}       -- {model, color} drawn opaque
+    self.colliders = {}
+    for _, b in ipairs(data.boxes) do
+        local style = ROOM_BOX_STYLES[b.kind or 'solid']
+        local color = b.color or style.color
+        local verts = NewRoomBoxVerts(b.size[1], b.size[2], b.size[3], color)
+        local model = g3d.newModel(verts, texture(b.texture, style.texture), {b.pos[1], b.pos[2], b.pos[3]})
+        self.models[#self.models + 1] = model
+        if b.collide ~= false then
+            local min, max = bounds(b.pos, b.size)
+            self.colliders[#self.colliders + 1] = {
+                verts = verts, transform = model, min = min, max = max, kind = b.kind or 'solid',
+            }
+        end
+    end
+
+    -- exit trigger and its marker
+    local e = data.exit
+    local emin, emax = bounds(e.pos, e.size)
+    self.exit = {pos = {e.pos[1], e.pos[2], e.pos[3]}, size = {e.size[1], e.size[2], e.size[3]}, min = emin, max = emax}
+    self.exitModel = g3d.newModel(NewRoomBoxVerts(e.size[1], e.size[2], e.size[3], ROOM_EXIT_COLOR),
+        texture(nil, 'floor'), {e.pos[1], e.pos[2], e.pos[3]})
+
+    -- fixed plots: flat soil pads just above the surface they sit on
+    self.plots = {}
+    for i, p in ipairs(data.plots or {}) do
+        local size = p.size or ROOM_PLOT_SIZE
+        local model = g3d.newModel(NewBoxVerts(size, size, 0.02, {1, 1, 1, 1}), gTextures['plot'],
+            {p.pos[1], p.pos[2], p.pos[3] + 0.011})
+        self.plots[#self.plots + 1] = {id = p.id or ('plot' .. i), pos = {p.pos[1], p.pos[2], p.pos[3]}, model = model}
+    end
+
+    self.billboards = {}
+    for _, def in ipairs(data.billboards or {}) do
+        self.billboards[#self.billboards + 1] = Billboard(def)
+    end
+
+    self.demoCrops = data.demoCrops
+end
+
+-- Is a box (min, max) touching the exit trigger?
+function Room:overlapsExit(min, max)
+    return PlayerController.boxesOverlap(min, max, self.exit.min, self.exit.max)
+end
+
+-- Opaque geometry first, then plots and the exit marker, then billboards
+-- sorted far to near (camera at cx, cy).
+function Room:draw(cx, cy)
+    love.graphics.setColor(1, 1, 1, 1)
+    for _, model in ipairs(self.models) do model:draw() end
+    for _, plot in ipairs(self.plots) do plot.model:draw() end
+    self.exitModel:draw()
+    Billboard.drawAll(self.billboards, cx, cy)
+    love.graphics.setColor(1, 1, 1, 1)
+end

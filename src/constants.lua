@@ -97,3 +97,35 @@ FARM_BREAK_CORRUPTION_BLOCKS = 28   -- corrupted blocks drawn at full glitch
 FIRST_ROOM_MIN_SEEDS = {
     beanstalk = 1,
 }
+
+-- 3D backrooms ------------------------------------------------------------------
+-- World units are metres, z is up (g3d.camera's default). The player is a
+-- vertical capsule whose position is the bottom of the capsule (the feet).
+BACKROOMS_PLAYER_RADIUS = 0.3
+BACKROOMS_PLAYER_HEIGHT = 1.7
+BACKROOMS_EYE_HEIGHT = 1.55
+BACKROOMS_WALK_SPEED = 4            -- m/s
+BACKROOMS_GRAVITY = 18              -- m/s^2
+BACKROOMS_TERMINAL_SPEED = 25       -- max fall speed, m/s
+-- A contact whose normal has a z component above this supports the player
+-- (floor / top face); below -this it is a ceiling.
+BACKROOMS_GROUND_NORMAL = 0.6
+-- Collision tuning: frames longer than MAX_DT are clamped, each move is split
+-- so no sub-step travels more than MAX_STEP (well under the radius, so the
+-- capsule cannot tunnel through 0.2 m walls), and push-out is repeated up to
+-- RESOLVE_ITERATIONS times per sub-step so corners settle.
+BACKROOMS_MAX_DT = 1 / 20
+BACKROOMS_MAX_STEP = 0.1
+BACKROOMS_RESOLVE_ITERATIONS = 4
+BACKROOMS_SKIN = 0.001              -- extra push-out so contacts don't re-trigger
+-- Falling below a room's killZ (default) respawns the player at its spawn.
+BACKROOMS_KILL_Z = -10
+
+-- Key bindings (any key in a list works). Mouse look uses love.mousemoved.
+BACKROOMS_KEYS = {
+    forward = {'w', 'up'},
+    back = {'s', 'down'},
+    left = {'a', 'left'},
+    right = {'d', 'right'},
+    releaseMouse = {'escape'},
+}

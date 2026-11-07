@@ -49,3 +49,36 @@ function FormatSeeds(seeds)
     end
     return table.concat(parts, ' ')
 end
+
+-- A fresh {type = n} table with every seed type (missing types become 0).
+function CopySeeds(seeds)
+    local copy = {}
+    for _, seedType in ipairs(SEED_TYPES) do
+        copy[seedType] = (seeds or {})[seedType] or 0
+    end
+    return copy
+end
+
+-- Seeds the player holds when entering backrooms room number `index`
+-- (`roomData` is that room's data table). Returns a new table.
+--
+-- Policy (an explicit, documented exception to the room-puzzles wording
+-- "their seeds equal that room's allotment"; see design.md decision 9):
+--   * Room 1, first entry: the seeds carried over from the farm are kept and
+--     each type is topped up to Room 1's allotment, which acts as the minimum
+--     (seed-carryover: "holds the seeds they had at the break").
+--   * Rooms 2+: seeds are exactly that room's fixed allotment. Leftovers from
+--     the previous room do not carry forward.
+-- Resetting a room restores the seeds recorded when it was entered (for
+-- Room 1 that is the topped-up farm seeds, not the bare allotment).
+function RoomStartingSeeds(roomData, index, carriedSeeds)
+    local allotment = (roomData and roomData.allotment) or {}
+    if index == 1 then
+        local seeds = CopySeeds(carriedSeeds)
+        for _, seedType in ipairs(SEED_TYPES) do
+            seeds[seedType] = math.max(seeds[seedType], allotment[seedType] or 0)
+        end
+        return seeds
+    end
+    return CopySeeds(allotment)
+end

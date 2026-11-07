@@ -32,6 +32,15 @@ LÖVE 11.5, Lua. The scaffold has a string-keyed `StateMachine` (`src/StateMachi
 
 8. **Placeholder-first.** All art and audio are loaded through `Dependencies.lua` tables with fallbacks to flat colors, so gameplay does not block on assets.
 
+9. **Seed policy: carry-over into Room 1, fixed allotments after.** (Added during task 4.3/4.5.) The seed-carryover spec says the player "holds the seeds they had at the break", while room-puzzles says on entering a room "their seeds equal that room's allotment". These conflict for Room 1, so Room 1 is an explicit exception to the room-puzzles wording; the requirement text is unchanged:
+   - Room 1, first entry: the carried farm seeds are kept and each type is topped up to Room 1's allotment, which is the minimum (`FIRST_ROOM_MIN_SEEDS` must equal it).
+   - Rooms 2 and 3: seeds are exactly the room's fixed allotment; leftovers do not carry forward.
+   - Room reset restores the seeds recorded on entering the current room. For Room 1 that is the topped-up farm seeds, not the bare allotment.
+   - The debug skip from the farm (F1) uses the same `CarryOverGameData` hand-off as the break, so coins and crops never reach the backrooms.
+   Implemented in `RoomStartingSeeds` (`src/GameData.lua`).
+
+10. **g3d used as-is in the backrooms.** Mouse look is `g3d.camera.firstPersonLook` (it turns on relative mouse mode itself), and the camera is placed with `lookInDirection`, never `lookAt`: g3d's `lookAt` derives yaw and pitch with a y-up formula that does not match `lookInDirection`/`firstPersonLook` (z-up). Walking does not use `firstPersonMovement`, because that moves the camera freely (including Space/Shift flying) with no collision. A capsule controller moves the player and the camera follows its eye point. `g3d.collisions` ignores model rotation, so all room colliders are axis-aligned boxes.
+
 ## Risks / Trade-offs
 
 - [Player controller feels bad (collision jitter, getting stuck)] → Use a simple capsule with slide-on-contact, test early (before puzzles), keep rooms made of large boxes.
