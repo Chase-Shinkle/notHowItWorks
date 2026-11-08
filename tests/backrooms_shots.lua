@@ -129,6 +129,17 @@ local function pitBridgeScene(room)
         end
     end
 end
+-- low, close to the pit's near rim looking along the side wall: baseboard sits on the floor, not the pit bottom
+local function pitBaseboardScene(room)
+    for _, c in ipairs(room.data.meta and room.data.meta.cells or {}) do
+        if c.module == 'pit' then
+            local mx, my = c.cx * CELL + CELL / 2, c.cy * CELL
+            local dx, dy = c.dir[1], c.dir[2]
+            return mx - dx * (CELL / 2 + 2.2) - dy * 0.6, my - dy * (CELL / 2 + 2.2) + dx * 0.6, c.elev,
+                math.atan2(dy, dx) - 0.5, -0.3
+        end
+    end
+end
 -- stand 1.5 cells before path cell `c` (on the path, towards the start), looking at it
 local function pathScene(pred)
     return function(room)
@@ -187,7 +198,7 @@ local SCENES = {
         end
         return e[1] - dx * 4.5, e[2] - dy * 4.5, e[3] - 1.1, math.atan2(dy, dx), -0.05
     end,
-    ['pit-bridge'] = pitBridgeScene,
+    ['pit-bridge'] = pitBridgeScene, ['pit-baseboard'] = pitBaseboardScene,
     ['pit'] = moduleScene('pit'), ['ledge'] = moduleScene('ledge'), ['gap'] = moduleScene('gap'),
     ['prop'] = function(room)
         for _, b in ipairs(room.data.billboards or {}) do
@@ -280,7 +291,7 @@ end
 SCENES['zone-transition'] = zoneTransitionScene
 for _, p in ipairs({'bright', 'dim', 'single-bulb', 'near-dark'}) do SCENES['zone-' .. p] = zoneLightingScene(p) end
 for _, nme in ipairs(ROOM_SHAPE_NAMES or {}) do SCENES['shape-' .. nme] = shapeScene(nme) end
-local MODULE_SCENES = {pit = true, ['pit-bridge'] = true, ledge = true, gap = true, ['zone-transition'] = true}
+local MODULE_SCENES = {pit = true, ['pit-bridge'] = true, ['pit-baseboard'] = true, ledge = true, gap = true, ['zone-transition'] = true}
 for name in pairs(SCENES) do if name:match('^zone%-') or name:match('^shape%-') then MODULE_SCENES[name] = true end end
 
 local function save(data, file)

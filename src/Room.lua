@@ -292,23 +292,76 @@ function Room:init(data)
     end
 
     -- generated levels: one merged, render-only beige baseboard along both
-    -- faces of every wall (no collider, no data change)
+    -- faces of every wall (no collider, no data change). The trim sits on the
+    -- WALKABLE floor beside each wall face, sampled per stretch: walls run down
+    -- to the void depth beside pits/gaps, so their lowest z is never the floor.
+    -- Floors are plain floor slabs plus the solid ledge blocks (obstacle
+    -- solids, whose top is the raised floor); pit/void floors (obstacle floors)
+    -- count as no floor, so pit walls and openings get no trim.
     if data.meta then
+        local floors = {}
+        for _, f in ipairs(data.boxes) do
+            if (f.kind == 'floor' and not f.obstacle) or (f.kind == 'solid' and f.obstacle) then
+                floors[#floors + 1] = {x0 = f.pos[1] - f.size[1] / 2, x1 = f.pos[1] + f.size[1] / 2,
+                    y0 = f.pos[2] - f.size[2] / 2, y1 = f.pos[2] + f.size[2] / 2, top = f.pos[3] + f.size[3] / 2}
+            end
+        end
+        local EPS, PROBE = 1e-4, 0.05
         local trim = {}
+        local function emit(alongX, c0, c1, perp, zBottom)
+            local len = c1 - c0
+            local sx = alongX and len or ROOM_BASEBOARD_DEPTH
+            local sy = alongX and ROOM_BASEBOARD_DEPTH or len
+            local cx = alongX and (c0 + c1) / 2 or perp
+            local cy = alongX and perp or (c0 + c1) / 2
+            for _, v in ipairs(NewRoomBoxVerts(sx, sy, ROOM_BASEBOARD_HEIGHT, ROOM_BASEBOARD_COLOR)) do
+                v[1], v[2], v[3] = v[1] + cx, v[2] + cy, v[3] + zBottom + ROOM_BASEBOARD_HEIGHT / 2
+                trim[#trim + 1] = v
+            end
+        end
         for _, b in ipairs(data.boxes) do
             if b.kind == 'wall' and not b.obstacle and b.size[3] > 1 then
                 local alongX = b.size[1] >= b.size[2]
                 local th = alongX and b.size[2] or b.size[1]
-                local z = b.pos[3] - b.size[3] / 2 + ROOM_BASEBOARD_HEIGHT / 2
+                local a0 = (alongX and b.pos[1] or b.pos[2]) - (alongX and b.size[1] or b.size[2]) / 2
+                local a1 = a0 + (alongX and b.size[1] or b.size[2])
+                local wallTop = b.pos[3] + b.size[3] / 2
+                local wallBottom = b.pos[3] - b.size[3] / 2
+                local perpCenter = alongX and b.pos[2] or b.pos[1]
                 for side = -1, 1, 2 do
-                    local ox = alongX and 0 or side * (th / 2 + ROOM_BASEBOARD_DEPTH / 2)
-                    local oy = alongX and side * (th / 2 + ROOM_BASEBOARD_DEPTH / 2) or 0
-                    local sx = alongX and b.size[1] or ROOM_BASEBOARD_DEPTH
-                    local sy = alongX and ROOM_BASEBOARD_DEPTH or b.size[2]
-                    for _, v in ipairs(NewRoomBoxVerts(sx, sy, ROOM_BASEBOARD_HEIGHT, ROOM_BASEBOARD_COLOR)) do
-                        v[1], v[2], v[3] = v[1] + b.pos[1] + ox, v[2] + b.pos[2] + oy, v[3] + z
-                        trim[#trim + 1] = v
+                    local probe = perpCenter + side * (th / 2 + PROBE)
+                    local face = perpCenter + side * (th / 2 + ROOM_BASEBOARD_DEPTH / 2)
+                    local cand, cuts = {}, {a0, a1}
+                    for _, f in ipairs(floors) do
+                        local p0, p1 = alongX and f.y0 or f.x0, alongX and f.y1 or f.x1
+                        local q0, q1 = alongX and f.x0 or f.y0, alongX and f.x1 or f.y1
+                        if probe >= p0 - EPS and probe <= p1 + EPS and q1 > a0 + EPS and q0 < a1 - EPS
+                            and f.top >= wallBottom - EPS and f.top + ROOM_BASEBOARD_HEIGHT <= wallTop + EPS then
+                            cand[#cand + 1] = {q0 = q0, q1 = q1, top = f.top}
+                            if q0 > a0 and q0 < a1 then cuts[#cuts + 1] = q0 end
+                            if q1 > a0 and q1 < a1 then cuts[#cuts + 1] = q1 end
+                        end
                     end
+                    table.sort(cuts)
+                    local runStart, runTop
+                    local function flush(upto)
+                        if runTop then emit(alongX, runStart, upto, face, runTop) end
+                        runTop = nil
+                    end
+                    for i = 1, #cuts - 1 do
+                        local l, r = cuts[i], cuts[i + 1]
+                        if r - l > EPS then
+                            local mid, top = (l + r) / 2, nil
+                            for _, f in ipairs(cand) do
+                                if mid >= f.q0 and mid <= f.q1 and (not top or f.top > top) then top = f.top end
+                            end
+                            if top ~= runTop then
+                                flush(l)
+                                runStart, runTop = l, top
+                            end
+                        end
+                    end
+                    flush(cuts[#cuts])
                 end
             end
         end
