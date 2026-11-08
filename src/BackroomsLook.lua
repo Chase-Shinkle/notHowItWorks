@@ -95,6 +95,7 @@ end
 
 -- Forget the compiled shader so the next init() tries again (tests).
 function BackroomsLook.reset()
+    if HorrorOutage then HorrorOutage.reset() end
     BackroomsLook.tried, BackroomsLook.enabled, BackroomsLook.reason = false, false, nil
     BackroomsLook.shader, BackroomsLook.shadowImage, BackroomsLook.shaftImage = nil, nil, nil
     BackroomsLook.postTried, BackroomsLook.postEnabled, BackroomsLook.postReason = false, false, nil
@@ -145,8 +146,9 @@ function BackroomsLook.activeIntensity(light, t)
     local mode = light.mode or 'steady'
     if mode == 'dead' then return 0 end
     local base = light.intensity or 1
-    if BackroomsLook.quality == 'low' then return base end
-    return base * BackroomsLook.flicker(mode, t, light.phase)
+    local out = HorrorOutage and HorrorOutage.factor(light, t) or 1
+    if BackroomsLook.quality == 'low' then return base * out end
+    return base * out * BackroomsLook.flicker(mode, t, light.phase)
 end
 
 -- Presets and lights -------------------------------------------------------------
@@ -319,6 +321,7 @@ function BackroomsLook.begin(room, cx, cy, cz, t)
     BackroomsLook.lastBlend = lighting
     local pos, color, radius = {}, {}, {}
     local picked = BackroomsLook.nearestLights(room.lights, cx, cy, cz, BACKROOMS_LOOK_MAX_LIGHTS)
+    if HorrorOutage and not BackroomsLook.timeOverride then HorrorOutage.update(room, room.lights, picked, t) end
     for k = 1, BACKROOMS_LOOK_MAX_LIGHTS do
         local l = room.lights[picked[k]]
         if l then
