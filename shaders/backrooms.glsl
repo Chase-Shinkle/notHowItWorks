@@ -39,7 +39,8 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
     if (texel.a < 0.1) { discard; }
     if (unlit > 0.0) { return vec4(0.0, 0.0, 0.0, 1.0); }
     vec3 wp = worldPosition.xyz;
-    vec3 n = normalize(vertexNormal);
+    float nl = length(vertexNormal);
+    vec3 n = nl > 1e-5 ? vertexNormal / nl : vec3(0.0, 0.0, 1.0);   // zero normal must not make NaN light
     bool gameplay = litFloor > 0.0;
 
     vec3 light = ambient;
@@ -47,7 +48,7 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
         if (i >= lightCount) { break; }
         vec3 d = lightPos[i] - wp;
         float dist = length(d);
-        float a = clamp(1.0 - dist / lightRadius[i], 0.0, 1.0);
+        float a = clamp(1.0 - dist / max(lightRadius[i], 0.001), 0.0, 1.0);
         a *= a;
         // wrapped diffuse so faces turned a little away still pick up light
         float facing = gameplay ? 0.95 : mix(0.35, 1.0, max(dot(n, d / max(dist, 0.001)), 0.0));
@@ -65,5 +66,6 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
     vec3 fc = fogColor;
     if (shaftFade > 0.0) { fc *= 1.0 - clamp((shaftRim - wp.z) / shaftFade, 0.0, 1.0); }   // depth-local, never absolute z
     rgb = mix(rgb, fc * sceneDim, clamp(fog, 0.0, 1.0));
+    rgb = clamp(rgb, vec3(0.0), vec3(8.0));   // NaN-proof (dark blocks on some drivers)
     return vec4(rgb, texel.a);
 }

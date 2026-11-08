@@ -14,6 +14,14 @@ uniform float vignette;  // 0..1 edge darkening
 uniform float time;      // seconds (grain seed)
 uniform float idle;      // 0..1 extra vignette after standing still
 
+// Every scene-canvas read goes through here: UV clamped half a texel inside the canvas (no edge/wrap
+// bleed, no out-of-range reads on any driver) and any NaN/Inf/negative sample forced to a finite colour.
+vec3 scene(Image tex, vec2 uv) {
+    vec2 h = texel * 0.5;
+    vec3 c = Texel(tex, clamp(uv, h, vec2(1.0) - h)).rgb;
+    return clamp(c, vec3(0.0), vec3(8.0));   // comparison-based clamp: NaN fails both tests and lands on 0 or 8
+}
+
 float hash(vec2 p) {
     p = fract(p * vec2(443.897, 441.423));
     p += dot(p, p.yx + 19.19);
@@ -25,8 +33,8 @@ vec3 glow(Image tex, vec2 uv) {
     for (int i = 0; i < 8; i++) {
         float a = float(i) * 0.785398;
         vec2 d = vec2(cos(a), sin(a));
-        vec3 c1 = Texel(tex, uv + d * texel * dpi * 4.0).rgb;
-        vec3 c2 = Texel(tex, uv + d * texel * dpi * 11.0).rgb;
+        vec3 c1 = scene(tex, uv + d * texel * dpi * 4.0);
+        vec3 c2 = scene(tex, uv + d * texel * dpi * 11.0);
         sum += max(c1 - 0.62, 0.0) + max(c2 - 0.62, 0.0);
     }
     return sum / 16.0;
@@ -34,12 +42,12 @@ vec3 glow(Image tex, vec2 uv) {
 
 // wide ring blur for the side fill (2 rings x 12 taps + centre)
 vec3 heavyBlur(Image tex, vec2 uv) {
-    vec3 sum = Texel(tex, uv).rgb;
+    vec3 sum = scene(tex, uv);
     for (int i = 0; i < 12; i++) {
         float a = float(i) * 0.5236;
         vec2 d = vec2(cos(a), sin(a));
-        sum += Texel(tex, uv + d * vec2(0.035, 0.05)).rgb;
-        sum += Texel(tex, uv + d * vec2(0.075, 0.10)).rgb;
+        sum += scene(tex, uv + d * vec2(0.035, 0.05));
+        sum += scene(tex, uv + d * vec2(0.075, 0.10));
     }
     return sum / 25.0;
 }
@@ -52,18 +60,18 @@ vec3 grade(vec3 c) {
 }
 
 vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
-    vec2 lp = (pixel - rect.xy) / rect.zw;        // 0..1 inside the picture
+    vec2 lp = (pixel - rect.xy) / max(rect.zw, vec2(1.0));        // 0..1 inside the picture
     bool inside = lp.x >= 0.0 && lp.x <= 1.0 && lp.y >= 0.0 && lp.y <= 1.0;
 
     if (!inside) {
         // stretched copy of the whole frame, blurred hard and dark (never black)
-        vec3 b = grade(heavyBlur(tex, pixel / winSize));
+        vec3 b = grade(heavyBlur(tex, pixel / max(winSize, vec2(1.0))));
         // fade deeper toward the window edge, but keep some colour
-        vec2 e = abs(pixel / winSize - 0.5) * 2.0;
+        vec2 e = abs(pixel / max(winSize, vec2(1.0)) - 0.5) * 2.0;
         b *= 0.62 * (1.0 - 0.35 * max(e.x, e.y));
         float g = hash(floor(pixel / dpi) + floor(time * 24.0) * 17.3) - 0.5;
         b += g * 0.012;
-        return vec4(max(b, 0.0), 1.0);
+        return vec4(clamp(b, vec3(0.0), vec3(1.0)), 1.0);
     }
 
     // barrel distortion (edges squeezed slightly toward the centre)
@@ -75,12 +83,12 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
     float edge = smoothstep(0.2, 1.4, r2);
     float rad = (0.9 + 1.6 * edge);
     vec2 ca = q * (0.0010 + 0.0030 * r2);         // chromatic aberration, mostly at the edges
-    vec3 sharp = vec3(Texel(tex, duv + ca).r, Texel(tex, duv).g, Texel(tex, duv - ca).b);
+    vec3 sharp = vec3(scene(tex, duv + ca).r, scene(tex, duv).g, scene(tex, duv - ca).b);
     vec3 soft = vec3(0.0);
     for (int i = 0; i < 8; i++) {
         float a = float(i) * 0.785398;
         vec2 d = vec2(cos(a), sin(a)) * texel * dpi * rad;
-        soft += vec3(Texel(tex, duv + ca + d).r, Texel(tex, duv + d).g, Texel(tex, duv - ca + d).b);
+        soft += vec3(scene(tex, duv + ca + d).r, scene(tex, duv + d).g, scene(tex, duv - ca + d).b);
     }
     soft /= 8.0;
     vec3 c = mix(sharp, soft, 0.45 + 0.2 * edge);
@@ -98,5 +106,5 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
     float live = smoothstep(0.01, 0.06, lum);
     float g = hash(floor(pixel / dpi) + floor(time * 24.0) * 17.3) - 0.5;
     c += g * 0.03 * live;
-    return vec4(max(c, 0.0), 1.0);
+    return vec4(clamp(c, vec3(0.0), vec3(1.0)), 1.0);
 }

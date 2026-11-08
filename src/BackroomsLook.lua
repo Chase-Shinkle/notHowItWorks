@@ -455,6 +455,7 @@ local function newPostCanvas(w, h, dpi)
     local ok, canvas = pcall(love.graphics.newCanvas, w, h, {dpiscale = dpi or 1})
     if not ok or not canvas then return nil, tostring(canvas) end
     if canvas.setFilter then canvas:setFilter('linear', 'linear') end
+    if canvas.setWrap then canvas:setWrap('clamp', 'clamp') end
     return canvas
 end
 
