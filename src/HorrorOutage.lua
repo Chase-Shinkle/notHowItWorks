@@ -1,5 +1,5 @@
 -- Backrooms area light flash: a discrete event every 75-150 s (randomized). When a lit fixture is near the camera,
--- ALL lit fixtures of the camera's zone within 20 m flash together (irregular on/off) for 2-4 s, then return to
+-- ALL lit fixtures of the camera's zone (zone-less: those within 20 m) flash together (irregular on/off) for 2-4 s, then return to
 -- normal. No per-fixture timers; skipped/delayed (retry 5 s) when no light is near or another horror event
 -- (distant sound / silhouette, see HorrorEvents) is active. A synced crackle plays on each off/on transition.
 -- Driven from BackroomsLook.begin; only scales fixture intensity (ambient/fog floor, collision untouched).
@@ -7,7 +7,7 @@ HorrorOutage = {}
 
 local MIN_GAP, MAX_GAP = 75, 150          -- cooldown between area flashes
 local MIN_DUR, MAX_DUR = 2, 4               -- flash length
-local AREA_R = 20                           -- lights of the camera's zone within this many metres flash together
+local AREA_R = 20                           -- zone-less fallback only: lights within this many metres flash together
 local NEAR_REQUIRED = 12                    -- need a lit fixture this close, else skip/delay
 
 local function fresh() return {room = nil, nextAt = nil, set = nil, segs = nil, endAt = nil, seg = 0, sources = {}} end
@@ -81,7 +81,9 @@ function HorrorOutage.update(room, lights, picked, t, cx, cy)
             local set, n = {}, 0
             for _, l in ipairs(lights) do
                 if (l.mode or 'steady') ~= 'dead' and l.zone == first.zone
-                    and ((l.pos[1] - cx) ^ 2 + (l.pos[2] - cy) ^ 2) <= AREA_R ^ 2 then set[l] = true; n = n + 1 end
+                    and (first.zone ~= nil or ((l.pos[1] - cx) ^ 2 + (l.pos[2] - cy) ^ 2) <= AREA_R ^ 2) then
+                    set[l] = true; n = n + 1
+                end
             end
             local dur = rnd(MIN_DUR, MAX_DUR)
             local segs, at, on = {}, 0, false      -- irregular on/off pattern, starts with an off
