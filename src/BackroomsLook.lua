@@ -573,13 +573,13 @@ function BackroomsLook.renderScene(drawScene)
     local pushed = false
     local passed, perr = pcall(function()
         local function send(name, v) if shader:hasUniform(name) then shader:send(name, v) end end
-        -- shader works in physical pixels (love_PixelCoord): scale every logical size by dpi
+        -- shader works purely in normalized uv; texel/dpi only size the blur taps
         local pw, ph = w * dpi, h * dpi
         if canvas.getPixelDimensions then pw, ph = canvas:getPixelDimensions() end
         send('texel', {1 / pw, 1 / ph})
         send('dpi', dpi)
-        send('rect', {rx * dpi, ry * dpi, w * dpi, h * dpi})
-        send('winSize', {ww * dpi, wh * dpi})
+        send('rect', {rx / ww, ry / wh, w / ww, h / wh})   -- normalized: shader uses uv only
+        send('winSize', {ww, wh})
         send('bloom', BackroomsLook.bloomStrength())
         send('vignette', 0.45)
         send('time', BackroomsLook.now() % 1000)
