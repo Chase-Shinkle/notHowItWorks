@@ -302,7 +302,11 @@ function Room:init(data)
     -- solid geometry
     self.models = {}       -- {model, color} drawn opaque
     self.colliders = {}
-    for _, b in ipairs(data.boxes) do
+    -- render-only deep shafts for pits/gaps (src/PitShaft.lua); replaces the drawing of
+    -- their void floor / soil column, never the colliders
+    local shaft = PitShaft.build(data)
+    self.shafts = shaft.parts
+    for boxIndex, b in ipairs(data.boxes) do
         local kind = b.kind or 'solid'
         local style = ROOM_BOX_STYLES[kind]
         local theme = MATERIAL_THEMES[b.theme or data.theme or '']
@@ -329,7 +333,9 @@ function Room:init(data)
         local verts = NewRoomBoxVerts(b.size[1], b.size[2], b.size[3], color)
         local model = g3d.newModel(verts, tex, {b.pos[1], b.pos[2], b.pos[3]})
         local rim = voidRim(data, b)
-        if rim then
+        if shaft.skip[boxIndex] then
+            -- drawn by PitShaft
+        elseif rim then
             for _, m in ipairs(voidModels(b, tex, color, rim)) do self.models[#self.models + 1] = m end
         else
             self.models[#self.models + 1] = model
@@ -764,6 +770,7 @@ function Room:draw(cx, cy)
     local t = BackroomsLook.now()
     local look = BackroomsLook.begin(self, cx, cy, cam and cam[3] or 0, t)
     for _, model in ipairs(self.models) do model:draw(look) end
+    PitShaft.draw(self.shafts, look)
     if look then
         for _, f in ipairs(self.fixtures) do
             local mode = f.light.mode or 'steady'

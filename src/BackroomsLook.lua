@@ -333,7 +333,7 @@ function BackroomsLook.begin(room, cx, cy, cz, t)
         camPos = {cx, cy, cz}, ambient = lighting.ambient, lightCount = #picked,
         lightPos = pos, lightColor = color, lightRadius = radius,
         fogColor = lighting.fogColor, fogDensity = lighting.fogDensity,
-        litFloor = 0, emissive = 0, unlit = 0,
+        litFloor = 0, emissive = 0, unlit = 0, shaftRim = 0, shaftFade = 0,
     }
     BackroomsLook.lastUniforms = values
     for name, v in pairs(values) do

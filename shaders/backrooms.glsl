@@ -26,6 +26,8 @@ uniform vec3 fogColor;
 uniform float fogDensity;
 uniform float litFloor;
 uniform float emissive;
+uniform float shaftRim;    // pit/gap shaft panels: z of this shaft's rim
+uniform float shaftFade;   // >0: fog colour goes to black over this many m below shaftRim (0 elsewhere)
 uniform float unlit;   // >0: output solid black (exit void)
 
 varying vec4 worldPosition;
@@ -57,6 +59,8 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
 
     float fog = 1.0 - exp(-fogDensity * max(length(wp - camPos) - FOG_NEAR, 0.0));
     if (gameplay) { fog = min(fog, 0.2); }
-    rgb = mix(rgb, fogColor, clamp(fog, 0.0, 1.0));
+    vec3 fc = fogColor;
+    if (shaftFade > 0.0) { fc *= 1.0 - clamp((shaftRim - wp.z) / shaftFade, 0.0, 1.0); }   // depth-local, never absolute z
+    rgb = mix(rgb, fc, clamp(fog, 0.0, 1.0));
     return vec4(rgb, texel.a);
 }
