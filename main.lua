@@ -34,7 +34,8 @@ function love.resize(w, h)
     g3d.camera.resize(w, h)
 end
 
-function love.keypressed(key)
+function love.keypressed(key, scancode)
+    if EffectToggles and EffectToggles.handleKey(key, scancode) then return end
     love.keyboard.keysPressed[key] = true
 end
 

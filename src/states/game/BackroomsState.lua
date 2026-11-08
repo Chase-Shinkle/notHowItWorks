@@ -15,6 +15,7 @@
 -- group, which is cleared whenever a room is loaded or reset, so nothing from
 -- an earlier attempt keeps growing.
 BackroomsState = Class{__includes = BaseState}
+BackroomsState.isBackroomsState = true
 
 BackroomsState.usesPush = false
 
@@ -453,7 +454,7 @@ function BackroomsState:update(dt)
         BackroomsLook.updateIdle(dt, BackroomsLook.forceStill or self.stillTime)
     end
 
-    Silhouette.update(dt, self.room, self.player, direction, self.fall ~= nil, pitch)
+    if EffectToggles.on('sil') then Silhouette.update(dt, self.room, self.player, direction, self.fall ~= nil, pitch) end
     self:updateFall(dt)
     if not self.fall then self:updateCheckpoint() end
 
@@ -471,7 +472,7 @@ end
 function BackroomsState:render()
     BackroomsLook.renderScene(function()
         self.room:draw(self.player.x, self.player.y)
-        Silhouette.draw(self.player.x, self.player.y)
+        if EffectToggles.on('sil') then Silhouette.draw(self.player.x, self.player.y) end
     end)
 end
 
@@ -485,8 +486,9 @@ end
 
 function BackroomsState:renderHUD()
     self:renderHUDContents()
+    EffectToggles.draw()
     -- death fade drawn last, above the world and the HUD
-    if self.fall and self.fall.alpha > 0 then
+    if self.fall and self.fall.alpha > 0 and EffectToggles.on('fall') then
         local w, h = love.graphics.getDimensions()
         love.graphics.push('all')
         love.graphics.origin()

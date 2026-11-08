@@ -12,6 +12,7 @@ uniform vec2 winSize;    // window size in physical pixels
 uniform float bloom;     // 0 = off, ~0.25 mild
 uniform float vignette;  // 0..1 edge darkening
 uniform float time;      // seconds (grain seed)
+uniform float sideFill;  // 1 = blurred side fill, 0 = plain dark sides (diagnostic)
 uniform float idle;      // 0..1 extra vignette after standing still
 
 // Explicit finite sanitiser. GLSL clamp()/min()/max() are undefined for NaN, so test with ordered
@@ -73,6 +74,7 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
     bool inside = lp.x >= 0.0 && lp.x <= 1.0 && lp.y >= 0.0 && lp.y <= 1.0;
 
     if (!inside) {
+        if (sideFill < 0.5) { return vec4(0.02, 0.02, 0.02, 1.0); }
         // stretched copy of the whole frame, blurred hard and dark (never black)
         vec3 b = grade(heavyBlur(tex, pixel / max(winSize, vec2(1.0))));
         // fade deeper toward the window edge, but keep some colour

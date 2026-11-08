@@ -146,7 +146,7 @@ function BackroomsLook.activeIntensity(light, t)
     local mode = light.mode or 'steady'
     if mode == 'dead' then return 0 end
     local base = light.intensity or 1
-    local out = HorrorOutage and HorrorOutage.factor(light, t) or 1
+    local out = HorrorOutage and EffectToggles.on('outage') and HorrorOutage.factor(light, t) or 1
     if BackroomsLook.quality == 'low' then return base * out end
     return base * out * BackroomsLook.flicker(mode, t, light.phase)
 end
@@ -318,10 +318,16 @@ function BackroomsLook.begin(room, cx, cy, cz, t)
     if not BackroomsLook.enabled then return nil end
     local shader = BackroomsLook.shader
     local lighting = BackroomsLook.blendedLighting(room, cx, cy)
+    if not EffectToggles.on('zone') then
+        -- diagnostic: no zone darkening -- full-bright ambient, no fog (point lights/outages unaffected)
+        lighting = {name = lighting.name, ambient = {1, 1, 1}, fogColor = lighting.fogColor, fogDensity = 0,
+            gameplayFloor = lighting.gameplayFloor}
+    end
     BackroomsLook.lastBlend = lighting
     local pos, color, radius = {}, {}, {}
     local picked = BackroomsLook.nearestLights(room.lights, cx, cy, cz, BACKROOMS_LOOK_MAX_LIGHTS)
-    if HorrorOutage and not BackroomsLook.timeOverride then HorrorOutage.update(room, room.lights, picked, t, cx, cy) end
+    local outageOn = EffectToggles.on('outage')
+    if HorrorOutage and outageOn and not BackroomsLook.timeOverride then HorrorOutage.update(room, room.lights, picked, t, cx, cy) end
     for k = 1, BACKROOMS_LOOK_MAX_LIGHTS do
         local l = room.lights[picked[k]]
         if l then
@@ -332,7 +338,7 @@ function BackroomsLook.begin(room, cx, cy, cz, t)
             pos[k], color[k], radius[k] = {0, 0, 0}, {0, 0, 0}, 1
         end
     end
-    local dim = HorrorOutage and HorrorOutage.sceneDim(t) or 1
+    local dim = HorrorOutage and EffectToggles.on('outage') and HorrorOutage.sceneDim(t) or 1
     local amb, fc = lighting.ambient, lighting.fogColor
     local values = {
         sceneDim = dim,
@@ -373,6 +379,7 @@ end
 
 -- Bloom only at high quality.
 function BackroomsLook.bloomStrength()
+    if not EffectToggles.on('bloom') then return 0 end
     return BackroomsLook.quality == 'high' and 0.25 or 0
 end
 
@@ -419,7 +426,7 @@ function BackroomsLook.drawShafts(room, cx, cy)
         end
         local c = l.color or BACKROOMS_LIGHT_COLOR
         local k = strength * BackroomsLook.activeIntensity({mode = l.mode, intensity = 1, phase = l.phase}, t)
-        if HorrorOutage and HorrorOutage.sceneDim(t) < 1 then k = 0 end   -- hard-off phase: no shafts either
+        if HorrorOutage and EffectToggles.on('outage') and HorrorOutage.sceneDim(t) < 1 then k = 0 end   -- hard-off phase: no shafts either
         board:faceCamera(cx, cy)
         love.graphics.setColor(c[1], c[2], c[3], k)
         board.model:draw()
@@ -497,7 +504,7 @@ end
 -- The centred 4:3 picture area (x, y, w, h) inside a w x h window. Without the post-process the scene
 -- fills the window.
 function BackroomsLook.viewRect(w, h)
-    if not BackroomsLook.postEnabled then return 0, 0, w, h end
+    if not BackroomsLook.postEnabled or not EffectToggles.on('post') then return 0, 0, w, h end
     local cw = math.min(w, h * 4 / 3)
     local ch = cw * 3 / 4
     return math.floor((w - cw) / 2 + 0.5), math.floor((h - ch) / 2 + 0.5), math.floor(cw + 0.5), math.floor(ch + 0.5)
@@ -523,6 +530,13 @@ end
 
 function BackroomsLook.renderScene(drawScene)
     if not BackroomsLook.initPost() then return drawScene() end
+    if not EffectToggles.on('post') then
+        -- post pass bypassed: scene straight to the target at full window size, camera restored
+        local ww, wh = BackroomsLook.targetSize()
+        if g3d.camera and g3d.camera.resize then g3d.camera.resize(ww, wh) end
+        love.graphics.setDepthMode('lequal', true)
+        return drawScene()
+    end
     local target = love.graphics.getCanvas()
     local ww, wh = BackroomsLook.targetSize()   -- the real target, not a cached/window-unit size
     local rx, ry, w, h = BackroomsLook.viewRect(ww, wh)
@@ -569,7 +583,8 @@ function BackroomsLook.renderScene(drawScene)
         send('bloom', BackroomsLook.bloomStrength())
         send('vignette', 0.45)
         send('time', BackroomsLook.now() % 1000)
-        send('idle', BackroomsLook.idleVignette or 0)
+        send('idle', EffectToggles.on('idle') and BackroomsLook.idleVignette or 0)
+        send('sideFill', EffectToggles.on('side') and 1 or 0)
         love.graphics.push('all'); pushed = true
         love.graphics.origin()
         love.graphics.setScissor()            -- a leaked scissor would clip the pass to a square

@@ -81,7 +81,7 @@ function BackroomsAudio:update(dt, player)
     end
     if self.hum then self.hum:setVolume(BACKROOMS_HUM_VOLUME * self.fade * self.duck) end
     if self.heartbeat then self.heartbeat:setVolume(BACKROOMS_HEARTBEAT_VOLUME * self.fade) end
-    if self.distant then self.distant:update(dt, self.muted) end
+    if self.distant then self.distant:update(dt, self.muted or not EffectToggles.on('distant')) end
     if self.muted then
         self.lastX, self.lastY = player and player.x, player and player.y
         self.walked = 0
