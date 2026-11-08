@@ -61,34 +61,55 @@ CROP_DIRECTIONS = {
 
 Crop = Class{}
 
--- Crop material: a small coherent texture built from the type's own palette
--- colour with restrained, structured variation (pumpkin: warm-orange ribs;
--- vine: green fibres along the span; beanstalk: green bark streaks). No
--- sprite pixels are sampled, so there are no outline/stem/stray-colour specks.
+-- Crop material: an organic leafy/vine tile (green-brown moss base, overlapping
+-- leaf blobs with midribs, curling vine strands). Seamless (wrapped), no straight
+-- stripes or planks; per-type hue tint only. Colour comes through the zone shader.
 local materials = {}
+local TINT = {pumpkin = {1.0, 0.92, 0.7}, vine = {0.9, 1.0, 0.85}, beanstalk = {0.85, 0.98, 0.8}}
 local function cropMaterial(seedType)
     if materials[seedType] then return materials[seedType] end
-    local c = CROP_DEFS[seedType].color
-    local N = 16
-    local img = love.image.newImageData(N, N)
-    local rng = love.math.newRandomGenerator(#seedType * 7919)
-    for y = 0, N - 1 do
-        for x = 0, N - 1 do
-            local k
-            if seedType == 'pumpkin' then
-                -- smooth vertical ribs, groove every 4 texels
-                k = 0.9 + 0.1 * math.cos(x / 4 * 2 * math.pi)
-            elseif seedType == 'vine' then
-                -- fibres: thin bands along the span, slightly brighter streaks
-                k = 0.92 + 0.08 * math.sin(y * 1.3) + ((y % 5 == 0) and -0.06 or 0)
-            else
-                -- bark: irregular vertical streaks
-                k = 0.9 + 0.08 * math.sin(x * 1.7 + (y % 4) * 0.3) + ((x % 5 == 0) and -0.06 or 0)
-            end
-            k = k + (rng:random() - 0.5) * 0.06   -- tiny grain, same hue
-            img:setPixel(x, y, math.min(1, c[1] * k), math.min(1, c[2] * k), math.min(1, c[3] * k), 1)
+    local N = 32
+    local tint = TINT[seedType] or {1, 1, 1}
+    local rng = love.math.newRandomGenerator(#seedType * 7919 + 13)
+    local px = {}
+    local function wrap(v) return v % N end
+    local function put(x, y, r, g, b) px[wrap(math.floor(y)) * N + wrap(math.floor(x))] = {r, g, b} end
+    -- base: mottled moss / bark-brown
+    for y = 0, N - 1 do for x = 0, N - 1 do
+        local n = 0.5 + 0.25 * math.sin(x * 0.55 + math.sin(y * 0.37) * 2) + 0.25 * math.sin(y * 0.61 + math.cos(x * 0.43) * 2)
+        n = n + (rng:random() - 0.5) * 0.25
+        px[y * N + x] = {0.16 + 0.10 * n, 0.22 + 0.16 * n, 0.08 + 0.06 * n}
+    end end
+    -- vine strands: wandering curves, brown with green edge
+    for _ = 1, 4 do
+        local x, y, ang = rng:random() * N, rng:random() * N, rng:random() * 6.28
+        for _ = 1, 45 do
+            ang = ang + (rng:random() - 0.5) * 0.9
+            x, y = x + math.cos(ang), y + math.sin(ang)
+            put(x, y, 0.30, 0.22, 0.10)
+            put(x + 1, y, 0.20, 0.30, 0.10)
         end
     end
+    -- leaves: ellipses at random angles with a lighter midrib
+    for _ = 1, 22 do
+        local cx, cy, ang = rng:random() * N, rng:random() * N, rng:random() * 6.28
+        local len, wid = 3 + rng:random() * 3, 1.3 + rng:random() * 1.2
+        local shade = 0.7 + rng:random() * 0.6
+        local ca, sa = math.cos(ang), math.sin(ang)
+        for u = -len, len, 0.5 do for v = -wid, wid, 0.5 do
+            local e = (u / len) ^ 2 + (v / (wid * (1 - 0.5 * math.abs(u) / len))) ^ 2
+            if e <= 1 then
+                local rib = math.abs(v) < 0.35
+                local g = (rib and 0.62 or 0.46) * shade
+                put(cx + u * ca - v * sa, cy + u * sa + v * ca, g * 0.45, g, g * 0.28)
+            end
+        end end
+    end
+    local img = love.image.newImageData(N, N)
+    for y = 0, N - 1 do for x = 0, N - 1 do
+        local c = px[y * N + x]
+        img:setPixel(x, y, math.min(1, c[1] * tint[1]), math.min(1, c[2] * tint[2]), math.min(1, c[3] * tint[3]), 1)
+    end end
     local tex = love.graphics.newImage(img)
     tex:setFilter('nearest', 'nearest')
     tex:setWrap('repeat', 'repeat')
@@ -102,7 +123,7 @@ local function lerp(a, b, t) return a + (b - a) * t end
 -- given relative to `origin` (so the model's translation is the origin).
 local function boxVertsAt(x0, x1, y0, y1, z0, z1, color)
     local verts = NewBoxVerts(x1 - x0, y1 - y0, z1 - z0, color)
-    local tu, tv = math.max(1, (x1 - x0) * 1.5), math.max(1, (z1 - z0) * 1.5)
+    local tu, tv = math.max(1, (x1 - x0) * 1.2), math.max(1, (z1 - z0) * 1.2)
     local cx, cy, cz = (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2
     for _, v in ipairs(verts) do
         v[1], v[2], v[3] = v[1] + cx, v[2] + cy, v[3] + cz

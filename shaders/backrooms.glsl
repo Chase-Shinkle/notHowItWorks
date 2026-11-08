@@ -49,16 +49,16 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
         float a = clamp(1.0 - dist / lightRadius[i], 0.0, 1.0);
         a *= a;
         // wrapped diffuse so faces turned a little away still pick up light
-        float facing = gameplay ? 0.85 : mix(0.35, 1.0, max(dot(n, d / max(dist, 0.001)), 0.0));
+        float facing = gameplay ? 0.95 : mix(0.35, 1.0, max(dot(n, d / max(dist, 0.001)), 0.0));
         light += lightColor[i] * a * facing;
     }
-    if (gameplay) { light = max(light, vec3(litFloor)); }
+    // small readability floor only: gameplay things must dim with zone ambient, fog and outages like walls
+    if (gameplay) { light = max(light, vec3(litFloor * 0.22)); }
 
     vec3 rgb = texel.rgb * light;
     rgb = mix(rgb, texel.rgb * 1.6, clamp(emissive, 0.0, 1.0));   // fixture panels glow past white
 
     float fog = 1.0 - exp(-fogDensity * max(length(wp - camPos) - FOG_NEAR, 0.0));
-    if (gameplay) { fog = min(fog, 0.2); }
     vec3 fc = fogColor;
     if (shaftFade > 0.0) { fc *= 1.0 - clamp((shaftRim - wp.z) / shaftFade, 0.0, 1.0); }   // depth-local, never absolute z
     rgb = mix(rgb, fc, clamp(fog, 0.0, 1.0));
