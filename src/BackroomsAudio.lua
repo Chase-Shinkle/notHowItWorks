@@ -26,6 +26,7 @@ function BackroomsAudio.new(rng)
     self.duck = 1                 -- hum duck multiplier (fall fade)
     self.duckTarget = 1
     self.muted = false            -- no footsteps while falling
+    self.distant = BackroomsDistant.new(self.footsteps)
     if self.hum then
         self.hum:setLooping(true)
         self.hum:setVolume(0)
@@ -73,6 +74,7 @@ function BackroomsAudio:update(dt, player)
         else self.duck = math.max(self.duckTarget, self.duck - step) end
     end
     if self.hum then self.hum:setVolume(BACKROOMS_HUM_VOLUME * self.fade * self.duck) end
+    if self.distant then self.distant:update(dt, self.muted) end
     if self.muted then
         self.lastX, self.lastY = player and player.x, player and player.y
         self.walked = 0
@@ -158,6 +160,7 @@ function BackroomsAudio:stop()
     for _, s in ipairs(self.live) do s:stop() end
     self.live = {}
     if self.fallSrc then self.fallSrc:stop() end
+    if self.distant then self.distant:stop() end
 end
 
 BackroomsAudio.dispose = BackroomsAudio.stop
