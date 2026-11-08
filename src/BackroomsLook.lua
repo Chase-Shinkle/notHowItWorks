@@ -321,7 +321,7 @@ function BackroomsLook.begin(room, cx, cy, cz, t)
     BackroomsLook.lastBlend = lighting
     local pos, color, radius = {}, {}, {}
     local picked = BackroomsLook.nearestLights(room.lights, cx, cy, cz, BACKROOMS_LOOK_MAX_LIGHTS)
-    if HorrorOutage and not BackroomsLook.timeOverride then HorrorOutage.update(room, room.lights, picked, t) end
+    if HorrorOutage and not BackroomsLook.timeOverride then HorrorOutage.update(room, room.lights, picked, t, cx, cy) end
     for k = 1, BACKROOMS_LOOK_MAX_LIGHTS do
         local l = room.lights[picked[k]]
         if l then

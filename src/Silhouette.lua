@@ -163,6 +163,7 @@ function Silhouette.update(dt, room, player, dir, paused, pitch)
         return
     end
     if paused or not room then return end
+    if HorrorEvents and HorrorEvents.otherActive('silhouette') then return end   -- retried next frame
     S.cooldown = S.cooldown - dt
     if S.cooldown > 0 then return end
     S.checkIn = S.checkIn - dt
@@ -183,6 +184,8 @@ end
 
 -- A room load drops any visible figure (keeps the cooldown).
 function Silhouette.clearActive() S.active, S.board, S.forced = nil, nil, false end
+
+if HorrorEvents then HorrorEvents.register('silhouette', function() return S.active ~= nil end) end
 
 function Silhouette.dispose()
     S.active, S.board, S.cooldown, S.forced = nil, nil, nil, false

@@ -4,7 +4,7 @@
 BackroomsDistant = {}
 BackroomsDistant.__index = BackroomsDistant
 
-BackroomsDistant.MIN_GAP, BackroomsDistant.MAX_GAP = 120, 240  -- s between events
+BackroomsDistant.MIN_GAP, BackroomsDistant.MAX_GAP = 60, 120  -- s between events
 BackroomsDistant.VOLUME = 0.12
 
 local function synthDoor(kind)
@@ -31,6 +31,7 @@ function BackroomsDistant.new(footsteps)
     self.live = {}
     self.active = true
     self.timer = self:nextGap()
+    if HorrorEvents then HorrorEvents.register('distant', function() return self:isActive() end) end
     -- 2-3 door variants: heavy thud, pop, second thud
     self.doors = {}
     for _, k in ipairs({'thud', 'pop', 'thud'}) do
@@ -38,6 +39,15 @@ function BackroomsDistant.new(footsteps)
         if s then self.doors[#self.doors + 1] = s end
     end
     return self
+end
+
+-- True while a fired sound is still pending or playing (blocks silhouette / light events).
+function BackroomsDistant:isActive()
+    if not self.active then return false end
+    if self.pending and #self.pending > 0 then return true end
+    for _, s in ipairs(self.live) do if s:isPlaying() then return true end end
+    for _, s in ipairs(self.doors) do if s:isPlaying() then return true end end
+    return false
 end
 
 function BackroomsDistant:nextGap()
@@ -101,6 +111,7 @@ function BackroomsDistant:update(dt, muted)
     if muted then return end
     self.timer = self.timer - dt
     if self.timer <= 0 then
+        if HorrorEvents and HorrorEvents.otherActive('distant') then self.timer = 3; return end   -- retry soon
         self.timer = self:nextGap()
         self:fire()
     end
@@ -108,6 +119,7 @@ end
 
 function BackroomsDistant:stop()
     self.active = false
+    if HorrorEvents then HorrorEvents.unregister('distant') end
     self.pending = nil
     for _, s in ipairs(self.live) do pcall(function() s:stop() end) end
     for _, s in ipairs(self.doors) do pcall(function() s:stop() end) end

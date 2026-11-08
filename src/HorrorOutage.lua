@@ -1,17 +1,16 @@
--- Occasional horror light outage: every 90-180 s (randomized, one global event at a time) a fixture near the
--- camera stutters, goes dark for 1-2 s, then restores with a brief re-flicker.
--- Driven from BackroomsLook.begin (backrooms rooms only), so it needs no state
--- hooks. It only scales one fixture's intensity: zone ambient/fog (the
--- readability floor), collision and room solvability are untouched.
--- A tiny synthesized crackle/pop plays at the start and the restore; if
--- love.sound/audio is unavailable it is silently skipped.
+-- Backrooms area light flash: a discrete event every 75-150 s (randomized). When a lit fixture is near the camera,
+-- ALL lit fixtures of the camera's zone within 20 m flash together (irregular on/off) for 2-4 s, then return to
+-- normal. No per-fixture timers; skipped/delayed (retry 5 s) when no light is near or another horror event
+-- (distant sound / silhouette, see HorrorEvents) is active. A synced crackle plays on each off/on transition.
+-- Driven from BackroomsLook.begin; only scales fixture intensity (ambient/fog floor, collision untouched).
 HorrorOutage = {}
 
-local MIN_GAP, MAX_GAP = 90, 180
-local STUTTER, MIN_OUT, MAX_OUT, RESTORE = 0.5, 1.0, 2.0, 0.35
-local NEARBY = 4
+local MIN_GAP, MAX_GAP = 75, 150          -- cooldown between area flashes
+local MIN_DUR, MAX_DUR = 2, 4               -- flash length
+local AREA_R = 20                           -- lights of the camera's zone within this many metres flash together
+local NEAR_REQUIRED = 12                    -- need a lit fixture this close, else skip/delay
 
-local function fresh() return {room = nil, nextAt = nil, light = nil, startAt = nil, outAt = nil, endAt = nil, restoreAt = nil, sources = {}} end
+local function fresh() return {room = nil, nextAt = nil, set = nil, segs = nil, endAt = nil, seg = 0, sources = {}} end
 local S = fresh()
 
 local function rnd(a, b) return a + (b - a) * love.math.random() end
@@ -58,44 +57,54 @@ function HorrorOutage.reset()
     S = fresh()
 end
 
--- Advance the state machine. `lights` is the room's light list, `picked` the
--- indices of the nearest lights to the camera.
-function HorrorOutage.update(room, lights, picked, t)
+-- Advance the state machine. `lights` is the room's light list, `picked` the indices of the nearest lights
+-- to the camera (cx, cy). One discrete event: every lit light in the camera's zone/area flashes together.
+function HorrorOutage.update(room, lights, picked, t, cx, cy)
     if S.room ~= room then
         HorrorOutage.reset()
         S.room = room
         S.nextAt = t + rnd(MIN_GAP, MAX_GAP)
     end
     prune()
-    if S.light then
-        if t >= S.endAt + RESTORE then S.light, S.nextAt = nil, t + rnd(MIN_GAP, MAX_GAP)
-        elseif not S.restored and t >= S.endAt then S.restored = true; pop('restore') end
-    elseif t >= S.nextAt and picked and #picked > 0 then
-        local n = math.min(NEARBY, #picked)
-        S.light = lights[picked[love.math.random(1, n)]]
-        S.startAt = t
-        S.outAt = t + STUTTER
-        S.endAt = S.outAt + rnd(MIN_OUT, MAX_OUT)
-        S.restored = false
-        pop('start')
+    if S.set then
+        local seg = S.seg
+        while S.segs[seg + 1] and t >= S.segs[seg + 1].from do seg = seg + 1 end
+        if seg ~= S.seg then
+            S.seg = seg
+            if S.segs[seg] and not S.segs[seg].on then pop('start') else pop('restore') end
+        end
+        if t >= S.endAt then S.set, S.segs = nil, nil; S.nextAt = t + rnd(MIN_GAP, MAX_GAP) end
     elseif t >= S.nextAt then
-        S.nextAt = t + 5
+        local first = picked and picked[1] and lights[picked[1]]
+        local near = first and cx and ((first.pos[1] - cx) ^ 2 + (first.pos[2] - cy) ^ 2) <= NEAR_REQUIRED ^ 2
+        if near and not (HorrorEvents and HorrorEvents.otherActive('lights')) then
+            local set, n = {}, 0
+            for _, l in ipairs(lights) do
+                if (l.mode or 'steady') ~= 'dead' and l.zone == first.zone
+                    and ((l.pos[1] - cx) ^ 2 + (l.pos[2] - cy) ^ 2) <= AREA_R ^ 2 then set[l] = true; n = n + 1 end
+            end
+            local dur = rnd(MIN_DUR, MAX_DUR)
+            local segs, at, on = {}, 0, false      -- irregular on/off pattern, starts with an off
+            while at < dur do
+                segs[#segs + 1] = {from = t + at, on = on}
+                at = at + (on and rnd(0.05, 0.4) or rnd(0.05, 0.5))
+                on = not on
+            end
+            S.set, S.segs, S.endAt, S.seg = set, segs, t + dur, 0
+        else
+            S.nextAt = t + 5
+        end
     end
 end
 
 -- Brightness multiplier for `light` at time t (1 when unaffected).
 function HorrorOutage.factor(light, t)
-    if light ~= S.light or not S.light then return 1 end
-    if t < S.startAt then return 1 end
-    if t < S.outAt then       -- stutter before dying
-        local slot = math.floor((t - S.startAt) * 18)
-        return (BackroomsLook.hash01(slot * 7 + 3) < 0.5) and 0.1 or 0.8
-    elseif t < S.endAt then return 0
-    elseif t < S.endAt + RESTORE then   -- restore with a re-flicker
-        local slot = math.floor((t - S.endAt) * 20)
-        return (slot % 2 == 0) and 0.9 or 0.3
-    end
-    return 1
+    if not S.set or not S.set[light] then return 1 end
+    local seg = S.segs[math.max(1, S.seg)]
+    if t < S.segs[1].from or t >= S.endAt then return 1 end
+    return seg.on and 1 or 0
 end
 
-function HorrorOutage.active() return S.light ~= nil end
+function HorrorOutage.active() return S.set ~= nil end
+
+if HorrorEvents then HorrorEvents.register('lights', HorrorOutage.active) end
