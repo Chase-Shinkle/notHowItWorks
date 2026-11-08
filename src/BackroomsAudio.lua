@@ -80,7 +80,13 @@ function BackroomsAudio:update(dt, player)
     -- nor wipe the banked distance; only sustained air time resets it.
     if not player.grounded then
         self.airTime = (self.airTime or 0) + dt
-        if self.airTime > BACKROOMS_FOOTSTEP_AIR_GRACE then self.walked = 0 end
+        if self.airTime > BACKROOMS_FOOTSTEP_AIR_GRACE then
+            self.walked = 0
+        else
+            -- flicker frame: the stride keeps banking (no step played until grounded again)
+            local fd = math.sqrt((x - lx) ^ 2 + (y - ly) ^ 2)
+            if fd <= BACKROOMS_FOOTSTEP_STRIDE then self.walked = self.walked + fd end
+        end
         return
     end
     self.airTime = 0

@@ -302,7 +302,7 @@ BACKROOMS_PLANT_HEIGHT = 1.6
 -- including positions 2.0 m back from the rim. The height limit still applies.
 BACKROOMS_PIT_PLANT_RANGE = 3.8
 -- Uprooting is refused while the player's box is within this distance of the
--- crop's full volume (standing on it, inside it or climbing it).
+-- crop's full volume vertically (standing on it); horizontally only overlap counts.
 BACKROOMS_UPROOT_MARGIN = 0.12
 
 -- Key bindings (any key in a list works). Mouse look uses love.mousemoved.
