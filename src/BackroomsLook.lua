@@ -332,10 +332,13 @@ function BackroomsLook.begin(room, cx, cy, cz, t)
             pos[k], color[k], radius[k] = {0, 0, 0}, {0, 0, 0}, 1
         end
     end
+    local dim = HorrorOutage and HorrorOutage.sceneDim(t) or 1
+    local amb, fc = lighting.ambient, lighting.fogColor
     local values = {
-        camPos = {cx, cy, cz}, ambient = lighting.ambient, lightCount = #picked,
+        sceneDim = dim,
+        camPos = {cx, cy, cz}, ambient = amb, lightCount = #picked,
         lightPos = pos, lightColor = color, lightRadius = radius,
-        fogColor = lighting.fogColor, fogDensity = lighting.fogDensity,
+        fogColor = fc, fogDensity = lighting.fogDensity,
         litFloor = 0, emissive = 0, unlit = 0, shaftRim = 0, shaftFade = 0,
     }
     BackroomsLook.lastUniforms = values
@@ -416,6 +419,7 @@ function BackroomsLook.drawShafts(room, cx, cy)
         end
         local c = l.color or BACKROOMS_LIGHT_COLOR
         local k = strength * BackroomsLook.activeIntensity({mode = l.mode, intensity = 1, phase = l.phase}, t)
+        if HorrorOutage and HorrorOutage.sceneDim(t) < 1 then k = 0 end   -- hard-off phase: no shafts either
         board:faceCamera(cx, cy)
         love.graphics.setColor(c[1], c[2], c[3], k)
         board.model:draw()

@@ -88,8 +88,8 @@ function HorrorOutage.update(room, lights, picked, t, cx, cy)
             local dur = rnd(MIN_DUR, MAX_DUR)
             local segs, at, on = {}, 0, false      -- irregular on/off pattern, starts with an off
             while at < dur do
-                segs[#segs + 1] = {from = t + at, on = on}
-                at = at + (on and rnd(0.05, 0.4) or rnd(0.05, 0.5))
+                segs[#segs + 1] = {from = t + at, on = on, level = rnd(0.05, 0.10)}
+                at = at + (on and rnd(0.05, 0.4) or rnd(0.2, 0.6))
                 on = not on
             end
             S.set, S.segs, S.endAt, S.seg = set, segs, t + dur, 0
@@ -105,6 +105,14 @@ function HorrorOutage.factor(light, t)
     local seg = S.segs[math.max(1, S.seg)]
     if t < S.segs[1].from or t >= S.endAt then return 1 end
     return seg.on and 1 or 0
+end
+
+-- Whole-scene brightness (ambient, fog, sprites/crops included) for the camera's zone: 1 normally, 0.05-0.10
+-- (near black, hard cut) during an OFF phase of an active flash.
+function HorrorOutage.sceneDim(t)
+    if not S.set or t < S.segs[1].from or t >= S.endAt then return 1 end
+    local seg = S.segs[math.max(1, S.seg)]
+    return seg.on and 1 or seg.level
 end
 
 function HorrorOutage.active() return S.set ~= nil end

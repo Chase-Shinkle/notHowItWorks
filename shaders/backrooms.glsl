@@ -28,6 +28,7 @@ uniform float litFloor;
 uniform float emissive;
 uniform float shaftRim;    // pit/gap shaft panels: z of this shaft's rim
 uniform float shaftFade;   // >0: fog colour goes to black over this many m below shaftRim (0 elsewhere)
+uniform float sceneDim;   // 1 normally; ~0.05-0.10 during a hard light-flash OFF phase (scales everything)
 uniform float unlit;   // >0: output solid black (exit void)
 
 varying vec4 worldPosition;
@@ -58,9 +59,11 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
     vec3 rgb = texel.rgb * light;
     rgb = mix(rgb, texel.rgb * 1.6, clamp(emissive, 0.0, 1.0));   // fixture panels glow past white
 
+    rgb *= sceneDim;
+
     float fog = 1.0 - exp(-fogDensity * max(length(wp - camPos) - FOG_NEAR, 0.0));
     vec3 fc = fogColor;
     if (shaftFade > 0.0) { fc *= 1.0 - clamp((shaftRim - wp.z) / shaftFade, 0.0, 1.0); }   // depth-local, never absolute z
-    rgb = mix(rgb, fc, clamp(fog, 0.0, 1.0));
+    rgb = mix(rgb, fc * sceneDim, clamp(fog, 0.0, 1.0));
     return vec4(rgb, texel.a);
 }
