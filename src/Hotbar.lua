@@ -29,7 +29,10 @@ end
 function Hotbar.draw(w, h, seeds, selected, usable)
     local g = love.graphics
     local lay = Hotbar.layout(w, h, #SEED_TYPES)
-    local font = UI.font(math.max(10, lay.size * 0.3))
+    local fsz = math.max(14, math.floor(lay.size * 0.36))
+    Hotbar.fonts = Hotbar.fonts or {}
+    local font = Hotbar.fonts[fsz]
+    if not font then font = love.graphics.newFont(fsz); Hotbar.fonts[fsz] = font end   -- plain default font, readable
     Hotbar.last = {selected = selected, counts = {}, usable = {}}   -- what was drawn (tests)
     for i, t in ipairs(SEED_TYPES) do
         local r = lay.slots[i]
@@ -48,13 +51,15 @@ function Hotbar.draw(w, h, seeds, selected, usable)
             g.draw(tex, r.x + (r.w - iw * s) / 2, r.y + (r.h - ih * s) / 2, 0, s, s)
         end
         g.setFont(font)
-        g.setColor(1, 1, 1, 0.85 * dim + 0.15)
-        g.print(tostring(i), r.x + 4, r.y + 2)
+        local function outlined(txt, x, y, a)
+            g.setColor(0, 0, 0, 0.95)
+            for _, o in ipairs({{-1,-1},{1,-1},{-1,1},{1,1},{0,2},{2,0},{-2,0},{0,-2}}) do g.print(txt, x + o[1], y + o[2]) end
+            g.setColor(1, 1, 1, a)
+            g.print(txt, x, y)
+        end
+        outlined(tostring(i), r.x + 5, r.y + 2, 0.85 * dim + 0.15)
         local txt = tostring(n)
-        g.setColor(0, 0, 0, 0.9)
-        g.print(txt, r.x + r.w - font:getWidth(txt) - 3, r.y + r.h - font:getHeight() + 1)
-        g.setColor(1, 1, 1, dim)
-        g.print(txt, r.x + r.w - font:getWidth(txt) - 4, r.y + r.h - font:getHeight())
+        outlined(txt, r.x + r.w - font:getWidth(txt) - 5, r.y + r.h - font:getHeight() - 1, dim)
         g.setLineWidth(isSel and 4 or 2)
         if isSel then g.setColor(1, 0.95, 0.4, 1) else g.setColor(0.8, 0.8, 0.8, 0.5 * dim + 0.2) end
         g.rectangle('line', r.x, r.y, r.w, r.h, 4, 4)

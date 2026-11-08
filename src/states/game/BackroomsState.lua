@@ -467,14 +467,20 @@ function BackroomsState:renderHUD()
     end
     if alpha > 0 then
         local hints = self.mouseCaptured
-            and {'WASD: move   mouse: look   E / left-click: plant   Right-click / X: uproot (refund)   Wheel / Q / 1-3: seed', 'R: reset room   Esc: free mouse'}
+            and {'WASD move | Mouse look | LMB/E plant | RMB/X uproot', 'Wheel/1-3 seed | R reset | Esc mouse'}
             or {'Click to capture the mouse'}
-        local joined = table.concat(hints, '   ')
-        if font:getWidth(joined) <= w - 20 then hints = {joined} end
-        local lineH = font:getHeight() + 4
         local lay = Hotbar.layout(w, h, #SEED_TYPES)
-        for i, line in ipairs(hints) do
-            shadowPrintf(line, lay.y - 10 - (#hints - i + 1) * lineH, w, alpha)
+        -- computed block height from wrapped line counts, stacked upward from the hotbar
+        local lineH = font:getHeight() + 2
+        local rows = {}
+        for _, line in ipairs(hints) do
+            local _, wrapped = font:getWrap(line, w - 20)
+            rows[#rows + 1] = {line, #wrapped}
+        end
+        local y = lay.y - 10
+        for i = #rows, 1, -1 do
+            y = y - rows[i][2] * lineH
+            shadowPrintf(rows[i][1], y, w, alpha)
         end
     end
     if DEBUG_MODE then
