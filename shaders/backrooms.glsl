@@ -34,6 +34,15 @@ uniform float unlit;   // >0: output solid black (exit void)
 varying vec4 worldPosition;
 varying vec3 vertexNormal;
 
+// Explicit finite sanitiser. GLSL clamp()/min()/max() are undefined for NaN, so test with ordered
+// comparisons: !(x >= 0.0) is true for NaN and negatives (-> 0.0); min() then caps +Inf and large values at hi.
+vec3 finite3(vec3 c, float hi) {
+    if (!(c.r >= 0.0)) { c.r = 0.0; }
+    if (!(c.g >= 0.0)) { c.g = 0.0; }
+    if (!(c.b >= 0.0)) { c.b = 0.0; }
+    return vec3(min(c.r, hi), min(c.g, hi), min(c.b, hi));
+}
+
 vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
     vec4 texel = Texel(tex, uv) * color;
     if (texel.a < 0.1) { discard; }
@@ -66,6 +75,6 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
     vec3 fc = fogColor;
     if (shaftFade > 0.0) { fc *= 1.0 - clamp((shaftRim - wp.z) / shaftFade, 0.0, 1.0); }   // depth-local, never absolute z
     rgb = mix(rgb, fc * sceneDim, clamp(fog, 0.0, 1.0));
-    rgb = clamp(rgb, vec3(0.0), vec3(8.0));   // NaN-proof (dark blocks on some drivers)
+    rgb = finite3(rgb, 8.0);   // NaN/negative -> 0, +Inf/huge -> 8 (explicit ordered tests; clamp() is undefined for NaN)
     return vec4(rgb, texel.a);
 }

@@ -14,12 +14,21 @@ uniform float vignette;  // 0..1 edge darkening
 uniform float time;      // seconds (grain seed)
 uniform float idle;      // 0..1 extra vignette after standing still
 
+// Explicit finite sanitiser. GLSL clamp()/min()/max() are undefined for NaN, so test with ordered
+// comparisons: !(x >= 0.0) is true for NaN and negatives (-> 0.0); min() then caps +Inf and large values at hi.
+vec3 finite3(vec3 c, float hi) {
+    if (!(c.r >= 0.0)) { c.r = 0.0; }
+    if (!(c.g >= 0.0)) { c.g = 0.0; }
+    if (!(c.b >= 0.0)) { c.b = 0.0; }
+    return vec3(min(c.r, hi), min(c.g, hi), min(c.b, hi));
+}
+
 // Every scene-canvas read goes through here: UV clamped half a texel inside the canvas (no edge/wrap
-// bleed, no out-of-range reads on any driver) and any NaN/Inf/negative sample forced to a finite colour.
+// bleed) and the sample passed through finite3 (NaN/negative -> 0, +Inf/huge -> 8).
 vec3 scene(Image tex, vec2 uv) {
     vec2 h = texel * 0.5;
     vec3 c = Texel(tex, clamp(uv, h, vec2(1.0) - h)).rgb;
-    return clamp(c, vec3(0.0), vec3(8.0));   // comparison-based clamp: NaN fails both tests and lands on 0 or 8
+    return finite3(c, 8.0);
 }
 
 float hash(vec2 p) {
@@ -71,7 +80,7 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
         b *= 0.62 * (1.0 - 0.35 * max(e.x, e.y));
         float g = hash(floor(pixel / dpi) + floor(time * 24.0) * 17.3) - 0.5;
         b += g * 0.012;
-        return vec4(clamp(b, vec3(0.0), vec3(1.0)), 1.0);
+        return vec4(finite3(b, 1.0), 1.0);
     }
 
     // barrel distortion (edges squeezed slightly toward the centre)
@@ -106,5 +115,5 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
     float live = smoothstep(0.01, 0.06, lum);
     float g = hash(floor(pixel / dpi) + floor(time * 24.0) * 17.3) - 0.5;
     c += g * 0.03 * live;
-    return vec4(clamp(c, vec3(0.0), vec3(1.0)), 1.0);
+    return vec4(finite3(c, 1.0), 1.0);
 }
