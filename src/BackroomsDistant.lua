@@ -4,7 +4,7 @@
 BackroomsDistant = {}
 BackroomsDistant.__index = BackroomsDistant
 
-BackroomsDistant.MIN_GAP, BackroomsDistant.MAX_GAP = 30, 90   -- s between events
+BackroomsDistant.MIN_GAP, BackroomsDistant.MAX_GAP = 120, 240  -- s between events
 BackroomsDistant.VOLUME = 0.12
 
 local function synthDoor(kind)
