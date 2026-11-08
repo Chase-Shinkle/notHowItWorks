@@ -61,17 +61,64 @@ CROP_DIRECTIONS = {
 
 Crop = Class{}
 
+-- Crop material: a small texture whose texels are drawn from the opaque pixels
+-- of the type's mature crop sprite (falling back to the def colour with noise),
+-- so bridges/platforms read as the crop's own skin, not a flat colour.
+local materials = {}
+local function cropMaterial(seedType)
+    if materials[seedType] then return materials[seedType] end
+    local c = CROP_DEFS[seedType].color
+    local pool = {}
+    local ok, data = pcall(function() return love.image.newImageData(CROP_SPRITE_PATHS[seedType]) end)
+    if ok and data then
+        local w, h = data:getDimensions()
+        for y = 0, h - 1 do
+            for x = 0, w - 1 do
+                local r, g, b, a = data:getPixel(x, y)
+                if a > 0.9 then pool[#pool + 1] = {r, g, b} end
+            end
+        end
+    end
+    local N = 16
+    local img = love.image.newImageData(N, N)
+    local rng = love.math.newRandomGenerator(#seedType * 7919)
+    for y = 0, N - 1 do
+        for x = 0, N - 1 do
+            local r, g, b
+            if #pool > 0 then
+                local p = pool[rng:random(#pool)]
+                r, g, b = p[1], p[2], p[3]
+            else
+                local k = 0.75 + 0.25 * rng:random()
+                r, g, b = c[1] * k, c[2] * k, c[3] * k
+            end
+            -- ribs/fibres so large faces show structure
+            local rib = (seedType == 'pumpkin' and x % 4 == 0) and 0.8 or (seedType ~= 'pumpkin' and y % 5 == 0) and 0.85 or 1
+            img:setPixel(x, y, r * rib, g * rib, b * rib, 1)
+        end
+    end
+    local tex = love.graphics.newImage(img)
+    tex:setFilter('nearest', 'nearest')
+    tex:setWrap('repeat', 'repeat')
+    materials[seedType] = tex
+    return tex
+end
+
 local function lerp(a, b, t) return a + (b - a) * t end
 
 -- Box vertices for the axis-aligned box [x0, x1] x [y0, y1] x [z0, z1],
 -- given relative to `origin` (so the model's translation is the origin).
 local function boxVertsAt(x0, x1, y0, y1, z0, z1, color)
     local verts = NewBoxVerts(x1 - x0, y1 - y0, z1 - z0, color)
+    local tu, tv = math.max(1, (x1 - x0) * 1.5), math.max(1, (z1 - z0) * 1.5)
     local cx, cy, cz = (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2
     for _, v in ipairs(verts) do
         v[1], v[2], v[3] = v[1] + cx, v[2] + cy, v[3] + cz
-        -- flat per-face shading (no lighting in the default shader)
-        local s = v[8] > 0.5 and 1 or (v[8] < -0.5 and 0.7 or (math.abs(v[6]) > 0.5 and 0.85 or 0.92))
+        -- per-face shading, kept strong enough to survive the bright preset's light
+        -- and the gameplay light floor (which otherwise wash a uniform colour flat)
+        local s = v[8] > 0.5 and 0.95 or (v[8] < -0.5 and 0.45 or (math.abs(v[6]) > 0.5 and 0.62 or 0.78))
+        -- tile the material by face size so it is not one stretched texel
+        v[4], v[5] = v[4] * tu, v[5] * tv
         v[9], v[10], v[11] = v[9] * s, v[10] * s, v[11] * s
     end
     return verts
@@ -125,8 +172,8 @@ local function buildVisualVerts(seedType, plot, anchor)
     local min, max = Crop.fullBounds(seedType, plot)
     local ax, ay, az = anchor[1], anchor[2], anchor[3]
     local x0, x1, y0, y1, z0, z1 = min[1] - ax, max[1] - ax, min[2] - ay, max[2] - ay, min[3] - az, max[3] - az
-    local c = def.color
-    local dark = {c[1] * 0.7, c[2] * 0.7, c[3] * 0.7, 1}
+    local c = {1, 1, 1, 1}   -- the material texture carries the colour
+    local dark = {0.7, 0.7, 0.7, 1}
     local verts = {}
     if seedType == 'beanstalk' then
         local h = z1
@@ -141,7 +188,7 @@ local function buildVisualVerts(seedType, plot, anchor)
         end
     elseif seedType == 'pumpkin' then
         append(verts, boxVertsAt(x0, x1, y0, y1, z0, z1, c))
-        append(verts, boxVertsAt(-0.1, 0.1, -0.1, 0.1, z1, z1 + 0.15, {0.35, 0.5, 0.15, 1}))
+        append(verts, boxVertsAt(-0.1, 0.1, -0.1, 0.1, z1, z1 + 0.15, {0.55, 0.75, 0.3, 1}))
         append(verts, boxVertsAt(x0 - 0.01, x1 + 0.01, -0.05, 0.05, z0 + 0.05, z1 - 0.05, dark))
         append(verts, boxVertsAt(-0.05, 0.05, y0 - 0.01, y1 + 0.01, z0 + 0.05, z1 - 0.05, dark))
     else
@@ -178,7 +225,7 @@ function Crop:init(seedType, plot, opts)
 
     self.min, self.max = Crop.fullBounds(seedType, plot)
     self.anchor, self.axes = anchorAndAxes(seedType, plot)
-    self.model = g3d.newModel(buildVisualVerts(seedType, plot, self.anchor), gTextures['white'],
+    self.model = g3d.newModel(buildVisualVerts(seedType, plot, self.anchor), cropMaterial(seedType),
         {self.anchor[1], self.anchor[2], self.anchor[3]})
 
     if def.solid then

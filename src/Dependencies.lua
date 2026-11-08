@@ -124,7 +124,9 @@ local CROP_ART = {
 local STAGE_FRAMES = {3, 4, 5, 6, 7}
 local STAGE_SIZES = {4, 6, 9, 12, 14}
 local cropManifest = {}
+CROP_SPRITE_PATHS = {}   -- mature sprite per seed type; Crop.lua samples its pixels for the 3D material
 for seedType, art in pairs(CROP_ART) do
+    CROP_SPRITE_PATHS[seedType] = string.format(art[1], 7)
     local pattern, color = art[1], art[2]
     cropManifest['seedbag-' .. seedType] = {string.format(pattern, 1), color, 10}
     cropManifest['produce-' .. seedType] = {string.format(pattern, 8), color, 10}
