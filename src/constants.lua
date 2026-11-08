@@ -432,6 +432,8 @@ BACKROOMS_FOOTSTEP_AIR_GRACE = 0.2    -- s of !grounded tolerated (contact flick
 BACKROOMS_FOOTSTEP_VOLUME = 0.03
 BACKROOMS_HEARTBEAT_FILE = 'sounds/heartbeat-with-deep-breaths-55210.mp3'  -- streamed, looping
 BACKROOMS_HEARTBEAT_VOLUME = .2   -- extremely quiet, fades in with the hum
+ENDING_MUSIC_FILE = 'sounds/backrooms idle.mp3'   -- plays once on the ending screen
+ENDING_MUSIC_VOLUME = .5
 BACKROOMS_HUM_FADE = 1.0               -- s
 -- UI (src/UI.lua; openspec title-hotbar-ending-ui)
 UI_FONT_FILE = 'fonts/SaH1Outline.ttf'  -- display font

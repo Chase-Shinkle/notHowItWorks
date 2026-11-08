@@ -199,8 +199,9 @@ gTextures['white'] = Assets.newPlaceholderImage({1, 1, 1, 1}, 4)
 
 -- Sounds: {path, source type}
 Assets.loadAll(gSounds, {
-    ['farm-music'] = {'sounds/farm_music.ogg', 'stream'},
+    ['farm-music'] = {'sounds/Farm theme.mp3', 'stream'},
     ['backrooms-heartbeat'] = {BACKROOMS_HEARTBEAT_FILE, 'stream'},
+    ['ending-music'] = {ENDING_MUSIC_FILE, 'stream'},
     ['backrooms-hum'] = {BACKROOMS_HUM_FILE, 'stream'},   -- 43 MB mp3: streamed, never static
     ['footstep-1'] = {BACKROOMS_FOOTSTEP_FILES[1], 'static'},
     ['footstep-2'] = {BACKROOMS_FOOTSTEP_FILES[2], 'static'},
