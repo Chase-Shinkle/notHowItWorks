@@ -40,7 +40,7 @@ Run: `love tests/love_runner tests/run.lua` -> 172 passed, 0 failed.
 | 3.1 uproot key (X) + `Room:uproot`/`Crop:remove` | done | `uproot 3.1`: wrong pumpkin planted on pit plot, uprooted while growing (growth cancelled, never completes) and when grown (collider gone); plot takes a vine afterwards; pumpkin count unchanged by uprooting; X key drives it |
 | 3.2 refusals | done | `uproot 3.2`: tutorial demo crop refused (message "part of the lesson"); standing on top of / inside a grown pumpkin refused with "Step off it first" and crop kept; allowed once clear at the rim |
 
-Standing check: player box vs the crop's full volume grown by `BACKROOMS_UPROOT_MARGIN` (0.12 m) on all sides.
+Standing check: player's round footprint must overlap the crop's top face and feet within `BACKROOMS_UPROOT_TOP_EPS` (0.05 m) of the top height.
 
 ## Section 4: Sequence and reset
 

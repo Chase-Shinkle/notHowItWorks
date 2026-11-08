@@ -301,9 +301,9 @@ BACKROOMS_PLANT_HEIGHT = 1.6
 -- tests/rim.lua), so 3.8 m gives a plantable floor span of about 2.5 m,
 -- including positions 2.0 m back from the rim. The height limit still applies.
 BACKROOMS_PIT_PLANT_RANGE = 3.8
--- Uprooting is refused while the player's box is within this distance of the
--- crop's full volume vertically (standing on it); horizontally only overlap counts.
-BACKROOMS_UPROOT_MARGIN = 0.12
+-- Uprooting is refused only while the player stands on the crop: footprint overlapping
+-- its top face and feet within this distance of the top height.
+BACKROOMS_UPROOT_TOP_EPS = 0.05
 
 -- Key bindings (any key in a list works). Mouse look uses love.mousemoved.
 BACKROOMS_KEYS = {

@@ -606,15 +606,20 @@ function Room:nearestCropPlot(x, y, z)
     return best
 end
 
--- Is the player box (pmin, pmax) on top of, inside or touching `crop`'s full
--- volume? A little slack above (standing on it) and around (climbing).
+-- Is the player standing on `crop`? True only when the player's round footprint
+-- (circle of the box's half-width about its centre, the capsule's base) truly
+-- overlaps the crop's top face (strictly: touching or the ~BACKROOMS_SKIN gap left
+-- by push-out does not count) AND the feet are within BACKROOMS_UPROOT_TOP_EPS of the
+-- top height. No horizontal margin and no broad vertical range: standing flush
+-- beside the collider, or below/above its top, is not standing on it.
 function Room.playerOnCrop(crop, pmin, pmax)
-    -- Slack is vertical only: a player standing flush beside the collider (the normal
-    -- spot for targeting) is clear of it; a horizontal margin would refuse that.
-    local m, h = BACKROOMS_UPROOT_MARGIN, 0.01
-    local lo = {crop.min[1] - h, crop.min[2] - h, crop.min[3] - m}
-    local hi = {crop.max[1] + h, crop.max[2] + h, crop.max[3] + m}
-    return PlayerController.boxesOverlap(pmin, pmax, lo, hi)
+    local eps = BACKROOMS_UPROOT_TOP_EPS
+    if math.abs(pmin[3] - crop.max[3]) > eps then return false end
+    local r = (pmax[1] - pmin[1]) / 2
+    local cx, cy = (pmin[1] + pmax[1]) / 2, (pmin[2] + pmax[2]) / 2
+    local dx = math.max(crop.min[1] - cx, 0, cx - crop.max[1])
+    local dy = math.max(crop.min[2] - cy, 0, cy - crop.max[2])
+    return math.sqrt(dx * dx + dy * dy) < r - 0.005
 end
 
 -- Removes the crop on `plot`, freeing it and cancelling any pending growth. The
