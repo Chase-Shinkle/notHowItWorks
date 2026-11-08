@@ -144,4 +144,5 @@ love.mouse.buttonsPressed[1] = true; tick(0.016)
 check(quit == 2, 'mouse click on Exit Game quits')
 love.event.quit = realQuit
 
-if fails == 0 then print('ending_ui: all ok') else print('ending_ui: ' .. fails .. ' failure(s)'); os.exit(1) end
+if fails == 0 then print("ending_ui: all ok") else print('ending_ui: ' .. fails .. ' failure(s)'); os.exit(1) end
+os.exit(0)

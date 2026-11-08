@@ -432,7 +432,7 @@ BACKROOMS_FOOTSTEP_AIR_GRACE = 0.2    -- s of !grounded tolerated (contact flick
 BACKROOMS_FOOTSTEP_VOLUME = 0.35
 BACKROOMS_HUM_FADE = 1.0               -- s
 -- UI (src/UI.lua; openspec title-hotbar-ending-ui)
-UI_FONT_FILE = 'fonts/SaH1Outline.ttf'  -- display font; see THIRD_PARTY_NOTICES.md
+UI_FONT_FILE = 'fonts/SaH1Outline.ttf'  -- display font
 UI_FONT_MIN_SIZE = 6
 UI_FONT_MAX_SIZE = 256
 UI_BUTTON_PAD = 0.12                    -- fraction of button width kept free on each side of the label
