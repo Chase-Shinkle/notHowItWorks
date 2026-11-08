@@ -12,7 +12,7 @@ function love.load()
 
     push:setupScreen(VIRTUAL_WIDTH, VIRTUAL_HEIGHT, WINDOW_WIDTH, WINDOW_HEIGHT, {
         vsync = true,
-        fullscreen = false,
+        fullscreen = love.window.getFullscreen(),   -- keep conf.lua's launch mode
         resizable = true
     })
 
@@ -34,7 +34,27 @@ function love.resize(w, h)
     g3d.camera.resize(w, h)
 end
 
+-- Toggle desktop fullscreen <-> 800x800 windowed, then feed the new size to
+-- the same handler a user resize would hit (push, g3d camera; the backrooms
+-- post canvas is re-sized from the target size every frame).
+function ToggleFullscreen()
+    if love.window.getFullscreen() then
+        love.window.setFullscreen(false)
+        local _, _, flags = love.window.getMode()
+        flags.fullscreen = false
+        love.window.setMode(WINDOW_WIDTH, WINDOW_HEIGHT, flags)
+    else
+        love.window.setFullscreen(true, 'desktop')
+    end
+    push._fullscreen = love.window.getFullscreen()
+    love.resize(love.graphics.getDimensions())
+end
+
 function love.keypressed(key, scancode)
+    if key == 'f11' or (key == 'return' and love.keyboard.isDown('lgui', 'rgui')) then
+        ToggleFullscreen()
+        return
+    end
     if EffectToggles and EffectToggles.handleKey(key, scancode) then return end
     love.keyboard.keysPressed[key] = true
 end
