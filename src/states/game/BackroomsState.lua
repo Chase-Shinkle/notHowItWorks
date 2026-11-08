@@ -339,7 +339,7 @@ function BackroomsState:advance()
 end
 
 function BackroomsState:mousemoved(x, y, dx, dy)
-    if self.mouseCaptured then
+    if self.mouseCaptured and not self.fall then
         g3d.camera.firstPersonLook(dx, dy)
     end
 end
@@ -380,36 +380,38 @@ function BackroomsState:updateFall(dt)
 end
 
 function BackroomsState:update(dt)
-    if IsDebugAdvancePressed() then
+    if IsDebugAdvancePressed() and not self.fall then
         self:advance()
         return
     end
 
     local clickPlants, clickUproots = false, false
-    if self.mouseCaptured and love.mouse.wasPressed(BACKROOMS_KEYS.uprootMouse) then clickUproots = true end
+    local locked = self.fall ~= nil -- controls locked for the whole pit-death transition
+    if self.mouseCaptured and not locked and love.mouse.wasPressed(BACKROOMS_KEYS.uprootMouse) then clickUproots = true end
     if self.mouseCaptured and anyPressed(BACKROOMS_KEYS.releaseMouse) then
         self:setMouseCaptured(false)
     elseif not self.mouseCaptured and love.mouse.wasPressed(1) then
         self:setMouseCaptured(true)
-    elseif self.mouseCaptured and love.mouse.wasPressed(1) then
+    elseif self.mouseCaptured and not locked and love.mouse.wasPressed(1) then
         clickPlants = true
     end
 
-    if anyPressed(BACKROOMS_KEYS.reset) and not self.fall then
+    if anyPressed(BACKROOMS_KEYS.reset) and not locked then
         self:resetRoom()
         return
     end
     -- key i always means SEED_TYPES[i]; keys for types this room hides do nothing
     for i, key in ipairs(BACKROOMS_KEYS.seedSlots) do
+        if locked then break end
         local t = SEED_TYPES[i]
         if love.keyboard.wasPressed(key) and t and self:isSeedVisible(t) then self.selectedSeed = t end
     end
-    if anyPressed(BACKROOMS_KEYS.nextSeed) then self:cycleSeed() end
+    if not locked and anyPressed(BACKROOMS_KEYS.nextSeed) then self:cycleSeed() end
     local wheel = love.mouse.wheelDelta or 0
-    if wheel ~= 0 then self:wheelSelect(wheel) end
+    if wheel ~= 0 and not locked then self:wheelSelect(wheel) end
     if self.mouseCaptured and self.hintTime > 0 then self.hintTime = self.hintTime - dt end
-    if clickPlants or anyPressed(BACKROOMS_KEYS.plant) then self:plant() end
-    if clickUproots or anyPressed(BACKROOMS_KEYS.uproot) then self:uproot() end
+    if not locked and (clickPlants or anyPressed(BACKROOMS_KEYS.plant)) then self:plant() end
+    if not locked and (clickUproots or anyPressed(BACKROOMS_KEYS.uproot)) then self:uproot() end
 
     if self.message then
         self.message.time = self.message.time - dt
