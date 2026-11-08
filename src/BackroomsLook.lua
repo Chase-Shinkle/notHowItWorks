@@ -438,8 +438,21 @@ local function postFail(reason)
     return false
 end
 
-local function newPostCanvas(w, h)
-    local ok, canvas = pcall(love.graphics.newCanvas, w, h)
+-- Physical pixels per logical unit of the CURRENT render target (window or canvas): 2 on Retina.
+-- Derived from the pixel/logical size ratio so it also holds for a dpiscale canvas target.
+function BackroomsLook.dpiScale()
+    local c = love.graphics.getCanvas and love.graphics.getCanvas()
+    if c and c.getDPIScale then return c:getDPIScale() end
+    local lw = love.graphics.getWidth()
+    local pw = love.graphics.getPixelWidth and love.graphics.getPixelWidth() or lw
+    if lw <= 0 or pw <= 0 then return 1 end
+    return pw / lw
+end
+
+-- w, h are LOGICAL; the canvas gets an explicit dpiscale so it is ceil(w*dpi) x ceil(h*dpi) pixels
+-- and still reports/draws as w x h logical units.
+local function newPostCanvas(w, h, dpi)
+    local ok, canvas = pcall(love.graphics.newCanvas, w, h, {dpiscale = dpi or 1})
     if not ok or not canvas then return nil, tostring(canvas) end
     if canvas.setFilter then canvas:setFilter('linear', 'linear') end
     return canvas
@@ -462,7 +475,7 @@ function BackroomsLook.initPost()
     local ok, shader = pcall(love.graphics.newShader, source)
     if not ok or not shader then return postFail('compile failed: ' .. tostring(shader)) end
     local w, h = BackroomsLook.targetSize()
-    local canvas, err = newPostCanvas(w, h)   -- resized to the 4:3 area on first use
+    local canvas, err = newPostCanvas(w, h, BackroomsLook.dpiScale())   -- resized to the 4:3 area on first use
     if not canvas then return postFail('canvas creation failed: ' .. err) end
     BackroomsLook.postShader, BackroomsLook.postCanvas = shader, canvas
     BackroomsLook.postEnabled = true
@@ -496,10 +509,14 @@ end
 -- (canvas, shader, colour, blend, depth) is restored.
 -- Pixel size of the current render target (the active canvas, else the window).
 -- Fullscreen passes must use this, not a cached or window-unit size.
-function BackroomsLook.targetSize()
+function BackroomsLook.targetSize()   -- LOGICAL size (pixels / dpi) of the real target
     local c = love.graphics.getCanvas and love.graphics.getCanvas()
+    if c and c.getPixelDimensions then
+        local pw, ph = c:getPixelDimensions()
+        local d = c.getDPIScale and c:getDPIScale() or 1
+        return pw / d, ph / d
+    end
     if c and c.getDimensions then return c:getDimensions() end
-    if love.graphics.getPixelDimensions then return love.graphics.getPixelDimensions() end
     return love.graphics.getDimensions()
 end
 
@@ -509,11 +526,16 @@ function BackroomsLook.renderScene(drawScene)
     local ww, wh = BackroomsLook.targetSize()   -- the real target, not a cached/window-unit size
     local rx, ry, w, h = BackroomsLook.viewRect(ww, wh)
     if g3d.camera and g3d.camera.resize then g3d.camera.resize(w, h) end     -- 3D is rendered 4:3
+    local dpi = BackroomsLook.dpiScale()
     local canvas = BackroomsLook.postCanvas
     if canvas.getDimensions then
+        local cdpi = canvas.getDPIScale and canvas:getDPIScale() or 1
         local cw, ch = canvas:getDimensions()
-        if cw ~= w or ch ~= h then
-            local fresh = newPostCanvas(w, h)
+        if canvas.getPixelDimensions then
+            local cpw, cph = canvas:getPixelDimensions(); cw, ch = cpw / cdpi, cph / cdpi   -- logical
+        end
+        if cw ~= w or ch ~= h or math.abs(cdpi - dpi) > 1e-6 then
+            local fresh = newPostCanvas(w, h, dpi)
             if fresh then canvas = fresh; BackroomsLook.postCanvas = fresh end
         end
     end
@@ -536,9 +558,13 @@ function BackroomsLook.renderScene(drawScene)
     local pushed = false
     local passed, perr = pcall(function()
         local function send(name, v) if shader:hasUniform(name) then shader:send(name, v) end end
-        send('texel', {1 / w, 1 / h})
-        send('rect', {rx, ry, w, h})
-        send('winSize', {ww, wh})
+        -- shader works in physical pixels (love_PixelCoord): scale every logical size by dpi
+        local pw, ph = w * dpi, h * dpi
+        if canvas.getPixelDimensions then pw, ph = canvas:getPixelDimensions() end
+        send('texel', {1 / pw, 1 / ph})
+        send('dpi', dpi)
+        send('rect', {rx * dpi, ry * dpi, w * dpi, h * dpi})
+        send('winSize', {ww * dpi, wh * dpi})
         send('bloom', BackroomsLook.bloomStrength())
         send('vignette', 0.45)
         send('time', BackroomsLook.now() % 1000)
@@ -550,6 +576,11 @@ function BackroomsLook.renderScene(drawScene)
         love.graphics.setShader(shader)
         love.graphics.setColor(1, 1, 1, 1)
         local cw, ch = canvas:getDimensions()
+        if canvas.getPixelDimensions then
+            local cpw, cph = canvas:getPixelDimensions()
+            local cd = canvas.getDPIScale and canvas:getDPIScale() or 1
+            cw, ch = cpw / cd, cph / cd       -- logical size the canvas draws at
+        end
         -- stretched over the whole target: the shader fills the sides around the 4:3 picture
         love.graphics.draw(canvas, 0, 0, 0, ww / cw, wh / ch)
         love.graphics.pop(); pushed = false

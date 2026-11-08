@@ -4,9 +4,11 @@
 //  * inside it the picture through a small camcorder lens: subtle barrel distortion, soft focus,
 //    mild edge chromatic aberration, light bloom, fine grain and a soft edge vignette.
 // Colour grade (sickly yellow) is unchanged from before. Nothing scans, tracks or stamps.
-uniform vec2 texel;      // 1 / scene canvas size
-uniform vec4 rect;       // picture rect in window pixels: x, y, w, h
-uniform vec2 winSize;    // window size in pixels
+// All sizes below are PHYSICAL pixels (love_PixelCoord is physical), so this works on high-DPI screens.
+uniform vec2 texel;      // 1 / scene canvas size in physical pixels
+uniform float dpi;       // physical pixels per logical unit (1 normally, 2 on Retina); keeps blur widths constant
+uniform vec4 rect;       // picture rect in physical window pixels: x, y, w, h
+uniform vec2 winSize;    // window size in physical pixels
 uniform float bloom;     // 0 = off, ~0.25 mild
 uniform float vignette;  // 0..1 edge darkening
 uniform float time;      // seconds (grain seed)
@@ -23,8 +25,8 @@ vec3 glow(Image tex, vec2 uv) {
     for (int i = 0; i < 8; i++) {
         float a = float(i) * 0.785398;
         vec2 d = vec2(cos(a), sin(a));
-        vec3 c1 = Texel(tex, uv + d * texel * 4.0).rgb;
-        vec3 c2 = Texel(tex, uv + d * texel * 11.0).rgb;
+        vec3 c1 = Texel(tex, uv + d * texel * dpi * 4.0).rgb;
+        vec3 c2 = Texel(tex, uv + d * texel * dpi * 11.0).rgb;
         sum += max(c1 - 0.62, 0.0) + max(c2 - 0.62, 0.0);
     }
     return sum / 16.0;
@@ -59,7 +61,7 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
         // fade deeper toward the window edge, but keep some colour
         vec2 e = abs(pixel / winSize - 0.5) * 2.0;
         b *= 0.62 * (1.0 - 0.35 * max(e.x, e.y));
-        float g = hash(pixel + floor(time * 24.0) * 17.3) - 0.5;
+        float g = hash(floor(pixel / dpi) + floor(time * 24.0) * 17.3) - 0.5;
         b += g * 0.012;
         return vec4(max(b, 0.0), 1.0);
     }
@@ -77,7 +79,7 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
     vec3 soft = vec3(0.0);
     for (int i = 0; i < 8; i++) {
         float a = float(i) * 0.785398;
-        vec2 d = vec2(cos(a), sin(a)) * texel * rad;
+        vec2 d = vec2(cos(a), sin(a)) * texel * dpi * rad;
         soft += vec3(Texel(tex, duv + ca + d).r, Texel(tex, duv + d).g, Texel(tex, duv - ca + d).b);
     }
     soft /= 8.0;
@@ -94,7 +96,7 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
     // fine subtle grain; masked so true black stays black
     float lum = dot(c, vec3(0.299, 0.587, 0.114));
     float live = smoothstep(0.01, 0.06, lum);
-    float g = hash(pixel + floor(time * 24.0) * 17.3) - 0.5;
+    float g = hash(floor(pixel / dpi) + floor(time * 24.0) * 17.3) - 0.5;
     c += g * 0.03 * live;
     return vec4(max(c, 0.0), 1.0);
 }

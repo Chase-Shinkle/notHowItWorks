@@ -12,6 +12,7 @@
 --   BR_LEVELS   comma list of level indices (1 = tutorial; default "1,2")
 --   BR_POSES    comma list of pose names (default: all)
 --   BR_PRESET   lighting preset forced on every level (bright|dim|single-bulb|near-dark)
+--   BR_DPI      e.g. 2: draw each frame into a dpiscale=2 canvas and save its full-pixel image (Retina simulation)
 --   BR_BAD_SHADER=1  compile garbage instead of shaders/backrooms.glsl (real-runtime failure path)
 --   BR_BAD_POST=1    compile garbage instead of shaders/backrooms_post.glsl (post rung falls away, look stays)
 --   BR_SCENES   comma list of scene names (see SCENES) added after the POSES; BR_POSES=none
@@ -50,6 +51,8 @@ local function list(env, default)
     for item in (os.getenv(env) or default):gmatch('[^,]+') do out[#out + 1] = item end
     return out
 end
+local SIM_DPI = tonumber(os.getenv('BR_DPI'))   -- e.g. 2: render into a dpiscale=2 canvas target (Retina simulation)
+local simTarget, simLogged, simPatched
 local LEVELS = list('BR_LEVELS', '1,2')
 local ONLY_POSES = os.getenv('BR_POSES') and list('BR_POSES', '') or nil
 local SCENE_NAMES = os.getenv('BR_SCENES') and list('BR_SCENES', '') or {}
@@ -445,12 +448,46 @@ function love.run()
         love.graphics.origin()
         love.graphics.clear(love.graphics.getBackgroundColor())
         local t0 = love.timer.getTime()
+        if SIM_DPI then
+            -- accurate high-DPI simulation: draw into a canvas whose dpiscale is SIM_DPI (logical size = window
+            -- size, SIM_DPI x as many pixels), exactly what a Retina backbuffer looks like to the game
+            local lw, lh = love.graphics.getDimensions()
+            if not simTarget or simTarget:getWidth() ~= lw or simTarget:getHeight() ~= lh then
+                simTarget = love.graphics.newCanvas(lw, lh, {dpiscale = SIM_DPI})
+            end
+            if not simPatched then
+                -- a real Retina window reports logical size, pixel size = logical * dpi, and getDPIScale() = dpi;
+                -- LÖVE reports window values while a canvas is bound, so report the simulated window instead
+                simPatched = true
+                local g = love.graphics
+                g.getWidth = function() return lw end
+                g.getHeight = function() return lh end
+                g.getDimensions = function() return lw, lh end
+                g.getPixelWidth = function() return simTarget:getPixelWidth() end
+                g.getPixelHeight = function() return simTarget:getPixelHeight() end
+                g.getPixelDimensions = function() return simTarget:getPixelDimensions() end
+                g.getDPIScale = function() return SIM_DPI end
+            end
+            love.graphics.setCanvas({simTarget, depth = true})
+            love.graphics.clear(love.graphics.getBackgroundColor())
+            if not simLogged then
+                simLogged = true
+                log('SIM_DPI target: logical %dx%d pixel %dx%d look.dpiScale=%s', love.graphics.getWidth(), love.graphics.getHeight(),
+                    love.graphics.getPixelWidth(), love.graphics.getPixelHeight(), tostring(look() and look().dpiScale and look().dpiScale()))
+            end
+        end
         love.draw()
+        if SIM_DPI then
+            love.graphics.setCanvas()
+            love.graphics.setColor(1, 1, 1, 1)
+            love.graphics.draw(simTarget, 0, 0)
+        end
         local wantShot = (MODE ~= 'perf') and phase == 'warmup' and frame == WARMUP - 1
         if wantShot then
             log('shot L%d %s: %s', job.level, job.pose.name, ladder())
             local file = string.format('%s/L%d-%s%s.png', OUT, job.level, job.pose.name, SUFFIX)
-            love.graphics.captureScreenshot(function(data) save(data, file); shotDone = true end)
+            if SIM_DPI then save(simTarget:newImageData(), file); shotDone = true
+            else love.graphics.captureScreenshot(function(data) save(data, file); shotDone = true end) end
         end
         local wantSync = phase == 'timed' and frame == FRAMES
         if wantSync then
