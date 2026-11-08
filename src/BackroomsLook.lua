@@ -458,7 +458,7 @@ function BackroomsLook.initPost()
     local ok, shader = pcall(love.graphics.newShader, source)
     if not ok or not shader then return postFail('compile failed: ' .. tostring(shader)) end
     local w, h = love.graphics.getDimensions()
-    local canvas, err = newPostCanvas(w, h)
+    local canvas, err = newPostCanvas(w, h)   -- resized to the 4:3 area on first use
     if not canvas then return postFail('canvas creation failed: ' .. err) end
     BackroomsLook.postShader, BackroomsLook.postCanvas = shader, canvas
     BackroomsLook.postEnabled = true
@@ -476,6 +476,15 @@ function BackroomsLook.updateIdle(dt, stillSeconds)
     BackroomsLook.idleVignette = cur
 end
 
+-- The centred 4:3 picture area (x, y, w, h) inside a w x h window. Without the post-process the scene
+-- fills the window.
+function BackroomsLook.viewRect(w, h)
+    if not BackroomsLook.postEnabled then return 0, 0, w, h end
+    local cw = math.min(w, h * 4 / 3)
+    local ch = cw * 3 / 4
+    return math.floor((w - cw) / 2 + 0.5), math.floor((h - ch) / 2 + 0.5), math.floor(cw + 0.5), math.floor(ch + 0.5)
+end
+
 -- Runs `drawScene` (3D only). With the post-process available the scene goes
 -- into a depth-capable canvas and is then drawn through the grade; otherwise
 -- (or on any failure of the pass) it is drawn straight to the target. The HUD
@@ -484,7 +493,9 @@ end
 function BackroomsLook.renderScene(drawScene)
     if not BackroomsLook.initPost() then return drawScene() end
     local target = love.graphics.getCanvas()
-    local w, h = love.graphics.getDimensions()
+    local ww, wh = love.graphics.getDimensions()
+    local rx, ry, w, h = BackroomsLook.viewRect(ww, wh)
+    if g3d.camera and g3d.camera.resize then g3d.camera.resize(w, h) end     -- 3D is rendered 4:3
     local canvas = BackroomsLook.postCanvas
     if canvas.getDimensions then
         local cw, ch = canvas:getDimensions()
@@ -512,20 +523,22 @@ function BackroomsLook.renderScene(drawScene)
     local passed, perr = pcall(function()
         local function send(name, v) if shader:hasUniform(name) then shader:send(name, v) end end
         send('texel', {1 / w, 1 / h})
+        send('rect', {rx, ry, w, h})
+        send('winSize', {ww, wh})
         send('bloom', BackroomsLook.bloomStrength())
         send('vignette', 0.45)
         send('time', BackroomsLook.now() % 1000)
         send('idle', BackroomsLook.idleVignette or 0)
         love.graphics.setShader(shader)
         love.graphics.setColor(1, 1, 1, 1)
-        love.graphics.draw(canvas, 0, 0)
+        love.graphics.draw(canvas, 0, 0, 0, ww / w, wh / h)    -- stretched over the window: the shader fills the sides
     end)
     love.graphics.setShader()
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.setBlendMode('alpha')
     if not passed then
         postFail('post pass failed: ' .. tostring(perr))
-        love.graphics.draw(canvas, 0, 0)       -- show the frame already drawn, ungraded
+        love.graphics.draw(canvas, rx, ry)       -- show the frame already drawn, ungraded
     end
     love.graphics.setDepthMode('lequal', true)
 end

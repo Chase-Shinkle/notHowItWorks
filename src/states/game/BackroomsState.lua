@@ -495,7 +495,16 @@ function BackroomsState:renderHUD()
 end
 
 function BackroomsState:renderHUDContents()
-    local w, h = love.graphics.getDimensions()
+    -- HUD lives over the centred 4:3 picture, not the blurred side fill
+    local ww, wh = love.graphics.getDimensions()
+    local ox, oy, w, h = BackroomsLook.viewRect(ww, wh)
+    love.graphics.push()
+    love.graphics.translate(ox, oy)
+    self:drawHUDIn(w, h)
+    love.graphics.pop()
+end
+
+function BackroomsState:drawHUDIn(w, h)
     local font = gFonts['default']
     love.graphics.setFont(font)
 

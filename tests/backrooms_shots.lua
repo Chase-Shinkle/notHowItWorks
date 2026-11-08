@@ -419,7 +419,7 @@ end
 function love.run()
     if love.load then love.load(love.arg.parseGameArguments(arg), arg) end
     if love.timer then love.timer.step() end
-    love.window.updateMode(800, 800, {vsync = 0})
+    love.window.updateMode(tonumber(os.getenv('BR_W')) or 800, tonumber(os.getenv('BR_H')) or 800, {vsync = 0})
     if os.getenv('BR_BAD_SHADER') and look() then look().sourceOverride = 'this is not glsl' end
     if os.getenv('BR_BAD_POST') and look() then look().postSourceOverride = 'this is not glsl' end
     local info = {love.graphics.getRendererInfo()}
