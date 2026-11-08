@@ -61,54 +61,77 @@ CROP_DIRECTIONS = {
 
 Crop = Class{}
 
--- Crop material: an organic leafy/vine tile (green-brown moss base, overlapping
--- leaf blobs with midribs, curling vine strands). Seamless (wrapped), no straight
--- stripes or planks; per-type hue tint only. Colour comes through the zone shader.
+-- Crop material: an organic leafy/vine tile (mottled base, overlapping leaf
+-- blobs with midribs, curling vine strands). Seamless (wrapped), no straight
+-- stripes or planks. Colours come from each crop's OWN sprite palette
+-- (pumpkin: oranges/red-orange/brown, thin green vine; pepper: its greens;
+-- zucchini ("corn"): yellows/amber with green accents). Colour passes through
+-- the zone shader.
 local materials = {}
-local TINT = {pumpkin = {1.0, 0.92, 0.7}, vine = {0.9, 1.0, 0.85}, beanstalk = {0.85, 0.98, 0.8}}
+local PALETTE = {
+    pumpkin = {  -- rind/flesh dominate; green only as thin vine strands
+        base = {{0.97, 0.50, 0.08}, {0.97, 0.56, 0.0}, {0.97, 0.41, 0.13}, {0.97, 0.56, 0.0}},
+        leaf = {{0.99, 0.62, 0.05}, {0.97, 0.50, 0.08}, {0.91, 0.35, 0.16}},
+        rib = {0.99, 0.72, 0.25},
+        vine = {{0.19, 0.60, 0.35}, {0.09, 0.25, 0.03}}, vines = 2,
+    },
+    beanstalk = {  -- pepper plant greens
+        base = {{0.19, 0.60, 0.35}, {0.41, 0.69, 0.25}, {0.13, 0.44, 0.35}},
+        leaf = {{0.41, 0.69, 0.25}, {0.59, 0.78, 0.31}, {0.19, 0.60, 0.35}},
+        rib = {0.78, 0.88, 0.45},
+        vine = {{0.09, 0.25, 0.03}, {0.13, 0.44, 0.35}}, vines = 4,
+    },
+    vine = {  -- zucchini/corn: yellows and amber, green accents
+        base = {{0.78, 0.75, 0.19}, {0.94, 0.66, 0.19}, {0.94, 0.85, 0.19}},
+        leaf = {{0.94, 0.85, 0.19}, {0.78, 0.75, 0.19}, {0.41, 0.69, 0.25}},
+        rib = {0.97, 0.93, 0.5},
+        vine = {{0.19, 0.60, 0.35}, {0.09, 0.25, 0.03}}, vines = 4,
+    },
+}
 local function cropMaterial(seedType)
     if materials[seedType] then return materials[seedType] end
     local N = 32
-    local tint = TINT[seedType] or {1, 1, 1}
+    local pal = PALETTE[seedType] or PALETTE.beanstalk
     local rng = love.math.newRandomGenerator(#seedType * 7919 + 13)
     local px = {}
     local function wrap(v) return v % N end
-    local function put(x, y, r, g, b) px[wrap(math.floor(y)) * N + wrap(math.floor(x))] = {r, g, b} end
-    -- base: mottled moss / bark-brown
+    local function put(x, y, c, k) k = k or 1; px[wrap(math.floor(y)) * N + wrap(math.floor(x))] = {c[1] * k, c[2] * k, c[3] * k} end
+    -- base: mottled blend of the crop's base colours
     for y = 0, N - 1 do for x = 0, N - 1 do
         local n = 0.5 + 0.25 * math.sin(x * 0.55 + math.sin(y * 0.37) * 2) + 0.25 * math.sin(y * 0.61 + math.cos(x * 0.43) * 2)
-        n = n + (rng:random() - 0.5) * 0.25
-        px[y * N + x] = {0.16 + 0.10 * n, 0.22 + 0.16 * n, 0.08 + 0.06 * n}
+        n = n + (rng:random() - 0.5) * 0.3
+        local c = pal.base[math.min(#pal.base, math.max(1, math.floor(n * #pal.base) + 1))]
+        local k = 0.62 + 0.25 * n
+        px[y * N + x] = {c[1] * k, c[2] * k, c[3] * k}
     end end
-    -- vine strands: wandering curves, brown with green edge
-    for _ = 1, 4 do
-        local x, y, ang = rng:random() * N, rng:random() * N, rng:random() * 6.28
-        for _ = 1, 45 do
-            ang = ang + (rng:random() - 0.5) * 0.9
-            x, y = x + math.cos(ang), y + math.sin(ang)
-            put(x, y, 0.30, 0.22, 0.10)
-            put(x + 1, y, 0.20, 0.30, 0.10)
-        end
-    end
-    -- leaves: ellipses at random angles with a lighter midrib
+    -- leaf blobs with lighter midrib
     for _ = 1, 22 do
         local cx, cy, ang = rng:random() * N, rng:random() * N, rng:random() * 6.28
         local len, wid = 3 + rng:random() * 3, 1.3 + rng:random() * 1.2
-        local shade = 0.7 + rng:random() * 0.6
+        local c = pal.leaf[rng:random(#pal.leaf)]
+        local shade = 0.75 + rng:random() * 0.3
         local ca, sa = math.cos(ang), math.sin(ang)
         for u = -len, len, 0.5 do for v = -wid, wid, 0.5 do
             local e = (u / len) ^ 2 + (v / (wid * (1 - 0.5 * math.abs(u) / len))) ^ 2
             if e <= 1 then
-                local rib = math.abs(v) < 0.35
-                local g = (rib and 0.62 or 0.46) * shade
-                put(cx + u * ca - v * sa, cy + u * sa + v * ca, g * 0.45, g, g * 0.28)
+                put(cx + u * ca - v * sa, cy + u * sa + v * ca, math.abs(v) < 0.35 and pal.rib or c, math.abs(v) < 0.35 and shade or shade * 0.9)
             end
         end end
+    end
+    -- thin curling vine strands (1px, drawn last so they stay visible)
+    for _ = 1, pal.vines do
+        local x, y, ang = rng:random() * N, rng:random() * N, rng:random() * 6.28
+        for _ = 1, 40 do
+            ang = ang + (rng:random() - 0.5) * 0.9
+            x, y = x + math.cos(ang), y + math.sin(ang)
+            put(x, y, pal.vine[1])
+            put(x + 1, y, pal.vine[2], 0.9)
+        end
     end
     local img = love.image.newImageData(N, N)
     for y = 0, N - 1 do for x = 0, N - 1 do
         local c = px[y * N + x]
-        img:setPixel(x, y, math.min(1, c[1] * tint[1]), math.min(1, c[2] * tint[2]), math.min(1, c[3] * tint[3]), 1)
+        img:setPixel(x, y, math.min(1, c[1]), math.min(1, c[2]), math.min(1, c[3]), 1)
     end end
     local tex = love.graphics.newImage(img)
     tex:setFilter('nearest', 'nearest')
