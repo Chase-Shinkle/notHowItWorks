@@ -2,16 +2,19 @@
 -- in the backrooms. It never touches collision, plots, seeds, the exit,
 -- solvability or the run RNG (own generator). It only appears when the player
 -- is looking down a clear, floored sightline, never behind or near them, and
--- it fades out when approached or after a few seconds.
+-- it fades out when approached, stared at (1.5s) or after a few seconds.
 Silhouette = {
     COOLDOWN_MIN = 180,     -- seconds between appearances (and before the first)
-    COOLDOWN_MAX = 420,
+    COOLDOWN_MAX = 300,
     MIN_DIST = 16.5,        -- spawn distance floor (>16 m)
     MAX_DIST = 30,
     VANISH_DIST = 8,        -- fades out when the player gets this close
     LIFETIME = 5,           -- seconds visible at most
     FADE_IN = 1.2,
     FADE_OUT = 1.0,
+    GAZE_DEG = 10,          -- within this of screen centre (horizontal)
+    GAZE_TIME = 1.5,        -- continuous seconds of gaze before vanishing
+    GAZE_FADE = 0.3,
     HEIGHT = 1.9,
     PEAK_ALPHA = 0.85,
     CHECK_EVERY = 0.5,
@@ -129,13 +132,16 @@ function Silhouette.update(dt, room, player, dir, paused)
         local a = S.active
         a.t = a.t + dt
         local dist = math.sqrt((player.x - a.x) ^ 2 + (player.y - a.y) ^ 2)
-        local fadingOut = a.out or paused or dist < S.VANISH_DIST or a.t > S.LIFETIME
-        if fadingOut and not a.out then a.out = 0 end
+        local diff = (math.atan2(a.y - player.y, a.x - player.x) - dir + math.pi) % (2 * math.pi) - math.pi
+        if math.abs(diff) <= math.rad(S.GAZE_DEG) then a.gaze = (a.gaze or 0) + dt else a.gaze = 0 end
+        local gazed = a.gaze >= S.GAZE_TIME
+        local fadingOut = a.out or paused or dist < S.VANISH_DIST or a.t > S.LIFETIME or gazed
+        if fadingOut and not a.out then a.out = 0; a.fade = gazed and S.GAZE_FADE or S.FADE_OUT end
         local alpha
         if a.out then
             a.out = a.out + dt
-            alpha = a.alpha * math.max(0, 1 - a.out / S.FADE_OUT)
-            if a.out >= S.FADE_OUT then S.active, S.board = nil, nil; S.forced = false; return end
+            alpha = a.alpha * math.max(0, 1 - a.out / a.fade)
+            if a.out >= a.fade then S.active, S.board = nil, nil; S.forced = false; return end
         else
             alpha = S.PEAK_ALPHA * math.min(1, a.t / S.FADE_IN)
             a.alpha = alpha
