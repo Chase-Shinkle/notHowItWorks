@@ -427,9 +427,11 @@ BACKROOMS_FOOTSTEP_FILES = {'sounds/Footsteps Rug 1.wav', 'sounds/Footsteps Rug 
 BACKROOMS_FOOTSTEP_STRIDE = 1.7        -- m of ground travel per step
 BACKROOMS_FOOTSTEP_PITCH_VARIATION = 0.02
 BACKROOMS_FOOTSTEP_VOLUME_VARIATION = 0.02
-BACKROOMS_HUM_VOLUME = .9
+BACKROOMS_HUM_VOLUME = .8
 BACKROOMS_FOOTSTEP_AIR_GRACE = 0.2    -- s of !grounded tolerated (contact flicker) before the stride bank resets
-BACKROOMS_FOOTSTEP_VOLUME = 0.075
+BACKROOMS_FOOTSTEP_VOLUME = 0.03
+BACKROOMS_HEARTBEAT_FILE = 'sounds/heartbeat-with-deep-breaths-55210.mp3'  -- streamed, looping
+BACKROOMS_HEARTBEAT_VOLUME = .2   -- extremely quiet, fades in with the hum
 BACKROOMS_HUM_FADE = 1.0               -- s
 -- UI (src/UI.lua; openspec title-hotbar-ending-ui)
 UI_FONT_FILE = 'fonts/SaH1Outline.ttf'  -- display font

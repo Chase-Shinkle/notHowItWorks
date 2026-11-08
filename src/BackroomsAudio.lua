@@ -14,6 +14,7 @@ function BackroomsAudio.new(rng)
     self.rng = rng or function(a, b) return math.random(a, b) end
     self.rand = math.random
     self.hum = gSounds['backrooms-hum']
+    self.heartbeat = gSounds['backrooms-heartbeat']
     self.footsteps = {}
     for i = 1, #BACKROOMS_FOOTSTEP_FILES do self.footsteps[i] = gSounds['footstep-' .. i] end
     self.active = true
@@ -27,6 +28,11 @@ function BackroomsAudio.new(rng)
         self.hum:setLooping(true)
         self.hum:setVolume(0)
         self.hum:play()
+    end
+    if self.heartbeat then
+        self.heartbeat:setLooping(true)
+        self.heartbeat:setVolume(0)
+        self.heartbeat:play()
     end
     return self
 end
@@ -61,9 +67,10 @@ end
 -- player: needs x, y, grounded, climbing.
 function BackroomsAudio:update(dt, player)
     if not self.active then return end
-    if self.fade < 1 and self.hum then
+    if self.fade < 1 and (self.hum or self.heartbeat) then
         self.fade = math.min(1, self.fade + dt / math.max(BACKROOMS_HUM_FADE, 1e-6))
-        self.hum:setVolume(BACKROOMS_HUM_VOLUME * self.fade)
+        if self.hum then self.hum:setVolume(BACKROOMS_HUM_VOLUME * self.fade) end
+        if self.heartbeat then self.heartbeat:setVolume(BACKROOMS_HEARTBEAT_VOLUME * self.fade) end
     end
     if not player then return end
     local x, y = player.x, player.y
@@ -102,6 +109,7 @@ end
 function BackroomsAudio:stop()
     self.active = false
     if self.hum then self.hum:stop() end
+    if self.heartbeat then self.heartbeat:stop() end
     for _, s in ipairs(self.footsteps) do s:stop() end
     for _, s in ipairs(self.live) do s:stop() end
     self.live = {}
