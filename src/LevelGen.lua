@@ -937,7 +937,7 @@ function LevelGen.build(seed, difficulty)
                 mbox('floor', 0, def.pitX0, -h, h, e - T, e)
                 mbox('floor', def.pitX1, CELL, -h, h, e - T, e)
                 boxes[#boxes + 1] = {kind = 'solid', pos = {px, py, (VOID_Z + pz) / 2}, size = {1.2, 1.2, pz - VOID_Z},
-                    color = {0.36, 0.25, 0.16, 1}, collide = false, zone = c.zone}
+                    theme = th, collide = false, zone = c.zone}
             elseif c.module == 'gap' then
                 mbox('floor', 0, def.gapX0, -h, h, e - T, e)
             else

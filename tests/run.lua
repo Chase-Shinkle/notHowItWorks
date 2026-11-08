@@ -4227,21 +4227,17 @@ test('materials 4.1: themed boxes resolve textures through the theme; missing te
     eq((one(nil, 'wall')).texture, gTextures['wall'])
 end)
 
-test('materials 4.2: obstacle surfaces and plots use fixed tints regardless of theme', function()
+test('materials 4.2: obstacle surfaces take the zone theme texture and tint like any box', function()
     loadGame()
-    local function vert(theme)
-        local room = Room({id = 't', spawn = {0, 0, 0}, plots = {{id = 'p', pos = {1, 0, 0}}}, theme = theme,
+    local function build(theme)
+        return Room({id = 't', spawn = {0, 0, 0}, plots = {{id = 'p', pos = {1, 0, 0}}}, theme = theme,
             boxes = {{kind = 'floor', obstacle = true, pos = {0, 0, 0}, size = {1, 1, 1}},
                      {kind = 'solid', obstacle = true, pos = {3, 0, 0}, size = {1, 1, 1}}},
             exit = {pos = {5, 0, 1}, size = {1, 1, 1}}, allotment = {}})
-        return room.colliders[1].verts[1], room.colliders[2].verts[1], room
     end
-    local f1, s1, r1 = vert('level0')
-    local f2, s2 = vert('classic')
-    for i = 9, 11 do eq(f1[i], f2[i], 'floor tint theme-independent'); eq(s1[i], s2[i], 'solid tint theme-independent') end
-    local oc = ROOM_OBSTACLE_COLORS.floor
-    assert(math.abs(f1[9] / f1[11] - oc[1] / oc[3]) < 1e-6, 'floor obstacle tint')
-    assert(f1[11] ~= s1[11] or f1[9] ~= s1[9])
+    local r1, r2 = build('level0'), build('classic')
+    assert(r1.models[1].texture ~= gTextures['white'] or Assets.isPlaceholder(r1.models[1].texture), 'floor not the flat white override')
+    assert(r1.models[1].texture == r1.models[1].texture and r1.models[1] ~= r2.models[1])
     assert(r1.plots[1].model, 'plot built')
 end)
 

@@ -107,6 +107,28 @@ local function plotScene(room, state)
     local p = plot.pos
     return p[1] - 2.6, p[2], p[3], 0, -0.1
 end
+-- pit with its pumpkin fully grown (the bridge), seen from the near rim, a little above it
+-- and looking down across: the surfaces round a grown pit plot (surfaces QA)
+local function pitBridgeScene(room)
+    for _, c in ipairs(room.data.meta and room.data.meta.cells or {}) do
+        if c.module == 'pit' then
+            local plot
+            for _, p in ipairs(room.plots) do
+                local px, py = p.pos[1], p.pos[2]
+                if math.floor(px / CELL) == c.cx and math.floor((py + CELL / 2) / CELL) == c.cy then plot = p end
+            end
+            if plot and not plot.crop then
+                local crop = Crop('pumpkin', plot, {progress = 1})
+                crop.grown, crop.active, crop.demo = true, true, true
+                plot.crop = crop
+                room.crops[#room.crops + 1] = crop
+            end
+            local mx, my = c.cx * CELL + CELL / 2, c.cy * CELL
+            local dx, dy = c.dir[1], c.dir[2]
+            return mx - dx * (CELL / 2 + 0.4), my - dy * (CELL / 2 + 0.4), c.elev, math.atan2(dy, dx), -0.3
+        end
+    end
+end
 -- stand 1.5 cells before path cell `c` (on the path, towards the start), looking at it
 local function pathScene(pred)
     return function(room)
@@ -165,6 +187,7 @@ local SCENES = {
         end
         return e[1] - dx * 4.5, e[2] - dy * 4.5, e[3] - 1.1, math.atan2(dy, dx), -0.05
     end,
+    ['pit-bridge'] = pitBridgeScene,
     ['pit'] = moduleScene('pit'), ['ledge'] = moduleScene('ledge'), ['gap'] = moduleScene('gap'),
     ['prop'] = function(room)
         for _, b in ipairs(room.data.billboards or {}) do
@@ -257,7 +280,7 @@ end
 SCENES['zone-transition'] = zoneTransitionScene
 for _, p in ipairs({'bright', 'dim', 'single-bulb', 'near-dark'}) do SCENES['zone-' .. p] = zoneLightingScene(p) end
 for _, nme in ipairs(ROOM_SHAPE_NAMES or {}) do SCENES['shape-' .. nme] = shapeScene(nme) end
-local MODULE_SCENES = {pit = true, ledge = true, gap = true, ['zone-transition'] = true}
+local MODULE_SCENES = {pit = true, ['pit-bridge'] = true, ledge = true, gap = true, ['zone-transition'] = true}
 for name in pairs(SCENES) do if name:match('^zone%-') or name:match('^shape%-') then MODULE_SCENES[name] = true end end
 
 local function save(data, file)
