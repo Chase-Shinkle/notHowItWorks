@@ -19,6 +19,12 @@ local function toVirtual(x, y)
 end
 
 function StartState:enter()
+    -- the farm theme starts here and keeps playing into the farm (FarmState:enter doesn't restart it)
+    local music = gSounds['farm-music']
+    if music then
+        music:setLooping(true)
+        if not music:isPlaying() then music:play() end
+    end
     self.time = 0
     self.menu = UI.Menu.new({
         {label = 'Play Game', onActivate = function() gStateMachine:change('farm', NewGameData()) end},

@@ -98,7 +98,7 @@ function FarmState:enter(gameData)
     self.fx = {shake = 0, corruption = 0, fall = 0}
 
     local music = gSounds['farm-music']
-    if music then music:setLooping(true); music:play() end
+    if music then music:setLooping(true); if not music:isPlaying() then music:play() end end
 end
 
 function FarmState:exit()

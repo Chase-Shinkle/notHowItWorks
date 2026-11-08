@@ -108,6 +108,8 @@ function EndingState:enter(param)
 
     if self.audio then self.audio:dispose() end
     self.audio = BackroomsAudio.new()
+    local song = gSounds['ending-music']
+    if song then song:stop(); song:setLooping(false); song:setVolume(ENDING_MUSIC_VOLUME); song:play() end
     if love.mouse.setRelativeMode then love.mouse.setRelativeMode(false) end
     if love.mouse.setVisible then love.mouse.setVisible(true) end
 
@@ -124,6 +126,8 @@ function EndingState:layoutMenu()
 end
 
 function EndingState:exit()
+    local song = gSounds['ending-music']
+    if song then song:stop() end
     if self.audio then self.audio:dispose(); self.audio = nil end
 end
 

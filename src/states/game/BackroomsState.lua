@@ -384,6 +384,13 @@ function BackroomsState:updateFall(dt)
 end
 
 function BackroomsState:update(dt)
+    -- Delete (Mac "delete" is backspace) jumps straight to the ending screen.
+    if (love.keyboard.wasPressed('delete') or love.keyboard.wasPressed('backspace'))
+        and not self.finished then
+        self.finished = true
+        gStateMachine:change('ending', {gameData = self.gameData, runSeed = self.runSeed})
+        return
+    end
     if IsDebugAdvancePressed() and not self.fall then
         self:advance()
         return
