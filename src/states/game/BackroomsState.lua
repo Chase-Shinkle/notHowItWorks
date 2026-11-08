@@ -61,6 +61,7 @@ function BackroomsState:exit()
     self.fall = nil
     Timer.clear(self.timers)
     if self.audio then self.audio:dispose(); self.audio = nil end
+    if HorrorOutage then HorrorOutage.reset() end
     self:setMouseCaptured(false)
 end
 

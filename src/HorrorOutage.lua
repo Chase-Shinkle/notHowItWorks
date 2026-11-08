@@ -1,4 +1,4 @@
--- Occasional horror light outage: every 20-60 s (randomized) a fixture near the
+-- Occasional horror light outage: every 90-180 s (randomized, one global event at a time) a fixture near the
 -- camera stutters, goes dark for 1-2 s, then restores with a brief re-flicker.
 -- Driven from BackroomsLook.begin (backrooms rooms only), so it needs no state
 -- hooks. It only scales one fixture's intensity: zone ambient/fog (the
@@ -7,7 +7,7 @@
 -- love.sound/audio is unavailable it is silently skipped.
 HorrorOutage = {}
 
-local MIN_GAP, MAX_GAP = 20, 60
+local MIN_GAP, MAX_GAP = 90, 180
 local STUTTER, MIN_OUT, MAX_OUT, RESTORE = 0.5, 1.0, 2.0, 0.35
 local NEARBY = 4
 
