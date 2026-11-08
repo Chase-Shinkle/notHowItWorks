@@ -556,7 +556,7 @@ function BackroomsLook.renderScene(drawScene)
     end
     local ok, err = pcall(function()
         love.graphics.setCanvas({canvas, depth = true})
-        love.graphics.clear(0, 0, 0, 1)
+        love.graphics.clear(0, 0, 0, 1, true, true)   -- colour + stencil + depth, explicitly: nothing carries over from the last frame
     end)
     if not ok then
         love.graphics.setCanvas(target)
@@ -579,10 +579,8 @@ function BackroomsLook.renderScene(drawScene)
         send('texel', {1 / pw, 1 / ph})
         send('dpi', dpi)
         send('rect', {rx / ww, ry / wh, w / ww, h / wh})   -- normalized: shader uses uv only
-        send('winSize', {ww, wh})
         send('bloom', BackroomsLook.bloomStrength())
         send('vignette', 0.45)
-        send('time', BackroomsLook.now() % 1000)
         send('idle', EffectToggles.on('idle') and BackroomsLook.idleVignette or 0)
         send('sideFill', EffectToggles.on('side') and 1 or 0)
         love.graphics.push('all'); pushed = true

@@ -2,17 +2,15 @@
 // The scene canvas holds the 4:3 picture. This pass draws the whole window:
 //  * outside `rect` (the centred 4:3 area) a heavily blurred, darkened, stretched copy of the frame;
 //  * inside it the picture through a small camcorder lens: subtle barrel distortion, soft focus,
-//    mild edge chromatic aberration, light bloom, fine grain and a soft edge vignette.
-// Colour grade (sickly yellow) is unchanged from before. Nothing scans, tracks or stamps.
+//    mild edge chromatic aberration, light bloom and a soft edge vignette.
+// Colour grade (sickly yellow) is unchanged from before. Static and deterministic: no grain, noise, tracking bands, glitch blocks or any time-based effect.
 // Coordinates come ONLY from texture coords (uv): the canvas is drawn stretched over the whole window, so uv is
-// 0..1 across the window. rect is that picture rect NORMALIZED (0..1); winSize is the LOGICAL window size (grain scale).
+// 0..1 across the window. rect is that picture rect NORMALIZED (0..1);
 uniform vec2 texel;      // 1 / scene canvas size in physical pixels
 uniform float dpi;       // physical pixels per logical unit (1 normally, 2 on Retina); keeps blur widths constant
 uniform vec4 rect;       // picture rect, normalized to the window: x, y, w, h (0..1)
-uniform vec2 winSize;    // window size in LOGICAL units (grain cell scale only)
 uniform float bloom;     // 0 = off, ~0.25 mild
 uniform float vignette;  // 0..1 edge darkening
-uniform float time;      // seconds (grain seed)
 uniform float sideFill;  // 1 = blurred side fill, 0 = plain dark sides (diagnostic)
 uniform float idle;      // 0..1 extra vignette after standing still
 
@@ -31,12 +29,6 @@ vec3 scene(Image tex, vec2 uv) {
     vec2 h = texel * 0.5;
     vec3 c = Texel(tex, clamp(uv, h, vec2(1.0) - h)).rgb;
     return finite3(c, 8.0);
-}
-
-float hash(vec2 p) {
-    p = fract(p * vec2(443.897, 441.423));
-    p += dot(p, p.yx + 19.19);
-    return fract((p.x + p.y) * p.x);
 }
 
 vec3 glow(Image tex, vec2 uv) {
@@ -82,8 +74,6 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
         // fade deeper toward the window edge, but keep some colour
         vec2 e = abs(uv - 0.5) * 2.0;
         b *= 0.62 * (1.0 - 0.35 * max(e.x, e.y));
-        float g = hash(floor(uv * winSize) + floor(time * 24.0) * 17.3) - 0.5;
-        b += g * 0.012;
         return vec4(finite3(b, 1.0), 1.0);
     }
 
@@ -114,10 +104,5 @@ vec4 effect(vec4 color, Image tex, vec2 uv, vec2 pixel) {
     c *= 1.0 - vignette * v;
     c *= 1.0 - idle * 0.55 * smoothstep(0.15, 0.9, v + 0.25 * v);
 
-    // fine subtle grain; masked so true black stays black
-    float lum = dot(c, vec3(0.299, 0.587, 0.114));
-    float live = smoothstep(0.01, 0.06, lum);
-    float g = hash(floor(uv * winSize) + floor(time * 24.0) * 17.3) - 0.5;
-    c += g * 0.03 * live;
     return vec4(finite3(c, 1.0), 1.0);
 }
