@@ -12,7 +12,7 @@ Silhouette = {
     LIFETIME = 5,           -- seconds visible at most
     FADE_IN = 1.2,
     FADE_OUT = 1.0,
-    GAZE_DEG = 10,          -- within this of screen centre (horizontal)
+    GAZE_DEG = 10,          -- within this angle of screen centre (3D view cone)
     GAZE_TIME = 1.5,        -- continuous seconds of gaze before vanishing
     GAZE_FADE = 0.3,
     HEIGHT = 1.9,
@@ -126,14 +126,27 @@ function Silhouette.debugForce(colliders, player, dir)
 end
 
 -- paused: true while the pit-death fade runs. Reads state only; writes none.
-function Silhouette.update(dt, room, player, dir, paused)
+-- Angle (radians) between the camera look vector (g3d: yaw dir, pitch) and the
+-- direction from the eye to the figure's centre.
+function Silhouette.gazeAngle(player, dir, pitch, fx, fy, fz)
+    local ex, ey, ez = player.x, player.y, (player.z or 0) + (player.eyeHeight or 0)
+    local vx, vy, vz = fx - ex, fy - ey, fz - ez
+    local len = math.sqrt(vx * vx + vy * vy + vz * vz)
+    if len < 1e-6 then return 0 end
+    local cp = math.cos(pitch)
+    local lx, ly, lz = math.cos(dir) * cp, math.sin(dir) * cp, math.sin(pitch)
+    local dot = (vx * lx + vy * ly + vz * lz) / len
+    return math.acos(math.max(-1, math.min(1, dot)))
+end
+
+function Silhouette.update(dt, room, player, dir, paused, pitch)
     if not S.cooldown then S.reset() end
     if S.active then
         local a = S.active
         a.t = a.t + dt
         local dist = math.sqrt((player.x - a.x) ^ 2 + (player.y - a.y) ^ 2)
-        local diff = (math.atan2(a.y - player.y, a.x - player.x) - dir + math.pi) % (2 * math.pi) - math.pi
-        if math.abs(diff) <= math.rad(S.GAZE_DEG) then a.gaze = (a.gaze or 0) + dt else a.gaze = 0 end
+        local ang = S.gazeAngle(player, dir, pitch or 0, a.x, a.y, (player.z or 0) + S.HEIGHT / 2)
+        if ang <= math.rad(S.GAZE_DEG) then a.gaze = (a.gaze or 0) + dt else a.gaze = 0 end
         local gazed = a.gaze >= S.GAZE_TIME
         local fadingOut = a.out or paused or dist < S.VANISH_DIST or a.t > S.LIFETIME or gazed
         if fadingOut and not a.out then a.out = 0; a.fade = gazed and S.GAZE_FADE or S.FADE_OUT end

@@ -428,7 +428,7 @@ function BackroomsState:update(dt)
     local bmin, bmax = self.player:bounds()
     self.room:updateCrops(bmin, bmax)
 
-    local direction = g3d.camera.getDirectionPitch()
+    local direction, pitch = g3d.camera.getDirectionPitch()
     local input = self.fall and {forward = 0, strafe = 0} or self:movementInput()
     self.player:update(dt, input, direction, self.room:solidColliders(), self.room:climbVolumes())
 
@@ -446,7 +446,7 @@ function BackroomsState:update(dt)
         BackroomsLook.updateIdle(dt, BackroomsLook.forceStill or self.stillTime)
     end
 
-    Silhouette.update(dt, self.room, self.player, direction, self.fall ~= nil)
+    Silhouette.update(dt, self.room, self.player, direction, self.fall ~= nil, pitch)
     self:updateFall(dt)
     if not self.fall then self:updateCheckpoint() end
 
