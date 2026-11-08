@@ -461,7 +461,7 @@ function BackroomsLook.initPost()
     end
     local ok, shader = pcall(love.graphics.newShader, source)
     if not ok or not shader then return postFail('compile failed: ' .. tostring(shader)) end
-    local w, h = love.graphics.getDimensions()
+    local w, h = BackroomsLook.targetSize()
     local canvas, err = newPostCanvas(w, h)   -- resized to the 4:3 area on first use
     if not canvas then return postFail('canvas creation failed: ' .. err) end
     BackroomsLook.postShader, BackroomsLook.postCanvas = shader, canvas
@@ -494,10 +494,19 @@ end
 -- (or on any failure of the pass) it is drawn straight to the target. The HUD
 -- is drawn by the caller afterwards, never through this. Render state
 -- (canvas, shader, colour, blend, depth) is restored.
+-- Pixel size of the current render target (the active canvas, else the window).
+-- Fullscreen passes must use this, not a cached or window-unit size.
+function BackroomsLook.targetSize()
+    local c = love.graphics.getCanvas and love.graphics.getCanvas()
+    if c and c.getDimensions then return c:getDimensions() end
+    if love.graphics.getPixelDimensions then return love.graphics.getPixelDimensions() end
+    return love.graphics.getDimensions()
+end
+
 function BackroomsLook.renderScene(drawScene)
     if not BackroomsLook.initPost() then return drawScene() end
     local target = love.graphics.getCanvas()
-    local ww, wh = love.graphics.getDimensions()
+    local ww, wh = BackroomsLook.targetSize()   -- the real target, not a cached/window-unit size
     local rx, ry, w, h = BackroomsLook.viewRect(ww, wh)
     if g3d.camera and g3d.camera.resize then g3d.camera.resize(w, h) end     -- 3D is rendered 4:3
     local canvas = BackroomsLook.postCanvas
@@ -524,6 +533,7 @@ function BackroomsLook.renderScene(drawScene)
     if not drew then error(derr, 0) end
 
     local shader = BackroomsLook.postShader
+    local pushed = false
     local passed, perr = pcall(function()
         local function send(name, v) if shader:hasUniform(name) then shader:send(name, v) end end
         send('texel', {1 / w, 1 / h})
@@ -533,10 +543,18 @@ function BackroomsLook.renderScene(drawScene)
         send('vignette', 0.45)
         send('time', BackroomsLook.now() % 1000)
         send('idle', BackroomsLook.idleVignette or 0)
+        love.graphics.push('all'); pushed = true
+        love.graphics.origin()
+        love.graphics.setScissor()            -- a leaked scissor would clip the pass to a square
+        love.graphics.setBlendMode('replace', 'premultiplied')
         love.graphics.setShader(shader)
         love.graphics.setColor(1, 1, 1, 1)
-        love.graphics.draw(canvas, 0, 0, 0, ww / w, wh / h)    -- stretched over the window: the shader fills the sides
+        local cw, ch = canvas:getDimensions()
+        -- stretched over the whole target: the shader fills the sides around the 4:3 picture
+        love.graphics.draw(canvas, 0, 0, 0, ww / cw, wh / ch)
+        love.graphics.pop(); pushed = false
     end)
+    if pushed then love.graphics.pop() end   -- error mid-pass: don't leak the state stack
     love.graphics.setShader()
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.setBlendMode('alpha')

@@ -488,9 +488,14 @@ function BackroomsState:renderHUD()
     -- death fade drawn last, above the world and the HUD
     if self.fall and self.fall.alpha > 0 then
         local w, h = love.graphics.getDimensions()
+        love.graphics.push('all')
+        love.graphics.origin()
+        love.graphics.setScissor()
+        love.graphics.setShader()
+        love.graphics.setBlendMode('alpha')
         love.graphics.setColor(0, 0, 0, self.fall.alpha)
         love.graphics.rectangle('fill', 0, 0, w, h)
-        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.pop()
     end
 end
 
