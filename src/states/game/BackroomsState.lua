@@ -524,10 +524,6 @@ function BackroomsState:renderHUDContents()
         shadowPrintf(self.message.text, h / 2 + 48, w, 1)
     end
 
-    -- crosshair
-    love.graphics.line(w / 2 - 6, h / 2, w / 2 + 6, h / 2)
-    love.graphics.line(w / 2, h / 2 - 6, w / 2, h / 2 + 6)
-
     -- controls hint: fades after BACKROOMS_HINT_SECONDS with the mouse captured;
     -- always shown while the mouse is free. Sits above the hotbar.
     local alpha = 1

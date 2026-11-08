@@ -1279,7 +1279,7 @@ test('backrooms: WASD/arrows walk relative to the look direction and the camera 
     near(moved, BACKROOMS_WALK_SPEED * 0.25, 0.1, 'diagonal speed')
 end)
 
-test('backrooms: renders at native resolution (camera aspect, HUD crosshair at screen centre)', function()
+test('backrooms: renders at native resolution (camera aspect, no HUD crosshair)', function()
     local back = toBackrooms()
     local resized = mock.callsNamed('camera.resize')
     local last = resized[#resized]
@@ -1290,7 +1290,7 @@ test('backrooms: renders at native resolution (camera aspect, HUD crosshair at s
     for _, c in ipairs(mock.callsNamed('line')) do
         if c.args[1] == 394 and c.args[2] == 400 and c.args[3] == 406 then centred = true end
     end
-    assert(centred, 'crosshair drawn at the native window centre')
+    assert(not centred, 'no crosshair drawn at the window centre')
     assert(find(mock.printed, '[backrooms] entered room 1/'), 'room entry logged')
     eq(back.roomIndex, 1)
 end)
