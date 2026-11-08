@@ -126,3 +126,8 @@ end
 for _, a in ipairs(arg or {}) do
     if a == '--fall-shot' then require 'tests/fall_shot' end
 end
+
+-- dev-only: love . --horror-shot
+for _, a in ipairs(arg or {}) do
+    if a == '--horror-shot' then require 'tests/horror_shot' end
+end

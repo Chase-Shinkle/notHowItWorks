@@ -430,6 +430,18 @@ function BackroomsState:update(dt)
 
     if self.audio then self.audio:update(dt, self.player) end
 
+    do -- idle vignette bookkeeping (visual only)
+        local px, py, pz = self.player.x, self.player.y, self.player.z or 0
+        local l = self.lastPos
+        if not l or math.abs(px - l[1]) + math.abs(py - l[2]) + math.abs(pz - l[3]) > 1e-3 then
+            self.stillTime = 0
+        else
+            self.stillTime = (self.stillTime or 0) + dt
+        end
+        self.lastPos = {px, py, pz}
+        BackroomsLook.updateIdle(dt, BackroomsLook.forceStill or self.stillTime)
+    end
+
     self:updateFall(dt)
     if not self.fall then self:updateCheckpoint() end
 

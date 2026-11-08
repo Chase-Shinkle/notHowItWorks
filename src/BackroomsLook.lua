@@ -465,6 +465,17 @@ function BackroomsLook.initPost()
     return true
 end
 
+-- Idle vignette: call every update with the seconds since the player last moved.
+-- Eases in slowly after 4 s, relaxes quickly once moving (visual only).
+BackroomsLook.idleVignette = 0
+function BackroomsLook.updateIdle(dt, stillSeconds)
+    local target = stillSeconds > 4 and math.min(1, (stillSeconds - 4) / 10) or 0
+    local cur = BackroomsLook.idleVignette or 0
+    local rate = target > cur and 0.3 or 3.0
+    if target > cur then cur = math.min(target, cur + rate * dt) else cur = math.max(target, cur - rate * dt) end
+    BackroomsLook.idleVignette = cur
+end
+
 -- Runs `drawScene` (3D only). With the post-process available the scene goes
 -- into a depth-capable canvas and is then drawn through the grade; otherwise
 -- (or on any failure of the pass) it is drawn straight to the target. The HUD
@@ -503,6 +514,8 @@ function BackroomsLook.renderScene(drawScene)
         send('texel', {1 / w, 1 / h})
         send('bloom', BackroomsLook.bloomStrength())
         send('vignette', 0.45)
+        send('time', BackroomsLook.now() % 1000)
+        send('idle', BackroomsLook.idleVignette or 0)
         love.graphics.setShader(shader)
         love.graphics.setColor(1, 1, 1, 1)
         love.graphics.draw(canvas, 0, 0)
