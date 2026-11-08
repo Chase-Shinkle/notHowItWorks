@@ -61,40 +61,32 @@ CROP_DIRECTIONS = {
 
 Crop = Class{}
 
--- Crop material: a small texture whose texels are drawn from the opaque pixels
--- of the type's mature crop sprite (falling back to the def colour with noise),
--- so bridges/platforms read as the crop's own skin, not a flat colour.
+-- Crop material: a small coherent texture built from the type's own palette
+-- colour with restrained, structured variation (pumpkin: warm-orange ribs;
+-- vine: green fibres along the span; beanstalk: green bark streaks). No
+-- sprite pixels are sampled, so there are no outline/stem/stray-colour specks.
 local materials = {}
 local function cropMaterial(seedType)
     if materials[seedType] then return materials[seedType] end
     local c = CROP_DEFS[seedType].color
-    local pool = {}
-    local ok, data = pcall(function() return love.image.newImageData(CROP_SPRITE_PATHS[seedType]) end)
-    if ok and data then
-        local w, h = data:getDimensions()
-        for y = 0, h - 1 do
-            for x = 0, w - 1 do
-                local r, g, b, a = data:getPixel(x, y)
-                if a > 0.9 then pool[#pool + 1] = {r, g, b} end
-            end
-        end
-    end
     local N = 16
     local img = love.image.newImageData(N, N)
     local rng = love.math.newRandomGenerator(#seedType * 7919)
     for y = 0, N - 1 do
         for x = 0, N - 1 do
-            local r, g, b
-            if #pool > 0 then
-                local p = pool[rng:random(#pool)]
-                r, g, b = p[1], p[2], p[3]
+            local k
+            if seedType == 'pumpkin' then
+                -- smooth vertical ribs, groove every 4 texels
+                k = 0.9 + 0.1 * math.cos(x / 4 * 2 * math.pi)
+            elseif seedType == 'vine' then
+                -- fibres: thin bands along the span, slightly brighter streaks
+                k = 0.92 + 0.08 * math.sin(y * 1.3) + ((y % 5 == 0) and -0.06 or 0)
             else
-                local k = 0.75 + 0.25 * rng:random()
-                r, g, b = c[1] * k, c[2] * k, c[3] * k
+                -- bark: irregular vertical streaks
+                k = 0.9 + 0.08 * math.sin(x * 1.7 + (y % 4) * 0.3) + ((x % 5 == 0) and -0.06 or 0)
             end
-            -- ribs/fibres so large faces show structure
-            local rib = (seedType == 'pumpkin' and x % 4 == 0) and 0.8 or (seedType ~= 'pumpkin' and y % 5 == 0) and 0.85 or 1
-            img:setPixel(x, y, r * rib, g * rib, b * rib, 1)
+            k = k + (rng:random() - 0.5) * 0.06   -- tiny grain, same hue
+            img:setPixel(x, y, math.min(1, c[1] * k), math.min(1, c[2] * k), math.min(1, c[3] * k), 1)
         end
     end
     local tex = love.graphics.newImage(img)
