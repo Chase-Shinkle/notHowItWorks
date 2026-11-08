@@ -125,6 +125,7 @@ end
 -- `love . --fall-shot`: mid-fade pit-death screenshot (tests/fall_shot.lua, development only).
 for _, a in ipairs(arg or {}) do
     if a == '--fall-shot' then require 'tests/fall_shot' end
+    if a == '--silhouette-shot' then require 'tests/silhouette_shot' end
 end
 
 -- dev-only: love . --horror-shot

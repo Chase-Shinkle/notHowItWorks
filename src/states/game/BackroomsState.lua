@@ -53,11 +53,13 @@ function BackroomsState:enter(gameData, rooms)
     self:setMouseCaptured(true)
     self.finished = false
     self.fall = nil
+    Silhouette.reset()
     self.hintTime = BACKROOMS_HINT_SECONDS
     self:loadRoom(1)
 end
 
 function BackroomsState:exit()
+    Silhouette.dispose()
     self.fall = nil
     Timer.clear(self.timers)
     if self.audio then self.audio:dispose(); self.audio = nil end
@@ -103,6 +105,7 @@ function BackroomsState:loadRoom(index)
     Timer.clear(self.timers)
     self.roomIndex = index
     self.fall = nil
+    Silhouette.clearActive()
     if self.audio then self.audio:setFalling(false) end
     self.room = Room(data)
     self.gameData.seeds = RoomStartingSeeds(data, index, self.gameData.seeds)
@@ -443,6 +446,7 @@ function BackroomsState:update(dt)
         BackroomsLook.updateIdle(dt, BackroomsLook.forceStill or self.stillTime)
     end
 
+    Silhouette.update(dt, self.room, self.player, direction, self.fall ~= nil)
     self:updateFall(dt)
     if not self.fall then self:updateCheckpoint() end
 
@@ -458,7 +462,10 @@ function BackroomsState:update(dt)
 end
 
 function BackroomsState:render()
-    BackroomsLook.renderScene(function() self.room:draw(self.player.x, self.player.y) end)
+    BackroomsLook.renderScene(function()
+        self.room:draw(self.player.x, self.player.y)
+        Silhouette.draw(self.player.x, self.player.y)
+    end)
 end
 
 -- Text with a dark outline so it reads on bright and dark walls without a band.
