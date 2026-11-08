@@ -52,11 +52,13 @@ function BackroomsState:enter(gameData, rooms)
     g3d.camera.resize(love.graphics.getDimensions())
     self:setMouseCaptured(true)
     self.finished = false
+    self.fall = nil
     self.hintTime = BACKROOMS_HINT_SECONDS
     self:loadRoom(1)
 end
 
 function BackroomsState:exit()
+    self.fall = nil
     Timer.clear(self.timers)
     if self.audio then self.audio:dispose(); self.audio = nil end
     self:setMouseCaptured(false)
@@ -99,6 +101,8 @@ function BackroomsState:loadRoom(index)
     assert(data, 'no backrooms room ' .. tostring(index))
     Timer.clear(self.timers)
     self.roomIndex = index
+    self.fall = nil
+    if self.audio then self.audio:setFalling(false) end
     self.room = Room(data)
     self.gameData.seeds = RoomStartingSeeds(data, index, self.gameData.seeds)
     self.roomStartSeeds = CopySeeds(self.gameData.seeds)
@@ -349,6 +353,32 @@ function BackroomsState:movementInput()
     return {forward = f, strafe = s}
 end
 
+-- Pit death: fade to black (physics keeps running, controls locked), respawn
+-- at the same checkpoint at full black, then fade back in. The state is reset
+-- by loadRoom/resetRoom/enter/exit so it can never get stuck.
+function BackroomsState:updateFall(dt)
+    local f = self.fall
+    if not f then
+        if self.player.z < self.room.killZ then
+            self.fall = {t = 0, phase = 'out', alpha = 0}
+            if self.audio then self.audio:setFalling(true); self.audio:playFall() end
+        end
+        return
+    end
+    f.t = f.t + dt
+    if f.phase == 'out' then
+        f.alpha = math.min(1, f.t / BACKROOMS_FALL_FADE_OUT)
+        if f.t >= BACKROOMS_FALL_FADE_OUT then
+            self:respawnAtCheckpoint()
+            f.phase, f.t, f.alpha = 'in', 0, 1
+            if self.audio then self.audio:setFalling(false) end
+        end
+    else
+        f.alpha = 1 - math.min(1, f.t / BACKROOMS_FALL_FADE_IN)
+        if f.t >= BACKROOMS_FALL_FADE_IN then self.fall = nil end
+    end
+end
+
 function BackroomsState:update(dt)
     if IsDebugAdvancePressed() then
         self:advance()
@@ -365,7 +395,7 @@ function BackroomsState:update(dt)
         clickPlants = true
     end
 
-    if anyPressed(BACKROOMS_KEYS.reset) then
+    if anyPressed(BACKROOMS_KEYS.reset) and not self.fall then
         self:resetRoom()
         return
     end
@@ -393,14 +423,13 @@ function BackroomsState:update(dt)
     self.room:updateCrops(bmin, bmax)
 
     local direction = g3d.camera.getDirectionPitch()
-    self.player:update(dt, self:movementInput(), direction, self.room:solidColliders(), self.room:climbVolumes())
+    local input = self.fall and {forward = 0, strafe = 0} or self:movementInput()
+    self.player:update(dt, input, direction, self.room:solidColliders(), self.room:climbVolumes())
 
     if self.audio then self.audio:update(dt, self.player) end
 
-    if self.player.z < self.room.killZ then
-        self:respawnAtCheckpoint()
-    end
-    self:updateCheckpoint()
+    self:updateFall(dt)
+    if not self.fall then self:updateCheckpoint() end
 
     local ex, ey, ez = self.player:eyePosition()
     g3d.camera.lookInDirection(ex, ey, ez)
@@ -408,7 +437,7 @@ function BackroomsState:update(dt)
     while self:collectPickups() do end
 
     local pmin, pmax = self.player:bounds()
-    if self.room:overlapsExit(pmin, pmax) then
+    if not self.fall and self.room:overlapsExit(pmin, pmax) then
         self:advance()
     end
 end
@@ -426,6 +455,17 @@ local function shadowPrintf(text, y, w, alpha)
 end
 
 function BackroomsState:renderHUD()
+    self:renderHUDContents()
+    -- death fade drawn last, above the world and the HUD
+    if self.fall and self.fall.alpha > 0 then
+        local w, h = love.graphics.getDimensions()
+        love.graphics.setColor(0, 0, 0, self.fall.alpha)
+        love.graphics.rectangle('fill', 0, 0, w, h)
+        love.graphics.setColor(1, 1, 1, 1)
+    end
+end
+
+function BackroomsState:renderHUDContents()
     local w, h = love.graphics.getDimensions()
     local font = gFonts['default']
     love.graphics.setFont(font)

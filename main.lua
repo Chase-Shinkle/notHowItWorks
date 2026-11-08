@@ -121,3 +121,8 @@ end
 for _, a in ipairs(arg or {}) do
     if a == '--zone-maps' then require 'tests/zone_maps' end
 end
+
+-- `love . --fall-shot`: mid-fade pit-death screenshot (tests/fall_shot.lua, development only).
+for _, a in ipairs(arg or {}) do
+    if a == '--fall-shot' then require 'tests/fall_shot' end
+end

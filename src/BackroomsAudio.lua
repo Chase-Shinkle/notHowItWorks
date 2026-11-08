@@ -23,6 +23,9 @@ function BackroomsAudio.new(rng)
     self.lastX, self.lastY = nil, nil
     self.steps = 0
     self.live = {}                -- recent step clones, stopped on dispose
+    self.duck = 1                 -- hum duck multiplier (fall fade)
+    self.duckTarget = 1
+    self.muted = false            -- no footsteps while falling
     if self.hum then
         self.hum:setLooping(true)
         self.hum:setVolume(0)
@@ -61,9 +64,19 @@ end
 -- player: needs x, y, grounded, climbing.
 function BackroomsAudio:update(dt, player)
     if not self.active then return end
-    if self.fade < 1 and self.hum then
+    if self.fade < 1 then
         self.fade = math.min(1, self.fade + dt / math.max(BACKROOMS_HUM_FADE, 1e-6))
-        self.hum:setVolume(BACKROOMS_HUM_VOLUME * self.fade)
+    end
+    if self.duck ~= self.duckTarget then
+        local step = dt / 0.3
+        if self.duck < self.duckTarget then self.duck = math.min(self.duckTarget, self.duck + step)
+        else self.duck = math.max(self.duckTarget, self.duck - step) end
+    end
+    if self.hum then self.hum:setVolume(BACKROOMS_HUM_VOLUME * self.fade * self.duck) end
+    if self.muted then
+        self.lastX, self.lastY = player and player.x, player and player.y
+        self.walked = 0
+        return
     end
     if not player then return end
     local x, y = player.x, player.y
@@ -99,12 +112,52 @@ function BackroomsAudio:update(dt, player)
     end
 end
 
+-- Fall transition: duck the hum and silence footsteps, or restore both.
+function BackroomsAudio:setFalling(falling)
+    self.muted = falling and true or false
+    self.duckTarget = falling and 0.2 or 1
+    if not falling then self:reset() end
+end
+
+-- Short descending wind rush synthesized in memory (no asset needed). Returns
+-- the Source, or nil if audio is unavailable.
+function BackroomsAudio.synthFall()
+    local ok, src = pcall(function()
+        local rate, dur = 22050, 1.1
+        local n = math.floor(rate * dur)
+        local sd = love.sound.newSoundData(n, rate, 16, 1)
+        local lp, phase = 0, 0
+        for i = 0, n - 1 do
+            local t = i / n
+            local env = math.min(1, t * 12) * (1 - t) ^ 0.7
+            local k = 0.35 - 0.28 * t                    -- low-pass closes: rush darkens
+            lp = lp + k * ((math.random() * 2 - 1) - lp)
+            local f = 520 * (1 - t) ^ 1.5 + 70           -- descending tone
+            phase = phase + 2 * math.pi * f / rate
+            sd:setSample(i, (lp * 2.2 + math.sin(phase) * 0.12) * env * 0.6)
+        end
+        return love.audio.newSource(sd)
+    end)
+    return ok and src or nil
+end
+
+function BackroomsAudio:playFall()
+    if not self.active then return end
+    self.fallSrc = self.fallSrc or BackroomsAudio.synthFall()
+    if self.fallSrc then
+        self.fallSrc:stop()
+        self.fallSrc:setVolume(0.7)
+        self.fallSrc:play()
+    end
+end
+
 function BackroomsAudio:stop()
     self.active = false
     if self.hum then self.hum:stop() end
     for _, s in ipairs(self.footsteps) do s:stop() end
     for _, s in ipairs(self.live) do s:stop() end
     self.live = {}
+    if self.fallSrc then self.fallSrc:stop() end
 end
 
 BackroomsAudio.dispose = BackroomsAudio.stop

@@ -430,6 +430,8 @@ BACKROOMS_FOOTSTEP_VOLUME_VARIATION = 0.02
 BACKROOMS_HUM_VOLUME = 0.5
 BACKROOMS_FOOTSTEP_AIR_GRACE = 0.2    -- s of !grounded tolerated (contact flicker) before the stride bank resets
 BACKROOMS_FOOTSTEP_VOLUME = 0.35
+BACKROOMS_FALL_FADE_OUT = 0.7         -- s, pit death fade to black
+BACKROOMS_FALL_FADE_IN = 0.4          -- s, fade back in after respawn
 BACKROOMS_HUM_FADE = 1.0               -- s
 -- UI (src/UI.lua; openspec title-hotbar-ending-ui)
 UI_FONT_FILE = 'fonts/SaH1Outline.ttf'  -- display font
