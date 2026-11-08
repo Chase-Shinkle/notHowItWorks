@@ -94,6 +94,24 @@ local function moduleScene(name)
         end
     end
 end
+-- Look-down shots into a pit/gap from its rim: stand at module-local (u, v) at floor
+-- elevation, yaw offset from the travel direction. A = from the entry edge straight
+-- ahead and down; B = from the entry corner across the shaft diagonally.
+local function downScene(name, variant)
+    return function(room)
+        for _, c in ipairs(room.data.meta and room.data.meta.cells or {}) do
+            if c.module == name then
+                local def = LevelGen.MODULES[name]
+                local u0 = (def.pitX0 or def.gapX0) - 0.5
+                local f = LevelGen.frame(c.cx, c.cy, c.dir)
+                local v = variant == 'a' and 0 or 2.2
+                local x, y = f.point(u0, v)
+                local yaw = math.atan2(c.dir[2], c.dir[1]) + (variant == 'a' and 0 or -0.55)
+                return x, y, c.elev, yaw, variant == 'a' and -0.95 or -0.8
+            end
+        end
+    end
+end
 local function plotScene(room, state)
     local plot = room.plots[1]
     if not plot then return end
@@ -200,6 +218,8 @@ local SCENES = {
     end,
     ['pit-bridge'] = pitBridgeScene, ['pit-baseboard'] = pitBaseboardScene,
     ['pit'] = moduleScene('pit'), ['ledge'] = moduleScene('ledge'), ['gap'] = moduleScene('gap'),
+    ['pit-down-a'] = downScene('pit', 'a'), ['pit-down-b'] = downScene('pit', 'b'),
+    ['gap-down-a'] = downScene('gap', 'a'), ['gap-down-b'] = downScene('gap', 'b'),
     ['prop'] = function(room)
         for _, b in ipairs(room.data.billboards or {}) do
             if b.dressing then return aimAt(b.pos[1], b.pos[2], b.pos[3], 2.6) end
@@ -291,7 +311,7 @@ end
 SCENES['zone-transition'] = zoneTransitionScene
 for _, p in ipairs({'bright', 'dim', 'single-bulb', 'near-dark'}) do SCENES['zone-' .. p] = zoneLightingScene(p) end
 for _, nme in ipairs(ROOM_SHAPE_NAMES or {}) do SCENES['shape-' .. nme] = shapeScene(nme) end
-local MODULE_SCENES = {pit = true, ['pit-bridge'] = true, ['pit-baseboard'] = true, ledge = true, gap = true, ['zone-transition'] = true}
+local MODULE_SCENES = {pit = true, ['pit-bridge'] = true, ['pit-baseboard'] = true, ledge = true, gap = true, ['pit-down-a'] = true, ['pit-down-b'] = true, ['gap-down-a'] = true, ['gap-down-b'] = true, ['zone-transition'] = true}
 for name in pairs(SCENES) do if name:match('^zone%-') or name:match('^shape%-') then MODULE_SCENES[name] = true end end
 
 local function save(data, file)

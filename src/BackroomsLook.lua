@@ -286,7 +286,7 @@ end
 function BackroomsLook.blendedLighting(room, x, y)
     if not room.zoneNeighbours then return room.lighting end
     local zid, near = room:zoneNeighbours(x, y, BACKROOMS_ZONE_BLEND_DISTANCE)
-    local own = zid and room.zoneLighting[zid]
+    local own = zid and room.zoneLighting and room.zoneLighting[zid]
     if not own then return room.lighting end
     local total = 0
     for _, n in ipairs(near) do if room.zoneLighting[n.zone] then total = total + n.w end end
@@ -333,7 +333,7 @@ function BackroomsLook.begin(room, cx, cy, cz, t)
         camPos = {cx, cy, cz}, ambient = lighting.ambient, lightCount = #picked,
         lightPos = pos, lightColor = color, lightRadius = radius,
         fogColor = lighting.fogColor, fogDensity = lighting.fogDensity,
-        litFloor = 0, emissive = 0, unlit = 0,
+        litFloor = 0, emissive = 0, unlit = 0, shaftRim = 0, shaftFade = 0,
     }
     BackroomsLook.lastUniforms = values
     for name, v in pairs(values) do
